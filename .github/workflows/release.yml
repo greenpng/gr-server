@@ -22,6 +22,9 @@ jobs:
     # 强制: 本次打包的 commit 必须先通过 Gate A (双架构 conclusion=success)。
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: read   # check-runs API 需要读 checks — 仅 contents:read 会 403 → 守卫空转到超时
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
