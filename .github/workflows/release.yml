@@ -338,10 +338,21 @@ jobs:
       - name: B2 --with-docker install from this artifact
         run: |
           set -euo pipefail
-          # B1 的 gr-service 仍占默认端口 28680 — 先清场, 否则新服务起不来
-          # ("health responded but our pid is dead — stale process on port")
-          pkill -f gr-service || true
-          sleep 2
+          # 清场: 前序步骤的 gr-service 可能仍占默认端口 28680 (TERM 可能被忽略/慢收敛)。
+          # 双击 kill + 等端口真正释放; 仍被占则 ss 取证后失败 (不盲装)。
+          pkill -f gr-service 2>/dev/null || true
+          sleep 1
+          pkill -9 -f 'bin/gr-service' 2>/dev/null || true
+          for i in $(seq 1 15); do
+            curl -fsS --max-time 2 http://127.0.0.1:28680/v1/health >/dev/null 2>&1 || break
+            pkill -9 -f 'bin/gr-service' 2>/dev/null || true
+            sleep 1
+          done
+          if curl -fsS --max-time 2 http://127.0.0.1:28680/v1/health >/dev/null 2>&1; then
+            echo "port 28680 still occupied after cleanup — holder:" >&2
+            ss -ltnp | grep -E ':28680' >&2 || true
+            exit 1
+          fi
           VERSION=${{ needs.prepare.outputs.version }}
           GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
           GR_RAW_BASE="http://127.0.0.1:${SRV_PORT}/" \
@@ -351,9 +362,20 @@ jobs:
       - name: B3 upgrade from previous stable (old repo, rotated root)
         run: |
           set -euo pipefail
-          # B1/B2 的 gr-service 仍占默认端口 — 先清场
-          pkill -f gr-service || true
-          sleep 2
+          # 清场: B1/B2 的 gr-service 可能仍占默认端口 (同 B2 的双击 kill + 端口释放等待)
+          pkill -f gr-service 2>/dev/null || true
+          sleep 1
+          pkill -9 -f 'bin/gr-service' 2>/dev/null || true
+          for i in $(seq 1 15); do
+            curl -fsS --max-time 2 http://127.0.0.1:28680/v1/health >/dev/null 2>&1 || break
+            pkill -9 -f 'bin/gr-service' 2>/dev/null || true
+            sleep 1
+          done
+          if curl -fsS --max-time 2 http://127.0.0.1:28680/v1/health >/dev/null 2>&1; then
+            echo "port 28680 still occupied after cleanup — holder:" >&2
+            ss -ltnp | grep -E ':28680' >&2 || true
+            exit 1
+          fi
           VERSION=${{ needs.prepare.outputs.version }}
           # 旧稳定版 v8.0.2 发布于 greenpng/install, 钉的是旧信任根指纹 → 用 ENV 覆盖
           GR_RELEASE_REPO=greenpng/install \
