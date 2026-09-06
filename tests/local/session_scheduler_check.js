@@ -10,7 +10,9 @@ import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+// 仓库根解析: 向上找 Cargo.toml (编号布局 / 扁平发行布局两用)
+let root = path.dirname(fileURLToPath(import.meta.url));
+while (root !== path.parse(root).root && !fs.existsSync(path.join(root, "Cargo.toml"))) root = path.dirname(root);
 // 布局可移植: greenpng 工作区(02-probe-analysis/...) 或扁平发行仓 gr-server(probe/ 在根)
 const feDir = fs.existsSync(path.join(root, "02-probe-analysis/probe/fe"))
   ? path.join(root, "02-probe-analysis/probe/fe")

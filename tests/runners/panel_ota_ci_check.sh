@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+# 仓库根解析: 从脚本位置向上找 Cargo.toml (编号布局 / 扁平发行布局两用)
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+while [[ "$ROOT" != "/" && ! -f "$ROOT/Cargo.toml" ]]; do ROOT="$(dirname "$ROOT")"; done
+[[ -f "$ROOT/Cargo.toml" ]] || { echo "[FATAL] cannot locate workspace root (Cargo.toml) from $0" >&2; exit 1; }
 BASE="${GR_ADMIN_BASE:-${GR_ADMIN_BASE:-http://127.0.0.1:29680}}"
 SECRETS="${GR_ADMIN_SECRETS:-$ROOT/03-local-test-lab/tests/data/lab-local/admin/admin_bootstrap_once.txt}"
 RELEASE_BASE="${GR_RELEASE_BASE:-${GR_RELEASE_BASE:?GR_RELEASE_BASE or GR_RELEASE_BASE is required}}"

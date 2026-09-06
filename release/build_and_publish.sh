@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Build modules, harden, sign, publish assets (host repo: greenpng/install).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# 仓库根解析: 从脚本位置向上找 Cargo.toml (编号布局 / 扁平发行布局两用)
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+while [[ "$ROOT" != "/" && ! -f "$ROOT/Cargo.toml" ]]; do ROOT="$(dirname "$ROOT")"; done
+[[ -f "$ROOT/Cargo.toml" ]] || { echo "[FATAL] cannot locate workspace root (Cargo.toml) from $0" >&2; exit 1; }
 cd "$ROOT"
 # 布局可移植: greenpng 工作区(02-probe-analysis/...) 或扁平发行仓 gr-server(probe/ panel/ scripts/ 在根)。
 # fe-<VER>.tgz 的成员前缀在两种布局下都是 probe/fe/, 内容一致。

@@ -12,7 +12,10 @@
 #   USE_CROSS=0       — skip foreign arch (default: auto ON if docker+cross exist)
 #   SKIP_PUBLISH=1    — do not gh upload
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# 仓库根解析: 从脚本位置向上找 Cargo.toml (编号布局 / 扁平发行布局两用)
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+while [[ "$ROOT" != "/" && ! -f "$ROOT/Cargo.toml" ]]; do ROOT="$(dirname "$ROOT")"; done
+[[ -f "$ROOT/Cargo.toml" ]] || { echo "[FATAL] cannot locate workspace root (Cargo.toml) from $0" >&2; exit 1; }
 cd "$ROOT"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 # P0-1/P0-4: one build_id + obf salt for the whole release (all arches share it).
@@ -159,21 +162,26 @@ PY
 
   # FE/admin-spa 与架构无关: 若其他 arch 目录已打包同版本, 复制字节 (sha 一致),
   # 否则本 arch 首次打包。gzip 含时间戳, 重复打包会产生不同 sha → 各 arch manifest 不一致。
+  # 布局可移植(同 ensure_fe): greenpng 02-probe-analysis/... 或扁平 gr-server
+  local area="$ROOT"
+  if [[ -d "$ROOT/02-probe-analysis/probe/fe" ]]; then
+    area="$ROOT/02-probe-analysis"
+  fi
   fe_master="$(find "$ROOT/dist" -maxdepth 2 -name "fe-${VERSION}.tgz" ! -path "$out/*" | head -1 || true)"
   if [[ -n "$fe_master" && "$fe_master" != "$out/fe-${VERSION}.tgz" ]]; then
     cp -f "$fe_master" "$out/fe-${VERSION}.tgz"
   elif [[ -n "${GR_FE_MASTER_TGZ:-${GV6_FE_MASTER_TGZ:-}}" && -f "${GR_FE_MASTER_TGZ:-${GV6_FE_MASTER_TGZ:-}}" ]]; then
     cp -f "${GR_FE_MASTER_TGZ:-${GV6_FE_MASTER_TGZ:-}}" "$out/fe-${VERSION}.tgz"
   elif [[ ! -f "$out/fe-${VERSION}.tgz" ]]; then
-    tar -C "$ROOT/02-probe-analysis" -czhf "$out/fe-${VERSION}.tgz" probe/fe
+    tar -C "$area" -czhf "$out/fe-${VERSION}.tgz" probe/fe
   fi
   admin_master="$(find "$ROOT/dist" -maxdepth 2 -name "admin-spa.tgz" ! -path "$out/*" | head -1 || true)"
   if [[ -n "$admin_master" && "$admin_master" != "$out/admin-spa.tgz" ]]; then
     cp -f "$admin_master" "$out/admin-spa.tgz"
   elif [[ -n "${GR_ADMIN_MASTER_TGZ:-${GV6_ADMIN_MASTER_TGZ:-}}" && -f "${GR_ADMIN_MASTER_TGZ:-${GV6_ADMIN_MASTER_TGZ:-}}" ]]; then
     cp -f "${GR_ADMIN_MASTER_TGZ:-${GV6_ADMIN_MASTER_TGZ:-}}" "$out/admin-spa.tgz"
-  elif [[ -d "$ROOT/02-probe-analysis/panel/admin-spa" && ! -f "$out/admin-spa.tgz" ]]; then
-    tar -C "$ROOT/02-probe-analysis" -czf "$out/admin-spa.tgz" panel/admin-spa
+  elif [[ -d "$area/panel/admin-spa" && ! -f "$out/admin-spa.tgz" ]]; then
+    tar -C "$area" -czf "$out/admin-spa.tgz" panel/admin-spa
   fi
 
   python3 - <<PY
