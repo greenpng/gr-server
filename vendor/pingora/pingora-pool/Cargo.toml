@@ -1,0 +1,35 @@
+[package]
+name = "pingora-pool"
+version = "0.8.0"
+authors = ["Yuchen Wu <yuchen@cloudflare.com>"]
+license = "Apache-2.0"
+edition = "2021"
+repository = "https://github.com/cloudflare/pingora"
+categories = ["network-programming"]
+keywords = ["async", "pooling", "pingora"]
+description = """
+A connection pool system for connection reuse.
+"""
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "pingora_pool"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["sync", "io-util"] }
+lru = "0.16.3"
+log = "0.4"
+parking_lot = "0.12"
+dashmap = "5"
+crossbeam-queue = "0.3"
+futures = "0.3"
+pingora-timeout = { version = "0.8.0", path = "../pingora-timeout" }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+
+[[bench]]
+name = "connection_pool"
+harness = false
