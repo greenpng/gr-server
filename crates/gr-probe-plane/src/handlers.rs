@@ -10157,6 +10157,11 @@ mod ip_provider_tests {
 
     #[test]
     fn rejects_non_public_targets_and_urls() {
+        // 并行测试隔离: 同模块其它用例会临时置 GR_ALLOW_LAB_INTEGRATION_HTTP=1
+        // (持有整个用例时长, 含秒级超时用例), 本用例必须持 ENV 锁并防御性清除,
+        // 否则读到他例的开关 → 私网放行 → 断言翻转(与运行顺序/线程调度相关)。
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("GR_ALLOW_LAB_INTEGRATION_HTTP");
         assert!(!provider_ip_allowed("127.0.0.1"));
         assert!(!provider_ip_allowed("10.0.0.2"));
         assert!(!provider_ip_allowed("::1"));
