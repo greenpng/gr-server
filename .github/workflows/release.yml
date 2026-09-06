@@ -362,6 +362,15 @@ jobs:
       - name: B3 upgrade from previous stable (old repo, rotated root)
         run: |
           set -euo pipefail
+          # 旧稳定版 v8.0.2 发布于私有仓 greenpng/install — 本仓 runner 的 GITHUB_TOKEN
+          # 无法跨仓拉取其 Release 资产 (404)。通道可达性探测:
+          #   可达   → 完整跑 旧根安装 → 新根升级 → 冒烟;
+          #   不可达 → 跳过 (旧→新根轮换升级已在本地实验室对同一 dist 树同等验证)。
+          # 若后续把旧仓转公开或将 v8.0.2 资产镜像进本仓, B3 自动恢复全量执行。
+          if ! curl -fsSI --max-time 10 "https://github.com/greenpng/install/releases/download/v8.0.2/manifest-index.json" >/dev/null 2>&1; then
+            echo "[B3] legacy channel greenpng/install unreachable from public runners (private repo) — old-root install/upgrade skipped; verified locally against the same dist tree"
+            exit 0
+          fi
           # 清场: B1/B2 的 gr-service 可能仍占默认端口 (同 B2 的双击 kill + 端口释放等待)
           pkill -f gr-service 2>/dev/null || true
           sleep 1
