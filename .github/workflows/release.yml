@@ -338,6 +338,10 @@ jobs:
       - name: B2 --with-docker install from this artifact
         run: |
           set -euo pipefail
+          # B1 的 gr-service 仍占默认端口 28680 — 先清场, 否则新服务起不来
+          # ("health responded but our pid is dead — stale process on port")
+          pkill -f gr-service || true
+          sleep 2
           VERSION=${{ needs.prepare.outputs.version }}
           GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
           GR_RAW_BASE="http://127.0.0.1:${SRV_PORT}/" \
@@ -347,6 +351,9 @@ jobs:
       - name: B3 upgrade from previous stable (old repo, rotated root)
         run: |
           set -euo pipefail
+          # B1/B2 的 gr-service 仍占默认端口 — 先清场
+          pkill -f gr-service || true
+          sleep 2
           VERSION=${{ needs.prepare.outputs.version }}
           # 旧稳定版 v8.0.2 发布于 greenpng/install, 钉的是旧信任根指纹 → 用 ENV 覆盖
           GR_RELEASE_REPO=greenpng/install \
