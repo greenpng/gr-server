@@ -1,0 +1,14 @@
+{
+  "version": "v5.0",
+  "description": "Commercial probe source enum (session,batch,source) unique key",
+  "sources": [
+    "main",
+    "gateway",
+    "cloudflare",
+    "iframe",
+    "worker",
+    "sandbox"
+  ],
+  "server_side": ["gateway", "cloudflare"],
+  "browser_side": ["main", "iframe", "worker", "sandbox"]
+}

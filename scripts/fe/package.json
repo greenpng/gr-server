@@ -1,0 +1,10 @@
+{
+  "name": "gv6-fe-build",
+  "private": true,
+  "version": "1.0.0",
+  "description": "FE bundle obfuscation tooling (P1-6). Run `npm install` here once per build machine/CI.",
+  "dependencies": {
+    "javascript-obfuscator": "4.1.1",
+    "terser": "5.36.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "strategy_id": "evil_canary",
+  "soft_promote": true,
+  "fe_only_to_confirmed": true,
+  "allow_fe_only_confirmed": true,
+  "skip_xsrc_for_confirmed": true,
+  "d2_hard_material_whitelist": ["user_agent"],
+  "confirmed_real_gate": {
+    "require_server_side": false
+  },
+  "pack_order": ["deep", "lite"],
+  "locale_weight": 1
+}

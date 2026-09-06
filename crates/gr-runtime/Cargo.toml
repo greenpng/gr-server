@@ -1,0 +1,27 @@
+[package]
+name = "gr-runtime"
+build = "build.rs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gr-abi = { workspace = true }
+gr-ota = { workspace = true }
+gr-cluster = { workspace = true }
+gr-admin = { workspace = true }
+gr-probe-core = { workspace = true }
+gr-module-ingest = { path = "../../modules/ingest" }
+gr-module-identity = { path = "../../modules/identity" }
+gr-module-probe-assets = { path = "../../modules/probe-assets" }
+gr-module-analyze = { path = "../../modules/analyze" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+arc-swap = { workspace = true }
+libloading = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+semver = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }

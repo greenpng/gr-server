@@ -1,0 +1,31 @@
+# GitHub runner 上测试升级/版本控制契约 (x86_64 + aarch64)
+#
+# 用本地 fixture 发布树验证 release/update_runtime_from_github.sh：
+# 版本化 slot (bin/releases/<ver>)、VERSION / fe/VERSION、sha256 篡改拒绝、
+# 旧 slot + 旧 FE 备份保留（回滚安全）。
+name: test-install-upgrade
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: upgrade & version-control contract
+        run: bash test/upgrade_rollback_check.sh

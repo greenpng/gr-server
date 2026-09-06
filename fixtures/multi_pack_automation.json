@@ -1,0 +1,49 @@
+{
+  "session_id": "sess_multi_auto_001",
+  "page_id": "page_bot",
+  "sources": ["main", "gateway"],
+  "has_gateway": true,
+  "batches": [
+    {"batch_id": "B8_gateway", "source": "gateway"},
+    {"batch_id": "B0_bootstrap", "source": "main"},
+    {"batch_id": "B1_conflict", "source": "main"},
+    {"batch_id": "B12_anti_camouflage", "source": "main"},
+    {"batch_id": "B11_interaction", "source": "main"}
+  ],
+  "gateway_fields": {
+    "user_agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+  },
+  "fields": {
+    "session_id": "sess_multi_auto_001",
+    "page_id": "page_bot",
+    "page_rev": 1,
+    "user_agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "os_family": "linux",
+    "form_class": "desktop",
+    "platform": "Linux x86_64",
+    "language": "en",
+    "languages": ["en"],
+    "hardware_concurrency": 2,
+    "device_memory": 2,
+    "webdriver": true,
+    "automation": {"webdriver": true, "playwright": true, "selenium": false, "cdc": true},
+    "chrome_runtime": false,
+    "plugins_length": 0,
+    "outer_zero": true,
+    "vm_score": 0.88,
+    "stack_class": "vm",
+    "spoof_score": 0.72,
+    "residual_soft_like": true,
+    "residual_available": true,
+    "software_renderer_heuristic": true,
+    "authenticity_hint": "soft_virt",
+    "env_reasons": ["datacenter", "vm"],
+    "claims_host_silicon_recovery": false,
+    "behavior_early_bound": true,
+    "behavior_count": 2,
+    "behavior_events": [{"t": 1, "type": "click"}, {"t": 2, "type": "click"}],
+    "pagehide_flush": false,
+    "cookie_enabled": true,
+    "max_touch": 0
+  }
+}

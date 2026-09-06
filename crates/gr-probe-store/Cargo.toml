@@ -1,0 +1,19 @@
+[package]
+name = "gr-probe-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "green-v6 probe store (copied from v5; maintained in-tree): SQLite local / PostgreSQL multi-worker"
+
+[dependencies]
+gr-abi = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rusqlite = { workspace = true }
+sha2 = { workspace = true }
+postgres = "0.19"
+flate2 = "1"
+base64 = "0.22"
+aes-gcm = "0.10"
+getrandom = "0.2"

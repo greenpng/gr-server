@@ -1,0 +1,232 @@
+{
+  "version": "1",
+  "algo": "stack_whitelist_v1",
+  "date": "2026-08-02",
+  "policy": {
+    "mode": "whitelist_miss_runs_extra",
+    "never_force_merge_device": true,
+    "never_target_peer_dh": true,
+    "note": "In whitelist + version ok → no free extra packs. Miss or version low → extra batches. residual_extra on whitelist rows still schedules B10x for non-ANGLE measurement channels."
+  },
+  "design": [
+    "Whitelist key = engine + os_family + form (platform class). Small table, easy to manage.",
+    "PC/desktop must not present as mobile browser (deny rule).",
+    "WebKit is NOT macOS-only: macOS desktop Safari, iOS/iPad all shells, Linux Epiphany/WebKitGTK are legitimate.",
+    "Windows/Android WebKit mass-market shells stay off whitelist → extra batches.",
+    "Browser major / OS major below floors → unified extra probe (version_low)."
+  ],
+  "normalize": {
+    "form": {
+      "desktop": "desktop",
+      "mobile": "mobile",
+      "tablet": "tablet",
+      "tv": "tv"
+    },
+    "os_family": {
+      "windows": "windows",
+      "macos": "macos",
+      "linux": "linux",
+      "ios": "ios",
+      "android": "android",
+      "chromeos": "chromeos"
+    },
+    "engine": {
+      "blink": "blink",
+      "gecko": "gecko",
+      "webkit": "webkit",
+      "unknown": "unknown"
+    }
+  },
+  "whitelist": [
+    {
+      "engine": "blink",
+      "os": "windows",
+      "form": "desktop",
+      "residual_extra": false
+    },
+    {
+      "engine": "blink",
+      "os": "macos",
+      "form": "desktop",
+      "residual_extra": false
+    },
+    {
+      "engine": "blink",
+      "os": "linux",
+      "form": "desktop",
+      "residual_extra": false
+    },
+    {
+      "engine": "blink",
+      "os": "chromeos",
+      "form": "desktop",
+      "residual_extra": false
+    },
+    {
+      "engine": "blink",
+      "os": "android",
+      "form": "mobile",
+      "residual_extra": false
+    },
+    {
+      "engine": "blink",
+      "os": "android",
+      "form": "tablet",
+      "residual_extra": false
+    },
+    {
+      "engine": "gecko",
+      "os": "windows",
+      "form": "desktop",
+      "residual_extra": false
+    },
+    {
+      "engine": "gecko",
+      "os": "macos",
+      "form": "desktop",
+      "residual_extra": false
+    },
+    {
+      "engine": "gecko",
+      "os": "linux",
+      "form": "desktop",
+      "residual_extra": false
+    },
+    {
+      "engine": "gecko",
+      "os": "android",
+      "form": "mobile",
+      "residual_extra": false
+    },
+    {
+      "engine": "webkit",
+      "os": "macos",
+      "form": "desktop",
+      "residual_extra": true,
+      "note": "macOS Safari / WebKit — legitimate; residual channel ≠ ANGLE → B10x"
+    },
+    {
+      "engine": "webkit",
+      "os": "ios",
+      "form": "mobile",
+      "residual_extra": true,
+      "note": "All iOS browsers are WebKit (incl. Chrome/Firefox shells)"
+    },
+    {
+      "engine": "webkit",
+      "os": "ios",
+      "form": "tablet",
+      "residual_extra": true,
+      "note": "iPadOS WebKit"
+    },
+    {
+      "engine": "webkit",
+      "os": "linux",
+      "form": "desktop",
+      "shell_any_of": ["epiphany", "unknown"],
+      "residual_extra": true,
+      "note": "WebKitGTK / GNOME Web / Epiphany — rare but native on Linux; NOT Safari-on-Linux. residual_extra for multipath B10x."
+    }
+  ],
+  "deny": [
+    {
+      "id": "pc_mobile_browser",
+      "when": {
+        "form": "desktop",
+        "mobile_ua": true
+      },
+      "reason": "desktop_form_with_mobile_browser_ua",
+      "extra_domains": ["browser_kernel", "os_env", "device_residual"]
+    },
+    {
+      "id": "mobile_desktop_ua",
+      "when": {
+        "form": "mobile",
+        "desktop_ua_only": true
+      },
+      "reason": "mobile_form_with_desktop_only_ua",
+      "extra_domains": ["browser_kernel", "os_env"]
+    },
+    {
+      "id": "webkit_windows",
+      "when": {
+        "engine": "webkit",
+        "os": "windows"
+      },
+      "reason": "webkit_not_native_windows_mass",
+      "extra_domains": ["browser_kernel", "device_residual", "sandbox_xsrc"]
+    },
+    {
+      "id": "webkit_android",
+      "when": {
+        "engine": "webkit",
+        "os": "android"
+      },
+      "reason": "webkit_not_android_mass",
+      "extra_domains": ["browser_kernel", "device_residual", "os_env"]
+    },
+    {
+      "id": "true_blink_ios",
+      "when": {
+        "engine": "blink",
+        "os": "ios"
+      },
+      "reason": "true_blink_impossible_on_ios",
+      "extra_domains": ["browser_kernel", "sandbox_xsrc", "automation_control"]
+    },
+    {
+      "id": "true_gecko_ios",
+      "when": {
+        "engine": "gecko",
+        "os": "ios"
+      },
+      "reason": "true_gecko_impossible_on_ios",
+      "extra_domains": ["browser_kernel", "sandbox_xsrc"]
+    },
+    {
+      "id": "safari_brand_linux",
+      "when": {
+        "engine": "webkit",
+        "os": "linux",
+        "shell": "safari"
+      },
+      "reason": "safari_brand_not_on_linux",
+      "extra_domains": ["browser_kernel", "device_residual", "sandbox_xsrc"]
+    }
+  ],
+  "version_floors": {
+    "browser_major_min": {
+      "chrome": 90,
+      "chromium": 90,
+      "edge": 90,
+      "firefox": 90,
+      "safari": 14,
+      "epiphany": 40,
+      "samsung": 14,
+      "opera": 76,
+      "default": 80
+    },
+    "os_major_min": {
+      "windows": 10,
+      "android": 9,
+      "ios": 14,
+      "macos": 11
+    },
+    "note": "Below floor → version_low → unified extra probe batches (same as whitelist miss)"
+  },
+  "extra_on_miss": {
+    "b10x_prior": true,
+    "domains": ["device_residual", "browser_kernel"],
+    "deepen_reason": "whitelist_miss"
+  },
+  "extra_on_version_low": {
+    "b10x_prior": true,
+    "domains": ["device_residual", "browser_kernel", "gpu_physical"],
+    "deepen_reason": "version_low"
+  },
+  "extra_on_residual_channel": {
+    "b10x_prior": true,
+    "domains": ["device_residual"],
+    "deepen_reason": "whitelist_residual_extra"
+  }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "gr-results"
+version = "0.1.0"
+edition = "2021"
+description = "Green V7 results SDK (Rust) — backend-only, read-only result client"
+license = "UNLICENSED"
+
+# Standalone crate: excluded from the green-v7 workspace on purpose
+# (kept out of the main build; consumers depend on it by path).
+[workspace]
+
+[dependencies]
+ureq = { version = "2.12", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

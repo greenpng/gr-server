@@ -1,0 +1,20 @@
+{
+  "session_id": "sess_js_unavailable_001",
+  "sources": ["gateway"],
+  "has_gateway": true,
+  "batches": [
+    {"batch_id": "B8_gateway", "source": "gateway"}
+  ],
+  "gateway_fields": {
+    "user_agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+  },
+  "cf_fields": {
+    "bot_score": 95,
+    "country": "US",
+    "cf_ray": "abc123"
+  },
+  "fields": {
+    "user_agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "ua": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+  }
+}

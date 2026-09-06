@@ -1,0 +1,538 @@
+{
+  "version": "1",
+  "algo": "stack_cooccurrence_prior_v1",
+  "date": "2026-08-02",
+  "source": "population sketch (global browser share ~2025–2026) + engine/OS legitimacy matrix; NOT live CDN stats; lab-seeded, replaceable by ops aggregate later",
+  "policy": {
+    "never_force_merge_device": true,
+    "never_target_peer_dh": true,
+    "use_for": [
+      "stack_anomaly_score",
+      "channel_unconventional",
+      "residual_b10x_prior",
+      "preferred_domains",
+      "ops_gap_tags"
+    ],
+    "not_use_for": [
+      "commercial_digest",
+      "mint_body",
+      "peer_same_machine"
+    ]
+  },
+  "notes": [
+    "Rates are relative priors for co-occurrence, not traffic percentages to sum to 1.",
+    "WebKit on Linux with Epiphany/GNOME Web = rare_native (legitimate WebKitGTK), residual measurement channel differs from Blink/ANGLE → B10x channel prior.",
+    "Safari brand on Linux desktop = migration_suspect (real Safari does not ship on Linux).",
+    "Chrome/Edge/Firefox on iOS = engine is WebKit by platform policy — common_native, NOT claim≠obs anomaly.",
+    "Android major browsers = Blink (Chrome/Samsung/Edge/Opera) or rare Gecko; WebKit shell on Android is migration_suspect.",
+    "Mobile vs desktop form mismatch is stronger than engine rarity alone."
+  ],
+  "thresholds": {
+    "common_min_rate": 0.02,
+    "uncommon_min_rate": 0.002,
+    "rare_min_rate": 0.0001,
+    "migration_suspect_max_rate": 0.00005,
+    "anomaly_score_cap": 0.85,
+    "channel_prior_if_status": [
+      "rare_native",
+      "uncommon_native",
+      "channel_only"
+    ],
+    "anomaly_if_status": [
+      "migration_suspect",
+      "impossible",
+      "conflict"
+    ]
+  },
+  "normalize": {
+    "browser_shell_aliases": {
+      "chrome": "chrome",
+      "chromium": "chrome",
+      "crios": "chrome",
+      "edg": "edge",
+      "edge": "edge",
+      "edgios": "edge",
+      "firefox": "firefox",
+      "fxios": "firefox",
+      "safari": "safari",
+      "epiphany": "epiphany",
+      "gnome_web": "epiphany",
+      "gnome web": "epiphany",
+      "samsung": "samsung",
+      "samsungbrowser": "samsung",
+      "opera": "opera",
+      "opr": "opera",
+      "brave": "brave",
+      "vivaldi": "vivaldi",
+      "yandex": "yandex",
+      "uc": "uc",
+      "qq": "qq",
+      "miui": "miui",
+      "huawei": "huawei",
+      "unknown": "unknown"
+    },
+    "os_family_aliases": {
+      "windows": "windows",
+      "win32": "windows",
+      "win64": "windows",
+      "macos": "macos",
+      "mac os": "macos",
+      "mac os x": "macos",
+      "darwin": "macos",
+      "ios": "ios",
+      "ipados": "ios",
+      "iphone": "ios",
+      "ipad": "ios",
+      "android": "android",
+      "linux": "linux",
+      "chromeos": "chromeos",
+      "cros": "chromeos"
+    },
+    "form_aliases": {
+      "desktop": "desktop",
+      "mobile": "mobile",
+      "tablet": "tablet",
+      "tv": "tv",
+      "unknown": "unknown"
+    },
+    "engine_aliases": {
+      "blink": "blink",
+      "gecko": "gecko",
+      "webkit": "webkit",
+      "unknown": "unknown"
+    }
+  },
+  "tuples": [
+    {
+      "key": "desktop|windows|blink|chrome|*",
+      "rate": 0.28,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Windows Chrome — dominant desktop"
+    },
+    {
+      "key": "desktop|windows|blink|edge|*",
+      "rate": 0.08,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Windows Edge (Blink)"
+    },
+    {
+      "key": "desktop|windows|gecko|firefox|*",
+      "rate": 0.03,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Windows Firefox native"
+    },
+    {
+      "key": "desktop|windows|webkit|*|*",
+      "rate": 0.00001,
+      "status": "migration_suspect",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["browser_kernel", "device_residual", "sandbox_xsrc"],
+      "note": "WebKit shell on Windows desktop is not a mass-market native stack"
+    },
+    {
+      "key": "desktop|macos|webkit|safari|*",
+      "rate": 0.06,
+      "status": "common",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "macOS Safari — native WebKit; residual channel ≠ ANGLE → B10x prior"
+    },
+    {
+      "key": "desktop|macos|blink|chrome|*",
+      "rate": 0.05,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "macOS Chrome"
+    },
+    {
+      "key": "desktop|macos|gecko|firefox|*",
+      "rate": 0.01,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "macOS Firefox"
+    },
+    {
+      "key": "desktop|linux|blink|chrome|*",
+      "rate": 0.04,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Linux Chrome/Chromium — lab baseline ANGLE channel"
+    },
+    {
+      "key": "desktop|linux|gecko|firefox|*",
+      "rate": 0.015,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Linux Firefox native"
+    },
+    {
+      "key": "desktop|linux|webkit|epiphany|*",
+      "rate": 0.0008,
+      "status": "rare_native",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual", "gpu_physical"],
+      "note": "GNOME Web/Epiphany WebKitGTK — RARE BUT LEGITIMATE native on Linux x86/arm. NOT Safari migration. Residual measurement channel differs → B10x multi-run prior."
+    },
+    {
+      "key": "desktop|linux|webkit|unknown|*",
+      "rate": 0.0005,
+      "status": "rare_native",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual", "browser_kernel"],
+      "note": "Custom/WebKitGTK embedders on Linux — treat as rare_native channel unless claim conflicts"
+    },
+    {
+      "key": "desktop|linux|webkit|safari|*",
+      "rate": 0.00001,
+      "status": "migration_suspect",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["browser_kernel", "device_residual", "sandbox_xsrc", "automation_control"],
+      "note": "Safari brand on Linux is not a shipping Apple product — spoof/migration shell risk"
+    },
+    {
+      "key": "desktop|linux|webkit|chrome|*",
+      "rate": 0.00001,
+      "status": "migration_suspect",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["browser_kernel", "device_residual", "sandbox_xsrc"],
+      "note": "Chrome brand with WebKit engine on Linux = claim/obs migration"
+    },
+    {
+      "key": "desktop|linux|unknown|*|*",
+      "rate": 0.001,
+      "status": "uncommon_native",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual", "browser_kernel"],
+      "note": "Unknown engine on Linux desktop"
+    },
+    {
+      "key": "desktop|chromeos|blink|chrome|*",
+      "rate": 0.02,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "ChromeOS"
+    },
+    {
+      "key": "mobile|ios|webkit|safari|*",
+      "rate": 0.12,
+      "status": "common",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "iOS Safari — all iOS browsers are WebKit; residual channel prior"
+    },
+    {
+      "key": "mobile|ios|webkit|chrome|*",
+      "rate": 0.04,
+      "status": "common",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "Chrome on iOS is WebKit by Apple policy — NOT engine migration"
+    },
+    {
+      "key": "mobile|ios|webkit|firefox|*",
+      "rate": 0.005,
+      "status": "common",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "Firefox on iOS is WebKit shell — expected"
+    },
+    {
+      "key": "mobile|ios|webkit|edge|*",
+      "rate": 0.003,
+      "status": "common",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "Edge on iOS is WebKit shell — expected"
+    },
+    {
+      "key": "mobile|ios|webkit|*|*",
+      "rate": 0.02,
+      "status": "common",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "Any iOS browser brand → WebKit engine expected"
+    },
+    {
+      "key": "mobile|ios|blink|*|*",
+      "rate": 0.00001,
+      "status": "impossible",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": ["browser_kernel", "sandbox_xsrc", "automation_control"],
+      "note": "True Blink on iOS does not exist in production App Store browsers"
+    },
+    {
+      "key": "mobile|ios|gecko|*|*",
+      "rate": 0.00001,
+      "status": "impossible",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": ["browser_kernel", "sandbox_xsrc"],
+      "note": "True Gecko on iOS not shipping in store browsers"
+    },
+    {
+      "key": "mobile|android|blink|chrome|*",
+      "rate": 0.22,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Android Chrome dominant"
+    },
+    {
+      "key": "mobile|android|blink|samsung|*",
+      "rate": 0.03,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Samsung Internet (Blink)"
+    },
+    {
+      "key": "mobile|android|blink|edge|*",
+      "rate": 0.01,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Android Edge"
+    },
+    {
+      "key": "mobile|android|blink|opera|*",
+      "rate": 0.01,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Android Opera"
+    },
+    {
+      "key": "mobile|android|gecko|firefox|*",
+      "rate": 0.004,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Android Firefox native Gecko"
+    },
+    {
+      "key": "mobile|android|webkit|*|*",
+      "rate": 0.00005,
+      "status": "migration_suspect",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["browser_kernel", "device_residual", "os_env"],
+      "note": "WebKit engine claim on Android mass market is abnormal"
+    },
+    {
+      "key": "tablet|ios|webkit|*|*",
+      "rate": 0.03,
+      "status": "common",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "iPadOS WebKit"
+    },
+    {
+      "key": "tablet|android|blink|*|*",
+      "rate": 0.02,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Android tablet Blink"
+    },
+    {
+      "key": "desktop|*|unknown|*|*",
+      "rate": 0.002,
+      "status": "uncommon_native",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual", "browser_kernel"],
+      "note": "Unknown desktop engine fallback"
+    },
+    {
+      "key": "mobile|*|unknown|*|*",
+      "rate": 0.003,
+      "status": "uncommon_native",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual", "browser_kernel", "os_env"],
+      "note": "Unknown mobile engine"
+    },
+    {
+      "key": "*|*|webkit|*|*",
+      "rate": 0.001,
+      "status": "uncommon_native",
+      "residual_channel": "unconventional",
+      "b10x_prior": true,
+      "domains": ["device_residual"],
+      "note": "Any WebKit with incomplete dims — channel prior (safe)"
+    },
+    {
+      "key": "*|*|blink|*|*",
+      "rate": 0.05,
+      "status": "common",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Blink fallback when form/os incomplete — no free B10x"
+    },
+    {
+      "key": "*|*|gecko|*|*",
+      "rate": 0.02,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": [],
+      "note": "Gecko fallback when form/os incomplete"
+    },
+    {
+      "key": "*|*|*|*|*",
+      "rate": 0.0001,
+      "status": "uncommon_native",
+      "residual_channel": "conventional",
+      "b10x_prior": false,
+      "domains": ["browser_kernel"],
+      "note": "Ultimate fallback — do NOT free-B10x all stacks; contract_incomplete still applies"
+    }
+  ],
+  "conflict_rules": [
+    {
+      "id": "engine_claim_ne_obs",
+      "status": "conflict",
+      "anomaly_weight": 0.55,
+      "domains": ["browser_kernel", "sandbox_xsrc", "automation_control"],
+      "b10x_prior": false,
+      "note": "Authenticity first; residual only if contract incomplete"
+    },
+    {
+      "id": "ua_platform_os_mismatch",
+      "status": "migration_suspect",
+      "anomaly_weight": 0.45,
+      "domains": ["browser_kernel", "os_env", "sandbox_xsrc"],
+      "b10x_prior": false
+    },
+    {
+      "id": "form_desktop_mobile_ua",
+      "status": "migration_suspect",
+      "anomaly_weight": 0.4,
+      "domains": ["os_env", "browser_kernel"],
+      "b10x_prior": false
+    },
+    {
+      "id": "form_mobile_desktop_ua",
+      "status": "migration_suspect",
+      "anomaly_weight": 0.4,
+      "domains": ["os_env", "browser_kernel"],
+      "b10x_prior": false
+    },
+    {
+      "id": "ios_true_blink_claim",
+      "status": "impossible",
+      "anomaly_weight": 0.7,
+      "domains": ["browser_kernel", "sandbox_xsrc"],
+      "b10x_prior": false
+    },
+    {
+      "id": "soft_gl_desktop",
+      "status": "channel_only",
+      "anomaly_weight": 0.1,
+      "domains": ["gpu_physical", "device_residual"],
+      "b10x_prior": false,
+      "residual_skip_silicon": true,
+      "note": "Software GL — prefer soft/os packs over silicon B10x thrash"
+    }
+  ],
+  "lab_seed_examples": [
+    {
+      "desc": "lab Ubuntu Chrome",
+      "fields": {
+        "form_class": "desktop",
+        "os_family": "linux",
+        "engine_family": "blink",
+        "browser_name": "Chrome"
+      },
+      "expect_status": "common",
+      "expect_b10x_prior": false
+    },
+    {
+      "desc": "lab Ubuntu Epiphany WebKitGTK",
+      "fields": {
+        "form_class": "desktop",
+        "os_family": "linux",
+        "engine_family": "webkit",
+        "browser_name": "Epiphany"
+      },
+      "expect_status": "rare_native",
+      "expect_b10x_prior": true,
+      "expect_not_status": "migration_suspect",
+      "note": "User may call this 'migrated engine look' vs ANGLE; sample library marks rare_native + channel B10x, NOT spoof migration"
+    },
+    {
+      "desc": "Safari UA on Linux",
+      "fields": {
+        "form_class": "desktop",
+        "os_family": "linux",
+        "engine_family": "webkit",
+        "browser_name": "Safari",
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15"
+      },
+      "expect_status": "migration_suspect",
+      "expect_b10x_prior": true
+    },
+    {
+      "desc": "iOS Chrome WebKit",
+      "fields": {
+        "form_class": "mobile",
+        "os_family": "ios",
+        "engine_family": "webkit",
+        "browser_name": "Chrome"
+      },
+      "expect_status": "common",
+      "expect_b10x_prior": true
+    },
+    {
+      "desc": "Android Chrome",
+      "fields": {
+        "form_class": "mobile",
+        "os_family": "android",
+        "engine_family": "blink",
+        "browser_name": "Chrome"
+      },
+      "expect_status": "common",
+      "expect_b10x_prior": false
+    }
+  ]
+}

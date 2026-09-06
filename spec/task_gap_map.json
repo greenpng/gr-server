@@ -1,0 +1,1225 @@
+{
+  "version": "v5.2-task-targeted+dense+active-route",
+  "date": "2026-08-02",
+  "status": "ACTIVE",
+  "norm": "v5-docs/norm/11-field-product-matrix-and-task-gaps.md",
+  "notes": [
+    "ACTIVE: brain.build_frontier uses task_gap_map.packs_for_gap_codes as primary dynamic routing; legacy gaps remain fallback.",
+    "Pack tiers: core_identity / deepen / verify_rand — brain_control.apply_tiered_pack_budget.",
+    "Product-task gaps drive routing; packs are means, not the product surface.",
+    "One gap may map to multiple packs; one pack may close multiple task gaps (field sharing).",
+    "After session cool-down ticket: skip session tasks re-kick; task.rpa always runs for new page_id.",
+    "task-targeted deepen: unit/claim-obs/soft budget gaps map to mission packs, not leaf traversal"
+  ],
+  "tasks": [
+    {
+      "task_id": "task.device_id",
+      "scope": "session",
+      "product_field": "device_id",
+      "priority": 90
+    },
+    {
+      "task_id": "task.os",
+      "scope": "session",
+      "product_field": "os",
+      "priority": 80
+    },
+    {
+      "task_id": "task.br",
+      "scope": "session",
+      "product_field": "br",
+      "priority": 85
+    },
+    {
+      "task_id": "task.rpa",
+      "scope": "page",
+      "product_field": "rpa",
+      "priority": 95,
+      "note": "Early-bind; never deferred behind soft mid; not skipped by session cool-down"
+    },
+    {
+      "task_id": "task.xsrc",
+      "scope": "session",
+      "product_field": null,
+      "priority": 88,
+      "note": "Feeds conf caps for os/br; not a public product score"
+    }
+  ],
+  "gaps": [
+    {
+      "code": "need_device_hard_anchor",
+      "task_ids": [
+        "task.device_id"
+      ],
+      "severity": "high",
+      "detail": "Missing hard materials for machine_trust_v2 (form/curves/anchors)",
+      "candidate_packs": [
+        "B0_bootstrap",
+        "B2_hardware",
+        "B10_hw_curves",
+        "B3_system"
+      ],
+      "legacy_pack_gaps": [
+        "missing_link_anchors",
+        "missing_gpu",
+        "lite5_incomplete"
+      ]
+    },
+    {
+      "code": "need_device_curves",
+      "task_ids": [
+        "task.device_id",
+        "task.os",
+        "task.br"
+      ],
+      "severity": "high",
+      "detail": "GPU/label present without residual/stack/curves",
+      "candidate_packs": [
+        "B10_hw_curves",
+        "B2_hardware"
+      ],
+      "legacy_pack_gaps": [
+        "stack_residual_missing"
+      ]
+    },
+    {
+      "code": "need_os_env",
+      "task_ids": [
+        "task.os"
+      ],
+      "severity": "mid",
+      "detail": "Insufficient env/vm/physical signals for os safety score",
+      "candidate_packs": [
+        "B2_hardware",
+        "B3_system",
+        "B10_hw_curves",
+        "B16_fast_signals"
+      ],
+      "legacy_pack_gaps": [
+        "lite5_incomplete",
+        "mid_absent"
+      ]
+    },
+    {
+      "code": "need_br_automation",
+      "task_ids": [
+        "task.br"
+      ],
+      "severity": "high",
+      "detail": "Missing automation/anti-camouflage surface for br",
+      "candidate_packs": [
+        "B1_conflict",
+        "B12_anti_camouflage",
+        "B6_risk"
+      ],
+      "legacy_pack_gaps": [
+        "missing_automation"
+      ]
+    },
+    {
+      "code": "need_br_kernel_consistency",
+      "task_ids": [
+        "task.br"
+      ],
+      "severity": "mid",
+      "detail": "Need multi-source / sandbox consistency for browser authenticity",
+      "candidate_packs": [
+        "B7_sandbox",
+        "B12_anti_camouflage",
+        "B0_bootstrap"
+      ],
+      "legacy_pack_gaps": [
+        "missing_sandbox",
+        "thin_main"
+      ]
+    },
+    {
+      "code": "need_rpa_bind",
+      "task_ids": [
+        "task.rpa"
+      ],
+      "severity": "high",
+      "detail": "Page has no early behavior bind",
+      "candidate_packs": [
+        "B11_interaction"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_rpa_events",
+      "task_ids": [
+        "task.rpa"
+      ],
+      "severity": "mid",
+      "detail": "Bound but sparse events; pagehide may still flush",
+      "candidate_packs": [
+        "B11_interaction"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_gateway_or_cf",
+      "task_ids": [
+        "task.xsrc",
+        "task.os",
+        "task.br"
+      ],
+      "severity": "high",
+      "detail": "No verified server-side observation; conf caps apply",
+      "candidate_packs": [
+        "B8_gateway_early",
+        "edge.cf"
+      ],
+      "legacy_pack_gaps": [
+        "missing_gateway_or_cf"
+      ]
+    },
+    {
+      "code": "xsrc_conflict",
+      "task_ids": [
+        "task.xsrc",
+        "task.br",
+        "task.os"
+      ],
+      "severity": "high",
+      "detail": "Claim vs observation conflict — prefer conflict packs before soft mid",
+      "candidate_packs": [
+        "B1_conflict",
+        "B7_sandbox",
+        "B8_gateway_early"
+      ],
+      "legacy_pack_gaps": [
+        "xsrc_conflict"
+      ]
+    },
+    {
+      "code": "need_soft_mid_amplify",
+      "task_ids": [
+        "task.device_id",
+        "task.os",
+        "task.br"
+      ],
+      "severity": "low",
+      "detail": "Optional deepen after soft_v2_ready; must not starve hard/RPA",
+      "candidate_packs": [
+        "B16_fast_signals",
+        "B13_authorized",
+        "B15_cross_curves",
+        "B6_risk"
+      ],
+      "requires_soft_v2": true,
+      "legacy_pack_gaps": [
+        "mid_absent"
+      ]
+    },
+    {
+      "code": "need_device_physical",
+      "task_ids": [
+        "task.device_id",
+        "task.os"
+      ],
+      "severity": "high",
+      "detail": "Need H-family lite physical (precision/caps/cpu) for dh-grade device",
+      "candidate_packs": [
+        "B17_hw_physical",
+        "B10_hw_curves",
+        "B2_hardware"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_mobile_surface",
+      "task_ids": [
+        "task.os",
+        "task.br",
+        "task.device_id"
+      ],
+      "severity": "mid",
+      "detail": "Mobile/UA-CH/touch surface for form_class and os",
+      "candidate_packs": [
+        "B4_mobile",
+        "B3_system"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_census_density",
+      "task_ids": [
+        "task.os",
+        "task.br"
+      ],
+      "severity": "mid",
+      "detail": "v57-class census digests via B21 (fonts/css/apis/object leaves)",
+      "candidate_packs": [
+        "B21_census_volume",
+        "B5_census",
+        "B3_system"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_net_separator",
+      "task_ids": [
+        "task.device_id",
+        "task.os"
+      ],
+      "severity": "mid",
+      "detail": "WebRTC host hash / net info for soft commercial separator",
+      "candidate_packs": [
+        "B9_network",
+        "B16_fast_signals"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_css_protocol",
+      "task_ids": [
+        "task.br",
+        "task.os"
+      ],
+      "severity": "low",
+      "detail": "CSS media / prefers for browser-system consistency",
+      "candidate_packs": [
+        "B14_css_protocol"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_cross_context",
+      "task_ids": [
+        "task.br",
+        "task.device_id"
+      ],
+      "severity": "mid",
+      "detail": "Top vs sandbox residual consistency",
+      "candidate_packs": [
+        "B15_cross_curves",
+        "B7_sandbox"
+      ],
+      "requires_soft_v2": true,
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_webgpu_secure_context",
+      "task_ids": [
+        "task.device_id",
+        "task.os",
+        "task.br"
+      ],
+      "severity": "mid",
+      "detail": "iss2 H06 WebGPU adapter/limits for physical device materials",
+      "candidate_packs": [
+        "B18_webgpu",
+        "B17_hw_physical"
+      ],
+      "legacy_pack_gaps": [
+        "need_webgpu_secure_context"
+      ]
+    },
+    {
+      "code": "need_media_eme",
+      "task_ids": [
+        "task.os",
+        "task.br",
+        "task.device_id"
+      ],
+      "severity": "mid",
+      "detail": "iss2 H10 EME/MediaCapabilities hardware media stack",
+      "candidate_packs": [
+        "B19_eme_media",
+        "B5_census"
+      ],
+      "legacy_pack_gaps": [
+        "need_media_eme"
+      ]
+    },
+    {
+      "code": "need_challenge_seed",
+      "task_ids": [
+        "task.device_id",
+        "task.br"
+      ],
+      "severity": "high",
+      "detail": "D37/H16 challenge seed for anti-replay residual (PoHW lite path)",
+      "candidate_packs": [
+        "B20_challenge_seed",
+        "B10_hw_curves",
+        "B17_hw_physical"
+      ],
+      "legacy_pack_gaps": [
+        "need_challenge_seed"
+      ]
+    },
+    {
+      "code": "need_pohw_challenge",
+      "task_ids": [
+        "task.device_id"
+      ],
+      "severity": "high",
+      "detail": "H16 PoHW multi-surface via B20 + H01 staircase B22",
+      "candidate_packs": [
+        "B20_challenge_seed",
+        "B22_gpu_timer",
+        "B17_hw_physical",
+        "B18_webgpu"
+      ],
+      "legacy_pack_gaps": [
+        "need_pohw_challenge"
+      ]
+    },
+    {
+      "code": "need_gpu_staircase",
+      "severity": "device_id",
+      "severity_alt": "os",
+      "detail": "H01 GPU wall/timer staircase missing — schedule B22_gpu_timer",
+      "candidate_packs": [
+        "B22_gpu_timer",
+        "B17_hw_physical"
+      ],
+      "legacy_pack_gaps": [
+        "need_gpu_timer"
+      ]
+    },
+    {
+      "code": "need_census_volume",
+      "severity": "br",
+      "severity_alt": "os",
+      "detail": "Deep census digests missing — schedule B21_census_volume",
+      "candidate_packs": [
+        "B21_census_volume",
+        "B5_census"
+      ],
+      "legacy_pack_gaps": [
+        "need_census_density"
+      ]
+    },
+    {
+      "code": "need_native_canvas_hedge",
+      "severity": "br",
+      "severity_alt": "device_id",
+      "detail": "Native/canvas/math multi-material hedge missing — B23",
+      "candidate_packs": [
+        "B23_native_canvas_hedge",
+        "B1_conflict",
+        "B12_anti_camouflage"
+      ]
+    },
+    {
+      "code": "need_material_crosscheck",
+      "severity": "device_id",
+      "severity_alt": "br",
+      "detail": "Multi-material cross-check vote missing — B24",
+      "candidate_packs": [
+        "B24_material_crosscheck",
+        "B15_cross_curves"
+      ]
+    },
+    {
+      "code": "need_hedge_materials",
+      "severity": "device_id",
+      "severity_alt": "os",
+      "detail": "Axis has <2 independent material families — schedule specialized hedge packs",
+      "candidate_packs": [
+        "B23_native_canvas_hedge",
+        "B24_material_crosscheck",
+        "B20_challenge_seed",
+        "B22_gpu_timer",
+        "B21_census_volume"
+      ]
+    },
+    {
+      "code": "need_shader_numeric",
+      "severity": "device_id",
+      "severity_alt": "os",
+      "detail": "H03 shader numeric/ULP — B31",
+      "candidate_packs": [
+        "B31_shader_numeric",
+        "B17_hw_physical"
+      ]
+    },
+    {
+      "code": "need_caps_pressure",
+      "severity": "device_id",
+      "detail": "H05 caps claim vs actual — B33",
+      "candidate_packs": [
+        "B33_caps_pressure",
+        "B17_hw_physical"
+      ]
+    },
+    {
+      "code": "need_clock_raf",
+      "severity": "os",
+      "severity_alt": "device_id",
+      "detail": "H08 clock/rAF physical — B25",
+      "candidate_packs": [
+        "B25_clock_raf",
+        "B17_hw_physical"
+      ]
+    },
+    {
+      "code": "need_eme_codec_matrix",
+      "severity": "device_id",
+      "severity_alt": "os",
+      "detail": "H10 full codec/EME matrix — B19",
+      "candidate_packs": [
+        "B19_eme_media"
+      ]
+    },
+    {
+      "code": "need_gpu_ns",
+      "severity": "device_id",
+      "detail": "H01 GPU-ns staircase — B22",
+      "candidate_packs": [
+        "B22_gpu_timer"
+      ]
+    },
+    {
+      "code": "need_signed_challenge",
+      "severity": "device_id",
+      "detail": "H16 signed challenge — B20",
+      "candidate_packs": [
+        "B20_challenge_seed"
+      ]
+    },
+    {
+      "code": "need_permissions_media",
+      "severity": "br",
+      "detail": "B28 permissions/mediaDevices",
+      "candidate_packs": [
+        "B28_permissions_media"
+      ]
+    },
+    {
+      "code": "need_sensors_battery",
+      "severity": "os",
+      "detail": "B29 sensors/battery",
+      "candidate_packs": [
+        "B29_sensors_battery"
+      ]
+    },
+    {
+      "code": "need_gpu_bandwidth_h02",
+      "severity": "device_id",
+      "detail": "H02 bandwidth — B30",
+      "candidate_packs": [
+        "B30_gpu_bandwidth",
+        "B22_gpu_timer"
+      ]
+    },
+    {
+      "code": "need_cpu_cache_ladder",
+      "severity": "device_id",
+      "detail": "H07 cache ladder — B34",
+      "candidate_packs": [
+        "B34_cpu_cache_ladder"
+      ]
+    },
+    {
+      "code": "need_protocol_edge",
+      "severity": "br",
+      "detail": "H13 JA4/H2 protocol fields via gateway",
+      "candidate_packs": [
+        "B8_gateway_early"
+      ]
+    },
+    {
+      "code": "need_agent_parity",
+      "severity": "br",
+      "detail": "B26 agent parity",
+      "candidate_packs": [
+        "B26_agent_parity"
+      ]
+    },
+    {
+      "code": "need_storage_privacy",
+      "severity": "br",
+      "detail": "B27 storage privacy",
+      "candidate_packs": [
+        "B27_storage_privacy"
+      ]
+    },
+    {
+      "code": "need_dom_perf",
+      "severity": "br",
+      "detail": "B35 dom/perf",
+      "candidate_packs": [
+        "B35_dom_perf"
+      ]
+    },
+    {
+      "code": "need_layer_divergence",
+      "severity": "br",
+      "detail": "B15 layer divergence",
+      "candidate_packs": [
+        "B15_cross_curves"
+      ]
+    },
+    {
+      "code": "need_webgpu_deep",
+      "severity": "device_id",
+      "detail": "B18 webgpu deep",
+      "candidate_packs": [
+        "B18_webgpu"
+      ]
+    },
+    {
+      "code": "need_raster_msaa",
+      "severity": "device_id",
+      "detail": "H04 B36",
+      "candidate_packs": [
+        "B36_raster_msaa"
+      ]
+    },
+    {
+      "code": "need_thermal_drift",
+      "severity": "device_id",
+      "detail": "H09 B37",
+      "candidate_packs": [
+        "B37_thermal_drift_lite"
+      ]
+    },
+    {
+      "code": "need_neg_dict",
+      "severity": "br",
+      "detail": "H15 B38",
+      "candidate_packs": [
+        "B38_neg_dict"
+      ]
+    },
+    {
+      "code": "need_mem_pressure",
+      "severity": "device_id",
+      "detail": "D08 B39",
+      "candidate_packs": [
+        "B39_mem_pressure"
+      ]
+    },
+    {
+      "code": "need_websocket_fp",
+      "severity": "br",
+      "detail": "D21 B40",
+      "candidate_packs": [
+        "B40_websocket_fp"
+      ]
+    },
+    {
+      "code": "need_hid_gamepad",
+      "severity": "os",
+      "detail": "D35 B41",
+      "candidate_packs": [
+        "B41_hid_gamepad"
+      ]
+    },
+    {
+      "code": "need_thermal_full",
+      "severity": "device_id",
+      "detail": "H09 full progressive B42",
+      "candidate_packs": [
+        "B42_thermal_drift_full",
+        "B37_thermal_drift_lite"
+      ]
+    },
+    {
+      "code": "need_errors_engine",
+      "detail": "B43 errors engine",
+      "candidate_packs": [
+        "B43_errors_engine"
+      ],
+      "severity": "br"
+    },
+    {
+      "code": "need_speech_deep",
+      "detail": "B44 speech",
+      "candidate_packs": [
+        "B44_speech_deep"
+      ],
+      "severity": "br"
+    },
+    {
+      "code": "need_display_hdr",
+      "detail": "B45 display HDR",
+      "candidate_packs": [
+        "B45_display_hdr"
+      ],
+      "severity": "device_id"
+    },
+    {
+      "code": "need_audio_deep",
+      "detail": "D03 B46 audio deep",
+      "candidate_packs": [
+        "B46_audio_deep"
+      ],
+      "severity": "device_id"
+    },
+    {
+      "code": "need_gpu_ns_dense",
+      "detail": "H01 dense GPU-ns force B22",
+      "candidate_packs": [
+        "B22_gpu_timer"
+      ],
+      "severity": "device_id"
+    },
+    {
+      "code": "need_rpa_kinematics",
+      "task_ids": [
+        "task.rpa"
+      ],
+      "severity": "high",
+      "detail": "iss/21 T-BRAIN-1: bio kinematics missing",
+      "candidate_packs": [
+        "B11_interaction"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_cdp_probe",
+      "task_ids": [
+        "task.br"
+      ],
+      "severity": "mid",
+      "detail": "iss/21 T-BRAIN-1/T-CDP-1: cdp_runtime_hint absent",
+      "candidate_packs": [
+        "B12_anti_camouflage"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_unit_surface",
+      "task_ids": [
+        "task.device_id",
+        "task.os",
+        "task.br"
+      ],
+      "severity": "high",
+      "detail": "Multi-seed unit_surface missing — targeted B10 for residual class bind / claim-obs verify",
+      "candidate_packs": [
+        "B10_hw_curves",
+        "B20_challenge_seed"
+      ],
+      "legacy_pack_gaps": [
+        "stack_residual_missing"
+      ]
+    },
+    {
+      "code": "need_claim_obs_verify",
+      "task_ids": [
+        "task.br",
+        "task.os",
+        "task.device_id"
+      ],
+      "severity": "high",
+      "detail": "gpu_label_untrusted or L0 vs residual mismatch — deepen challenge/unit not GPU host dig",
+      "candidate_packs": [
+        "B20_challenge_seed",
+        "B10_hw_curves",
+        "B12_anti_camouflage",
+        "B1_conflict"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "soft_stack_budget_rpa_os",
+      "task_ids": [
+        "task.rpa",
+        "task.os",
+        "task.device_id"
+      ],
+      "severity": "mid",
+      "detail": "Soft residual class: prefer rpa control-plane + os env deepen over host-silicon GPU packs",
+      "candidate_packs": [
+        "B11_interaction",
+        "B12_anti_camouflage",
+        "B3_system",
+        "B10_hw_curves"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_os_instance_separator",
+      "task_ids": [
+        "task.device_id",
+        "task.os"
+      ],
+      "severity": "mid",
+      "detail": "Soft class collision_risk without OS/instance separator — agent/sidechannel or webrtc host for ServerMint fork",
+      "candidate_packs": [
+        "B3_system",
+        "B16_fast_signals",
+        "B8_gateway_early"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_br_capability_probe",
+      "task_ids": [
+        "task.br"
+      ],
+      "severity": "high",
+      "detail": "Browser kernel integrity: WebGL2/caps/API surface for claim_capability_incoherence",
+      "candidate_packs": [
+        "B2_hardware",
+        "B17_hw_physical",
+        "B12_anti_camouflage"
+      ],
+      "legacy_pack_gaps": []
+    },
+    {
+      "code": "need_api_flags_detail",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "API flags claim-obs",
+      "candidate_packs": [
+        "B47_api_flags_detail"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_css_supports_detail",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "CSS supports matrix",
+      "candidate_packs": [
+        "B48_css_supports_detail"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_font_matrix_detail",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "font matrix OS",
+      "candidate_packs": [
+        "B50_font_matrix_detail"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_mq_matrix_detail",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "media query matrix",
+      "candidate_packs": [
+        "B51_mq_matrix_detail"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_navigator_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "navigator deep",
+      "candidate_packs": [
+        "B52_navigator_deep"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_webrtc_ice_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "WebRTC ICE",
+      "candidate_packs": [
+        "B55_webrtc_ice_deep",
+        "B56_webrtc_stats"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_webgl_params_full",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "WebGL full params",
+      "candidate_packs": [
+        "B59_webgl_params_full",
+        "B60_webgl_extensions_full"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_client_hints_full",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "UA-CH full",
+      "candidate_packs": [
+        "B65_client_hints_full",
+        "B66_sec_ch_headers"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_gateway_s0_dense",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "critical",
+      "detail": "gateway S0 dense",
+      "candidate_packs": [
+        "B8_gateway_early",
+        "B8_gateway"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_math_wasm_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "math+wasm",
+      "candidate_packs": [
+        "B76_math_wasm_deep"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_worker_iframe_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "cross-context",
+      "candidate_packs": [
+        "B77_worker_env_deep",
+        "B78_iframe_env_deep",
+        "B79_cross_origin_isolation"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_css_props_detail",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "CSS props sample",
+      "candidate_packs": [
+        "B49_css_props_detail"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_window_keys_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "window keys census",
+      "candidate_packs": [
+        "B53_window_keys_deep"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_plugin_mime_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "plugins/mime",
+      "candidate_packs": [
+        "B54_plugin_mime_deep"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_webrtc_stats",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "WebRTC getStats",
+      "candidate_packs": [
+        "B56_webrtc_stats"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_canvas_emoji_path",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "canvas emoji/path2d",
+      "candidate_packs": [
+        "B57_canvas_emoji_path"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_canvas_text_metrics",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "text metrics",
+      "candidate_packs": [
+        "B58_canvas_text_metrics"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_audio_worklet_offline",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "audio worklet+offline",
+      "candidate_packs": [
+        "B61_audio_worklet",
+        "B62_offline_audio_moments"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_intl_timezone_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "intl+tz",
+      "candidate_packs": [
+        "B63_intl_full",
+        "B64_timezone_deep"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_sw_cache_deep",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "SW+cache",
+      "candidate_packs": [
+        "B67_service_worker_deep",
+        "B68_cache_storage_deep"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_peripheral_payment",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "low",
+      "detail": "peripheral APIs",
+      "candidate_packs": [
+        "B69_bluetooth_usb",
+        "B70_payment_credential"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_idle_keyboard",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "low",
+      "detail": "idle+keyboard",
+      "candidate_packs": [
+        "B71_idle_wake_lock",
+        "B72_keyboard_layout"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_pointer_viewport",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "pointer+vv",
+      "candidate_packs": [
+        "B73_pointer_capabilities",
+        "B74_visual_viewport"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_performance_entries",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "perf entries",
+      "candidate_packs": [
+        "B75_performance_entries"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_ua_ch_high_entropy",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "UA-CH high entropy async",
+      "candidate_packs": [
+        "B65_client_hints_full"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_storage_estimate_async",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "storage.estimate async",
+      "candidate_packs": [
+        "B27_storage_privacy"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_webgpu_adapter_async",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "high",
+      "detail": "WebGPU adapter async",
+      "candidate_packs": [
+        "B18_webgpu"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_speech_voices_async",
+      "task_ids": [
+        "os",
+        "br"
+      ],
+      "severity": "medium",
+      "detail": "speech voices async",
+      "candidate_packs": [
+        "B44_speech_deep"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    },
+    {
+      "code": "need_media_capabilities_async",
+      "task_ids": [
+        "os",
+        "br",
+        "device_id"
+      ],
+      "severity": "medium",
+      "detail": "MediaCapabilities async",
+      "candidate_packs": [
+        "B19_eme_media"
+      ],
+      "legacy_pack_gaps": [],
+      "requires_soft_v2": false
+    }
+  ],
+  "session_cooldown": {
+    "skippable_task_ids": [
+      "task.device_id",
+      "task.os",
+      "task.br",
+      "task.xsrc"
+    ],
+    "never_skip_task_ids": [
+      "task.rpa"
+    ],
+    "ticket_semantics": "G-PROD-8 / iss/07 — TARGET"
+  }
+}

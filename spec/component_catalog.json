@@ -1,0 +1,3683 @@
+{
+  "version": "v5.3-random-verify-100-v2+engine-aware-b10x",
+  "aligned_with": [
+    "feasibility-v9 v11.3 layers (lite5/b8/mid4/deep)",
+    "feasibility-v57 max-probe multi-source race",
+    "green-v5 FE collectors registry"
+  ],
+  "notes": [
+    "R00-R99 authenticity spot-check packs (score_weight=0); scheduled randomly subset per session",
+    "Complete-probe: static_kick_order + B10x residual deepen by measurement contract only — never skip for forgeable OS/br (see b-batch-complete-probe-schedule.md)"
+  ],
+  "packs": [
+    {
+      "pack_id": "B8_gateway_early",
+      "aliases": [
+        "gateway.b8",
+        "B8_gateway"
+      ],
+      "batch_id": "B8_gateway",
+      "layer": "b8",
+      "schedule": "static",
+      "priority": 98,
+      "source": "gateway",
+      "executable": true,
+      "hard_eligible": false,
+      "unlocks": [
+        "PKG_XSRC"
+      ]
+    },
+    {
+      "pack_id": "edge.cf",
+      "aliases": [
+        "edge.cf"
+      ],
+      "batch_id": "B8_gateway",
+      "layer": "b8",
+      "schedule": "static",
+      "priority": 97,
+      "source": "cloudflare",
+      "executable": true,
+      "hard_eligible": false,
+      "stub_note": "CF edge signal via early path when inject_path=cf_worker; FE records source=cloudflare when available"
+    },
+    {
+      "pack_id": "B11_interaction",
+      "aliases": [
+        "behavior.early"
+      ],
+      "batch_id": "B11_interaction",
+      "layer": "deep",
+      "schedule": "static",
+      "priority": 90,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "note": "Early bind is static (short-visit); full deep dwell behavior remains dynamic-amplify later"
+    },
+    {
+      "pack_id": "B0_bootstrap",
+      "aliases": [
+        "lite.surface"
+      ],
+      "batch_id": "B0_bootstrap",
+      "layer": "lite5",
+      "schedule": "static",
+      "priority": 96,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "unlocks": [
+        "PKG_UA",
+        "PKG_GEOCPU"
+      ]
+    },
+    {
+      "pack_id": "B12_anti_camouflage",
+      "aliases": [
+        "lite.camouflage"
+      ],
+      "batch_id": "B12_anti_camouflage",
+      "layer": "lite5",
+      "schedule": "static",
+      "priority": 94,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true
+    },
+    {
+      "pack_id": "B1_conflict",
+      "aliases": [
+        "lite.auto",
+        "conflict.reconcile"
+      ],
+      "batch_id": "B1_conflict",
+      "layer": "lite5",
+      "schedule": "static",
+      "priority": 95,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "unlocks": [
+        "PKG_AUTO"
+      ]
+    },
+    {
+      "pack_id": "B2_hardware",
+      "aliases": [
+        "lite.gpu"
+      ],
+      "batch_id": "B2_hardware",
+      "layer": "lite5",
+      "schedule": "static",
+      "priority": 93,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "unlocks": [
+        "PKG_GPU"
+      ],
+      "note": "Static short-visit: GPU labels + residual_mean + stack_class/spoof_score (demo→v5 env fusion). Field-only; no commercial id in FE. stack_class from residual, not labels."
+    },
+    {
+      "pack_id": "B3_system",
+      "aliases": [
+        "lite.display"
+      ],
+      "batch_id": "B3_system",
+      "layer": "lite5",
+      "schedule": "static",
+      "priority": 92,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "unlocks": [
+        "PKG_GEOCPU"
+      ]
+    },
+    {
+      "pack_id": "B7_sandbox",
+      "aliases": [
+        "sandbox.tree"
+      ],
+      "batch_id": "B7_sandbox",
+      "layer": "deep",
+      "schedule": "static",
+      "priority": 45,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "note": "Kick early for multi-source; short_visit budget"
+    },
+    {
+      "pack_id": "B10_hw_curves",
+      "aliases": [
+        "mid.curves",
+        "hard.curves"
+      ],
+      "batch_id": "B10_hw_curves",
+      "layer": "hard",
+      "schedule": "static",
+      "priority": 91,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "Hard commercial anchors (audio/webgl curves via FE hwNoiseProbes). Static high-priority; not soft-gated mid. Also re-emits residual_mean + env fusion for authenticity/bot; equi-join must consider stack_class/renderer_class."
+    },
+    {
+      "pack_id": "B10x_webkit_gl_noise",
+      "aliases": [
+        "hard.webkit_gl",
+        "dyn.webkit_residual"
+      ],
+      "batch_id": "B10x_webkit_gl_noise",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 88,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "engine_targets": [
+        "webkit"
+      ],
+      "note": "Engine-targeted residual multipath for WebKitGTK/Epiphany/custom WebKit: longer warm, dual context, unmask-blocked markers. Coexists with B10_hw_curves; does not replace it. ARCH_ENGINE_AWARE_PROBE_ANALYSIS_V1."
+    },
+    {
+      "pack_id": "B10x_webkit_wave2_warm4",
+      "aliases": [
+        "dyn.webkit_wave2"
+      ],
+      "batch_id": "B10x_webkit_wave2_warm4",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 86,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "engine_targets": [
+        "webkit"
+      ],
+      "note": "Wave-2 residual routes (warm4/std) after primary warm2 finish. Coexistence multipath."
+    },
+    {
+      "pack_id": "B10x_softgl_hedge",
+      "aliases": [
+        "dyn.softgl"
+      ],
+      "batch_id": "B10x_softgl_hedge",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 84,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "engine_targets": [
+        "unknown",
+        "webkit",
+        "blink",
+        "gecko"
+      ],
+      "note": "Software GL / virtualized GPU residual hedge (llvmpipe/swiftshader)."
+    },
+    {
+      "pack_id": "B10x_legacy_webgl1",
+      "aliases": [
+        "dyn.legacy_webgl1"
+      ],
+      "batch_id": "B10x_legacy_webgl1",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 83,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "engine_targets": [
+        "unknown",
+        "webkit",
+        "gecko",
+        "blink"
+      ],
+      "note": "Old engines / no WebGL2: webgl1-only residual paths."
+    },
+    {
+      "pack_id": "B10x_unknown_kernel",
+      "aliases": [
+        "dyn.unknown_kernel"
+      ],
+      "batch_id": "B10x_unknown_kernel",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 87,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "engine_targets": [
+        "unknown"
+      ],
+      "note": "Custom/old/cross-platform shell: capability matrix + residual slim + gap report."
+    },
+    {
+      "pack_id": "B10x_angle_crosscheck",
+      "aliases": [
+        "dyn.angle_cross"
+      ],
+      "batch_id": "B10x_angle_crosscheck",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 80,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "engine_targets": [
+        "blink"
+      ],
+      "note": "Optional ANGLE multi-seed crosscheck; default off unless drift."
+    },
+    {
+      "pack_id": "B10x_silicon_ulp",
+      "aliases": [
+        "dyn.silicon_ulp"
+      ],
+      "batch_id": "B10x_silicon_ulp",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 90,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "Silicon-level ULP chain + EU timing residual (DrawnApart-inspired); true GPU noise for same-model split"
+    },
+    {
+      "pack_id": "B10x_silicon_rint",
+      "aliases": [
+        "dyn.silicon_rint"
+      ],
+      "batch_id": "B10x_silicon_rint",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 89,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "Integer/fixed residual for cross-engine stability research"
+    },
+    {
+      "pack_id": "B10x_silicon_noderiv",
+      "aliases": [
+        "dyn.silicon_noderiv"
+      ],
+      "batch_id": "B10x_silicon_noderiv",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 89,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "Forced no-dFdx residual hard warm for cross-engine comparison"
+    },
+    {
+      "pack_id": "B10x_silicon_deep",
+      "aliases": [
+        "dyn.silicon_deep"
+      ],
+      "batch_id": "B10x_silicon_deep",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 91,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "iss/54 P1–P4 advanced silicon: fma_pair + denorm/FTZ + tex_lerp + interp + ULP EU timing"
+    },
+    {
+      "pack_id": "B16_fast_signals",
+      "aliases": [
+        "mid.fast_signals"
+      ],
+      "batch_id": "B16_fast_signals",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 70,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": true
+    },
+    {
+      "pack_id": "B13_authorized",
+      "aliases": [
+        "mid.authorized"
+      ],
+      "batch_id": "B13_authorized",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 68,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": true
+    },
+    {
+      "pack_id": "B15_cross_curves",
+      "aliases": [
+        "mid.cross"
+      ],
+      "batch_id": "B15_cross_curves",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 66,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": true,
+      "note": "H14 cross residual + multi-field layer_divergence v3"
+    },
+    {
+      "pack_id": "B6_risk",
+      "aliases": [
+        "deep.risk"
+      ],
+      "batch_id": "B6_risk",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 40,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": true
+    },
+    {
+      "pack_id": "B4_mobile",
+      "batch_id": "B4_mobile",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 55,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "unlocks": [
+        "mobile_surface"
+      ]
+    },
+    {
+      "pack_id": "B5_census",
+      "batch_id": "B5_census",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 54,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false
+    },
+    {
+      "pack_id": "B9_network",
+      "batch_id": "B9_network",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 52,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "webrtc_host_ip_hash for soft separator + net info"
+    },
+    {
+      "pack_id": "B14_css_protocol",
+      "batch_id": "B14_css_protocol",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 50,
+      "source": "main",
+      "executable": true
+    },
+    {
+      "pack_id": "B17_hw_physical",
+      "batch_id": "B17_hw_physical",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 58,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "iss2 H03/H05/H07 lite"
+    },
+    {
+      "pack_id": "B18_webgpu",
+      "batch_id": "B18_webgpu",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 56,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "gate": "research",
+      "note": "H06 WebGPU v2 dual powerPreference + limits hash. Research-gated: not default-scheduled until dual-KPI gate (intra/inter-device) clears (§4.2 four-piece template)."
+    },
+    {
+      "pack_id": "B19_eme_media",
+      "batch_id": "B19_eme_media",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 48,
+      "source": "main",
+      "executable": true,
+      "note": "H10 EME/codec matrix v2 (canplay+systems)"
+    },
+    {
+      "pack_id": "B20_challenge_seed",
+      "batch_id": "B20_challenge_seed",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 57,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H16 PoHW + signed challenge seed fields"
+    },
+    {
+      "pack_id": "B21_census_volume",
+      "batch_id": "B21_census_volume",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 53,
+      "source": "main",
+      "executable": true,
+      "note": "v57-class census digests: fonts+tokens+CSS+MQ+APIs+object property leaves"
+    },
+    {
+      "pack_id": "B22_gpu_timer",
+      "batch_id": "B22_gpu_timer",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 59,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H01 v5 GPU-ns poll+slope_ns+wall ratio (real GPU path)"
+    },
+    {
+      "pack_id": "B23_native_canvas_hedge",
+      "batch_id": "B23_native_canvas_hedge",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 55,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "D26/D02/D25 hedge: native integrity + canvas geometry + math/wasm"
+    },
+    {
+      "pack_id": "B24_material_crosscheck",
+      "batch_id": "B24_material_crosscheck",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 54,
+      "source": "main",
+      "executable": true,
+      "note": "D31-class multi-material cross-check vote digests + conflict flag"
+    },
+    {
+      "pack_id": "B25_clock_raf",
+      "batch_id": "B25_clock_raf",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 51,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H08 clock/rAF resolution + jitter"
+    },
+    {
+      "pack_id": "B31_shader_numeric",
+      "batch_id": "B31_shader_numeric",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 58,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H03 precision matrix + mediump/ULP-lite"
+    },
+    {
+      "pack_id": "B33_caps_pressure",
+      "batch_id": "B33_caps_pressure",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 56,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H05 claim vs actual texture alloc"
+    },
+    {
+      "pack_id": "B28_permissions_media",
+      "batch_id": "B28_permissions_media",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 50,
+      "source": "main",
+      "executable": true,
+      "note": "Permissions matrix + mediaDevices kinds"
+    },
+    {
+      "pack_id": "B29_sensors_battery",
+      "batch_id": "B29_sensors_battery",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 49,
+      "source": "main",
+      "executable": true,
+      "note": "Sensors presence + battery level"
+    },
+    {
+      "pack_id": "B30_gpu_bandwidth",
+      "batch_id": "B30_gpu_bandwidth",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 55,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H02 upload/readback/roundtrip bandwidth; FE also registers alias B84_gpu_bandwidth_ladder (batch_id B30).",
+      "aliases": [
+        "B84_gpu_bandwidth_ladder"
+      ]
+    },
+    {
+      "pack_id": "B34_cpu_cache_ladder",
+      "batch_id": "B34_cpu_cache_ladder",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 52,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H07 CPU working-set cache ladder"
+    },
+    {
+      "pack_id": "B26_agent_parity",
+      "batch_id": "B26_agent_parity",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 47,
+      "source": "main",
+      "executable": true,
+      "note": "v57 agent/global symbol parity matrix"
+    },
+    {
+      "pack_id": "B27_storage_privacy",
+      "batch_id": "B27_storage_privacy",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 46,
+      "source": "main",
+      "executable": true,
+      "note": "storage/privacy deep: LS/SS/IDB/quota/SW"
+    },
+    {
+      "pack_id": "B35_dom_perf",
+      "batch_id": "B35_dom_perf",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 45,
+      "source": "main",
+      "executable": true,
+      "note": "DomRect + performance timeline digests"
+    },
+    {
+      "pack_id": "B36_raster_msaa",
+      "batch_id": "B36_raster_msaa",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 54,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H04 raster edge curve + MSAA samples"
+    },
+    {
+      "pack_id": "B37_thermal_drift_lite",
+      "batch_id": "B37_thermal_drift_lite",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 44,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H09 thermal/frequency drift short bursts"
+    },
+    {
+      "pack_id": "B38_neg_dict",
+      "batch_id": "B38_neg_dict",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 43,
+      "source": "main",
+      "executable": true,
+      "note": "H15 negative/spoof dictionary FE hits"
+    },
+    {
+      "pack_id": "B39_mem_pressure",
+      "batch_id": "B39_mem_pressure",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 42,
+      "source": "main",
+      "executable": true,
+      "note": "D08 memory allocation pressure ladder"
+    },
+    {
+      "pack_id": "B40_websocket_fp",
+      "batch_id": "B40_websocket_fp",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 41,
+      "source": "main",
+      "executable": true,
+      "note": "D21 WebSocket constructor/handshake surface"
+    },
+    {
+      "pack_id": "B41_hid_gamepad",
+      "batch_id": "B41_hid_gamepad",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 40,
+      "source": "main",
+      "executable": true,
+      "note": "D35 HID/USB/serial/bluetooth/gamepad presence"
+    },
+    {
+      "pack_id": "B42_thermal_drift_full",
+      "batch_id": "B42_thermal_drift_full",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 38,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "H09 full progressive thermal 8-120s budget"
+    },
+    {
+      "pack_id": "B43_errors_engine",
+      "batch_id": "B43_errors_engine",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 39,
+      "source": "main",
+      "executable": true,
+      "note": "v57 error/engine stack fingerprint"
+    },
+    {
+      "pack_id": "B44_speech_deep",
+      "batch_id": "B44_speech_deep",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 37,
+      "source": "main",
+      "executable": true,
+      "note": "D14 speech voices deep hash"
+    },
+    {
+      "pack_id": "B45_display_hdr",
+      "batch_id": "B45_display_hdr",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 36,
+      "source": "main",
+      "executable": true,
+      "note": "H11 display/HDR/color-gamut MQ"
+    },
+    {
+      "pack_id": "B46_audio_deep",
+      "batch_id": "B46_audio_deep",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 35,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "note": "D03 audio deep moments/peakbins/hash (demo method port)"
+    },
+    {
+      "pack_id": "B47_sab_clock",
+      "batch_id": "B47_sab_clock",
+      "layer": "mid",
+      "schedule": "dynamic",
+      "priority": 62,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "resource_class": "cpu",
+      "gate": "research",
+      "note": "iss/54 P8 / iss/45 A3 SAB+Atomics clock foundation; honest skip without COOP/COEP. Research-gated: not default-scheduled until dual-KPI gate clears (§4.2 four-piece template)."
+    },
+    {
+      "pack_id": "B47_api_flags_detail",
+      "aliases": [
+        "B47_api_flags_detail"
+      ],
+      "batch_id": "B47_api_flags_detail",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 52,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "census",
+      "demand": "v57 API flags claim-obs",
+      "unlocks": [
+        "PKG_EXPAND"
+      ],
+      "gate": "research",
+      "note": "Research/diagnostic census lane; not default-scheduled (§4.2 four-piece template)."
+    },
+    {
+      "pack_id": "B48_css_supports_detail",
+      "aliases": [
+        "B48_css_supports_detail"
+      ],
+      "batch_id": "B48_css_supports_detail",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 51,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "census",
+      "demand": "CSS supports matrix",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B49_css_props_detail",
+      "aliases": [
+        "B49_css_props_detail"
+      ],
+      "batch_id": "B49_css_props_detail",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 50,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "census",
+      "demand": "CSS computed props sample",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B50_font_matrix_detail",
+      "aliases": [
+        "B50_font_matrix_detail"
+      ],
+      "batch_id": "B50_font_matrix_detail",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 49,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "census",
+      "demand": "font install matrix",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B51_mq_matrix_detail",
+      "aliases": [
+        "B51_mq_matrix_detail"
+      ],
+      "batch_id": "B51_mq_matrix_detail",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 48,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "census",
+      "demand": "media query matrix",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B52_navigator_deep",
+      "aliases": [
+        "B52_navigator_deep"
+      ],
+      "batch_id": "B52_navigator_deep",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 47,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "navigator deep census",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B53_window_keys_deep",
+      "aliases": [
+        "B53_window_keys_deep"
+      ],
+      "batch_id": "B53_window_keys_deep",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 46,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "window own keys census",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B54_plugin_mime_deep",
+      "aliases": [
+        "B54_plugin_mime_deep"
+      ],
+      "batch_id": "B54_plugin_mime_deep",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 45,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "plugins/mime types",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B55_webrtc_ice_deep",
+      "aliases": [
+        "B55_webrtc_ice_deep"
+      ],
+      "batch_id": "B55_webrtc_ice_deep",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 58,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "network",
+      "demand": "WebRTC ICE full",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B56_webrtc_stats",
+      "aliases": [
+        "B56_webrtc_stats"
+      ],
+      "batch_id": "B56_webrtc_stats",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 44,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "network",
+      "demand": "WebRTC getStats sample",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B57_canvas_emoji_path",
+      "aliases": [
+        "B57_canvas_emoji_path"
+      ],
+      "batch_id": "B57_canvas_emoji_path",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 57,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "material_hedge",
+      "demand": "canvas emoji/path2d",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B58_canvas_text_metrics",
+      "aliases": [
+        "B58_canvas_text_metrics"
+      ],
+      "batch_id": "B58_canvas_text_metrics",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 56,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "material_hedge",
+      "demand": "text metrics geometry",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B59_webgl_params_full",
+      "aliases": [
+        "B59_webgl_params_full"
+      ],
+      "batch_id": "B59_webgl_params_full",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 55,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "gpu_physical",
+      "demand": "WebGL getParameter full",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B60_webgl_extensions_full",
+      "aliases": [
+        "B60_webgl_extensions_full"
+      ],
+      "batch_id": "B60_webgl_extensions_full",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 54,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "gpu_physical",
+      "demand": "WebGL extensions detail",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B61_audio_worklet",
+      "aliases": [
+        "B61_audio_worklet"
+      ],
+      "batch_id": "B61_audio_worklet",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 43,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "material_hedge",
+      "demand": "AudioWorklet presence",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B62_offline_audio_moments",
+      "aliases": [
+        "B62_offline_audio_moments"
+      ],
+      "batch_id": "B62_offline_audio_moments",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 53,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "material_hedge",
+      "demand": "offline audio moments",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B63_intl_full",
+      "aliases": [
+        "B63_intl_full"
+      ],
+      "batch_id": "B63_intl_full",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 42,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "os",
+      "demand": "Intl full locale",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B64_timezone_deep",
+      "aliases": [
+        "B64_timezone_deep"
+      ],
+      "batch_id": "B64_timezone_deep",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 41,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "os",
+      "demand": "timezone offsets",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B65_client_hints_full",
+      "aliases": [
+        "B65_client_hints_full"
+      ],
+      "batch_id": "B65_client_hints_full",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 55,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "browser_kernel",
+      "demand": "UA-CH full",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B66_sec_ch_headers",
+      "aliases": [
+        "B66_sec_ch_headers"
+      ],
+      "batch_id": "B66_sec_ch_headers",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 40,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "sec-ch-* via JS",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B67_service_worker_deep",
+      "aliases": [
+        "B67_service_worker_deep"
+      ],
+      "batch_id": "B67_service_worker_deep",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 39,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "SW registrations",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B68_cache_storage_deep",
+      "aliases": [
+        "B68_cache_storage_deep"
+      ],
+      "batch_id": "B68_cache_storage_deep",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 38,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "CacheStorage keys",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B69_bluetooth_usb",
+      "aliases": [
+        "B69_bluetooth_usb"
+      ],
+      "batch_id": "B69_bluetooth_usb",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 37,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "peripheral",
+      "demand": "Bluetooth/USB APIs",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B70_payment_credential",
+      "aliases": [
+        "B70_payment_credential"
+      ],
+      "batch_id": "B70_payment_credential",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 36,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "Payment/WebAuthn surface",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B71_idle_wake_lock",
+      "aliases": [
+        "B71_idle_wake_lock"
+      ],
+      "batch_id": "B71_idle_wake_lock",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 35,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "mobile_form",
+      "demand": "Idle/WakeLock",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B72_keyboard_layout",
+      "aliases": [
+        "B72_keyboard_layout"
+      ],
+      "batch_id": "B72_keyboard_layout",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 34,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "Keyboard layout map",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B73_pointer_capabilities",
+      "aliases": [
+        "B73_pointer_capabilities"
+      ],
+      "batch_id": "B73_pointer_capabilities",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 33,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "rpa",
+      "demand": "pointer/hover caps",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B74_visual_viewport",
+      "aliases": [
+        "B74_visual_viewport"
+      ],
+      "batch_id": "B74_visual_viewport",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 48,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "os",
+      "demand": "visualViewport geometry",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B75_performance_entries",
+      "aliases": [
+        "B75_performance_entries"
+      ],
+      "batch_id": "B75_performance_entries",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 32,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "perf entries census",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B76_math_wasm_deep",
+      "aliases": [
+        "B76_math_wasm_deep"
+      ],
+      "batch_id": "B76_math_wasm_deep",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 52,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "family": "material_hedge",
+      "demand": "math+wasm deep",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B77_worker_env_deep",
+      "aliases": [
+        "B77_worker_env_deep"
+      ],
+      "batch_id": "B77_worker_env_deep",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 65,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "sandbox_xsrc",
+      "demand": "worker env fields",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B78_iframe_env_deep",
+      "aliases": [
+        "B78_iframe_env_deep"
+      ],
+      "batch_id": "B78_iframe_env_deep",
+      "layer": "mid4",
+      "schedule": "dynamic",
+      "priority": 64,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "sandbox_xsrc",
+      "demand": "iframe env fields",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B79_cross_origin_isolation",
+      "aliases": [
+        "B79_cross_origin_isolation"
+      ],
+      "batch_id": "B79_cross_origin_isolation",
+      "layer": "deep",
+      "schedule": "dynamic",
+      "priority": 31,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "family": "browser_kernel",
+      "demand": "COOP/COEP isolation",
+      "unlocks": [
+        "PKG_EXPAND"
+      ]
+    },
+    {
+      "pack_id": "B80_r100_high_value",
+      "aliases": [
+        "B80_r100_high_value"
+      ],
+      "batch_id": "B80_r100_high_value",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 54,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "requires_soft_v2": false,
+      "family": "material_hedge",
+      "demand": "R100-promoted high-value network/intl/rtc/perf/crypto materials",
+      "unlocks": [
+        "PKG_EXPAND"
+      ],
+      "role": "dense_r100_promote",
+      "score_weight": 1.0
+    },
+    {
+      "pack_id": "R00_spotcheck",
+      "aliases": [
+        "R00_spotcheck"
+      ],
+      "batch_id": "R00_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R01_spotcheck",
+      "aliases": [
+        "R01_spotcheck"
+      ],
+      "batch_id": "R01_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R02_spotcheck",
+      "aliases": [
+        "R02_spotcheck"
+      ],
+      "batch_id": "R02_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R03_spotcheck",
+      "aliases": [
+        "R03_spotcheck"
+      ],
+      "batch_id": "R03_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R04_spotcheck",
+      "aliases": [
+        "R04_spotcheck"
+      ],
+      "batch_id": "R04_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R05_spotcheck",
+      "aliases": [
+        "R05_spotcheck"
+      ],
+      "batch_id": "R05_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R06_spotcheck",
+      "aliases": [
+        "R06_spotcheck"
+      ],
+      "batch_id": "R06_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R07_spotcheck",
+      "aliases": [
+        "R07_spotcheck"
+      ],
+      "batch_id": "R07_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R08_spotcheck",
+      "aliases": [
+        "R08_spotcheck"
+      ],
+      "batch_id": "R08_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R09_spotcheck",
+      "aliases": [
+        "R09_spotcheck"
+      ],
+      "batch_id": "R09_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R10_spotcheck",
+      "aliases": [
+        "R10_spotcheck"
+      ],
+      "batch_id": "R10_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R11_spotcheck",
+      "aliases": [
+        "R11_spotcheck"
+      ],
+      "batch_id": "R11_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R12_spotcheck",
+      "aliases": [
+        "R12_spotcheck"
+      ],
+      "batch_id": "R12_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R13_spotcheck",
+      "aliases": [
+        "R13_spotcheck"
+      ],
+      "batch_id": "R13_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R14_spotcheck",
+      "aliases": [
+        "R14_spotcheck"
+      ],
+      "batch_id": "R14_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R15_spotcheck",
+      "aliases": [
+        "R15_spotcheck"
+      ],
+      "batch_id": "R15_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R16_spotcheck",
+      "aliases": [
+        "R16_spotcheck"
+      ],
+      "batch_id": "R16_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R17_spotcheck",
+      "aliases": [
+        "R17_spotcheck"
+      ],
+      "batch_id": "R17_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R18_spotcheck",
+      "aliases": [
+        "R18_spotcheck"
+      ],
+      "batch_id": "R18_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R19_spotcheck",
+      "aliases": [
+        "R19_spotcheck"
+      ],
+      "batch_id": "R19_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R20_spotcheck",
+      "aliases": [
+        "R20_spotcheck"
+      ],
+      "batch_id": "R20_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R21_spotcheck",
+      "aliases": [
+        "R21_spotcheck"
+      ],
+      "batch_id": "R21_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R22_spotcheck",
+      "aliases": [
+        "R22_spotcheck"
+      ],
+      "batch_id": "R22_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R23_spotcheck",
+      "aliases": [
+        "R23_spotcheck"
+      ],
+      "batch_id": "R23_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R24_spotcheck",
+      "aliases": [
+        "R24_spotcheck"
+      ],
+      "batch_id": "R24_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R25_spotcheck",
+      "aliases": [
+        "R25_spotcheck"
+      ],
+      "batch_id": "R25_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R26_spotcheck",
+      "aliases": [
+        "R26_spotcheck"
+      ],
+      "batch_id": "R26_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R27_spotcheck",
+      "aliases": [
+        "R27_spotcheck"
+      ],
+      "batch_id": "R27_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R28_spotcheck",
+      "aliases": [
+        "R28_spotcheck"
+      ],
+      "batch_id": "R28_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R29_spotcheck",
+      "aliases": [
+        "R29_spotcheck"
+      ],
+      "batch_id": "R29_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R30_spotcheck",
+      "aliases": [
+        "R30_spotcheck"
+      ],
+      "batch_id": "R30_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R31_spotcheck",
+      "aliases": [
+        "R31_spotcheck"
+      ],
+      "batch_id": "R31_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R32_spotcheck",
+      "aliases": [
+        "R32_spotcheck"
+      ],
+      "batch_id": "R32_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R33_spotcheck",
+      "aliases": [
+        "R33_spotcheck"
+      ],
+      "batch_id": "R33_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R34_spotcheck",
+      "aliases": [
+        "R34_spotcheck"
+      ],
+      "batch_id": "R34_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R35_spotcheck",
+      "aliases": [
+        "R35_spotcheck"
+      ],
+      "batch_id": "R35_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R36_spotcheck",
+      "aliases": [
+        "R36_spotcheck"
+      ],
+      "batch_id": "R36_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R37_spotcheck",
+      "aliases": [
+        "R37_spotcheck"
+      ],
+      "batch_id": "R37_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R38_spotcheck",
+      "aliases": [
+        "R38_spotcheck"
+      ],
+      "batch_id": "R38_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R39_spotcheck",
+      "aliases": [
+        "R39_spotcheck"
+      ],
+      "batch_id": "R39_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R40_spotcheck",
+      "aliases": [
+        "R40_spotcheck"
+      ],
+      "batch_id": "R40_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R41_spotcheck",
+      "aliases": [
+        "R41_spotcheck"
+      ],
+      "batch_id": "R41_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R42_spotcheck",
+      "aliases": [
+        "R42_spotcheck"
+      ],
+      "batch_id": "R42_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R43_spotcheck",
+      "aliases": [
+        "R43_spotcheck"
+      ],
+      "batch_id": "R43_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R44_spotcheck",
+      "aliases": [
+        "R44_spotcheck"
+      ],
+      "batch_id": "R44_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R45_spotcheck",
+      "aliases": [
+        "R45_spotcheck"
+      ],
+      "batch_id": "R45_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R46_spotcheck",
+      "aliases": [
+        "R46_spotcheck"
+      ],
+      "batch_id": "R46_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R47_spotcheck",
+      "aliases": [
+        "R47_spotcheck"
+      ],
+      "batch_id": "R47_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R48_spotcheck",
+      "aliases": [
+        "R48_spotcheck"
+      ],
+      "batch_id": "R48_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R49_spotcheck",
+      "aliases": [
+        "R49_spotcheck"
+      ],
+      "batch_id": "R49_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R50_spotcheck",
+      "aliases": [
+        "R50_spotcheck"
+      ],
+      "batch_id": "R50_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R51_spotcheck",
+      "aliases": [
+        "R51_spotcheck"
+      ],
+      "batch_id": "R51_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R52_spotcheck",
+      "aliases": [
+        "R52_spotcheck"
+      ],
+      "batch_id": "R52_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R53_spotcheck",
+      "aliases": [
+        "R53_spotcheck"
+      ],
+      "batch_id": "R53_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R54_spotcheck",
+      "aliases": [
+        "R54_spotcheck"
+      ],
+      "batch_id": "R54_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R55_spotcheck",
+      "aliases": [
+        "R55_spotcheck"
+      ],
+      "batch_id": "R55_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R56_spotcheck",
+      "aliases": [
+        "R56_spotcheck"
+      ],
+      "batch_id": "R56_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R57_spotcheck",
+      "aliases": [
+        "R57_spotcheck"
+      ],
+      "batch_id": "R57_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R58_spotcheck",
+      "aliases": [
+        "R58_spotcheck"
+      ],
+      "batch_id": "R58_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R59_spotcheck",
+      "aliases": [
+        "R59_spotcheck"
+      ],
+      "batch_id": "R59_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R60_spotcheck",
+      "aliases": [
+        "R60_spotcheck"
+      ],
+      "batch_id": "R60_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R61_spotcheck",
+      "aliases": [
+        "R61_spotcheck"
+      ],
+      "batch_id": "R61_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R62_spotcheck",
+      "aliases": [
+        "R62_spotcheck"
+      ],
+      "batch_id": "R62_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R63_spotcheck",
+      "aliases": [
+        "R63_spotcheck"
+      ],
+      "batch_id": "R63_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R64_spotcheck",
+      "aliases": [
+        "R64_spotcheck"
+      ],
+      "batch_id": "R64_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R65_spotcheck",
+      "aliases": [
+        "R65_spotcheck"
+      ],
+      "batch_id": "R65_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R66_spotcheck",
+      "aliases": [
+        "R66_spotcheck"
+      ],
+      "batch_id": "R66_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R67_spotcheck",
+      "aliases": [
+        "R67_spotcheck"
+      ],
+      "batch_id": "R67_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R68_spotcheck",
+      "aliases": [
+        "R68_spotcheck"
+      ],
+      "batch_id": "R68_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R69_spotcheck",
+      "aliases": [
+        "R69_spotcheck"
+      ],
+      "batch_id": "R69_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R70_spotcheck",
+      "aliases": [
+        "R70_spotcheck"
+      ],
+      "batch_id": "R70_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R71_spotcheck",
+      "aliases": [
+        "R71_spotcheck"
+      ],
+      "batch_id": "R71_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R72_spotcheck",
+      "aliases": [
+        "R72_spotcheck"
+      ],
+      "batch_id": "R72_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R73_spotcheck",
+      "aliases": [
+        "R73_spotcheck"
+      ],
+      "batch_id": "R73_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R74_spotcheck",
+      "aliases": [
+        "R74_spotcheck"
+      ],
+      "batch_id": "R74_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R75_spotcheck",
+      "aliases": [
+        "R75_spotcheck"
+      ],
+      "batch_id": "R75_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R76_spotcheck",
+      "aliases": [
+        "R76_spotcheck"
+      ],
+      "batch_id": "R76_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R77_spotcheck",
+      "aliases": [
+        "R77_spotcheck"
+      ],
+      "batch_id": "R77_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R78_spotcheck",
+      "aliases": [
+        "R78_spotcheck"
+      ],
+      "batch_id": "R78_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R79_spotcheck",
+      "aliases": [
+        "R79_spotcheck"
+      ],
+      "batch_id": "R79_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R80_spotcheck",
+      "aliases": [
+        "R80_spotcheck"
+      ],
+      "batch_id": "R80_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R81_spotcheck",
+      "aliases": [
+        "R81_spotcheck"
+      ],
+      "batch_id": "R81_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R82_spotcheck",
+      "aliases": [
+        "R82_spotcheck"
+      ],
+      "batch_id": "R82_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R83_spotcheck",
+      "aliases": [
+        "R83_spotcheck"
+      ],
+      "batch_id": "R83_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R84_spotcheck",
+      "aliases": [
+        "R84_spotcheck"
+      ],
+      "batch_id": "R84_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R85_spotcheck",
+      "aliases": [
+        "R85_spotcheck"
+      ],
+      "batch_id": "R85_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R86_spotcheck",
+      "aliases": [
+        "R86_spotcheck"
+      ],
+      "batch_id": "R86_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R87_spotcheck",
+      "aliases": [
+        "R87_spotcheck"
+      ],
+      "batch_id": "R87_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R88_spotcheck",
+      "aliases": [
+        "R88_spotcheck"
+      ],
+      "batch_id": "R88_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R89_spotcheck",
+      "aliases": [
+        "R89_spotcheck"
+      ],
+      "batch_id": "R89_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R90_spotcheck",
+      "aliases": [
+        "R90_spotcheck"
+      ],
+      "batch_id": "R90_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R91_spotcheck",
+      "aliases": [
+        "R91_spotcheck"
+      ],
+      "batch_id": "R91_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R92_spotcheck",
+      "aliases": [
+        "R92_spotcheck"
+      ],
+      "batch_id": "R92_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R93_spotcheck",
+      "aliases": [
+        "R93_spotcheck"
+      ],
+      "batch_id": "R93_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R94_spotcheck",
+      "aliases": [
+        "R94_spotcheck"
+      ],
+      "batch_id": "R94_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R95_spotcheck",
+      "aliases": [
+        "R95_spotcheck"
+      ],
+      "batch_id": "R95_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R96_spotcheck",
+      "aliases": [
+        "R96_spotcheck"
+      ],
+      "batch_id": "R96_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R97_spotcheck",
+      "aliases": [
+        "R97_spotcheck"
+      ],
+      "batch_id": "R97_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R98_spotcheck",
+      "aliases": [
+        "R98_spotcheck"
+      ],
+      "batch_id": "R98_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "R99_spotcheck",
+      "aliases": [
+        "R99_spotcheck"
+      ],
+      "batch_id": "R99_spotcheck",
+      "layer": "verify_rand",
+      "schedule": "dynamic",
+      "priority": 22,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "requires_soft_v2": false,
+      "role": "authenticity_spotcheck",
+      "score_weight": 0,
+      "family": "authenticity_spotcheck",
+      "demand": "planned multi-dim authenticity spot-check",
+      "unlocks": [
+        "PKG_VERIFY_RAND"
+      ]
+    },
+    {
+      "pack_id": "B81_webcodecs_bitstream",
+      "batch_id": "B81_webcodecs_bitstream",
+      "aliases": [
+        "B81_webcodecs_bitstream"
+      ],
+      "schedule": "dynamic",
+      "layer": "mid",
+      "priority": 48,
+      "resource_class": "gpu",
+      "notes": "iss/58 A3 WebCodecs prefer-hardware bitstream FP"
+    },
+    {
+      "pack_id": "B82_idb_write_ladder",
+      "batch_id": "B82_idb_write_ladder",
+      "aliases": [
+        "B82_idb_write_ladder"
+      ],
+      "schedule": "dynamic",
+      "layer": "mid",
+      "priority": 42,
+      "resource_class": "cpu",
+      "notes": "iss/58 A5 IndexedDB write ladder (no persist)"
+    },
+    {
+      "pack_id": "B83_eventloop_signature",
+      "batch_id": "B83_eventloop_signature",
+      "aliases": [
+        "B83_eventloop_signature"
+      ],
+      "schedule": "dynamic",
+      "layer": "mid",
+      "priority": 40,
+      "resource_class": "cpu",
+      "notes": "iss/58 A10 LoAF/scheduler/rAF signature"
+    },
+    {
+      "pack_id": "B85_fuzzy_helper_echo",
+      "batch_id": "B85_fuzzy_helper_echo",
+      "aliases": [
+        "B85_fuzzy_helper_echo"
+      ],
+      "schedule": "static",
+      "layer": "lite5",
+      "priority": 88,
+      "resource_class": "storage",
+      "notes": "iss/61 F1 fuzzy-ECC Helper Data echo (parity-only; localStorage read; no permission surface)"
+    },
+    {
+      "pack_id": "B86_os_gecko_surface",
+      "batch_id": "B86_os_gecko_surface",
+      "aliases": [
+        "B86_os_gecko_surface"
+      ],
+      "layer": "mid",
+      "schedule": "dynamic",
+      "priority": 45,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "resource_class": "os",
+      "note": "iss/74 G2 os/gecko surface: kernel hint, oscpu/buildID, -moz-innerScreenX delta, Linux metric-font widths (cross-checks B3_system)"
+    },
+    {
+      "pack_id": "B87_engine_behavior_diff",
+      "batch_id": "B87_engine_behavior_diff",
+      "aliases": [
+        "B87_engine_behavior_diff"
+      ],
+      "layer": "mid",
+      "schedule": "dynamic",
+      "priority": 43,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "resource_class": "engine",
+      "note": "iss/74 R1 engine behavior diff: 9set error-message digest, stack trace limit, math roundoff profile, canvas farbling delta, realm UA-align+grease"
+    },
+    {
+      "pack_id": "B88_wasm_instruction_throughput",
+      "batch_id": "B88_wasm_instruction_throughput",
+      "aliases": [
+        "B88_wasm_instruction_throughput"
+      ],
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 52,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "resource_class": "cpu",
+      "note": "iss/74 H8 wasm instruction-level throughput: scalar+SIMD benchmarks w/ imported mutable globals (anti constant-fold), observable accumulator, compile/instantiate ms"
+    },
+    {
+      "pack_id": "B89_audio_known_lock",
+      "batch_id": "B89_audio_known_lock",
+      "aliases": [
+        "B89_audio_known_lock"
+      ],
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 46,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "resource_class": "audio",
+      "note": "iss/74 D06 audio known-lock: offline render w/ compressor vs silent osc, channel-copy delta, float freq/time sums (fake-DSP fodder; never device_id)"
+    },
+    {
+      "pack_id": "B90_os_emoji_raster",
+      "batch_id": "B90_os_emoji_raster",
+      "aliases": [
+        "B90_os_emoji_raster"
+      ],
+      "layer": "mid",
+      "schedule": "dynamic",
+      "priority": 41,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "resource_class": "os",
+      "note": "iss/74 G3 os emoji raster: 20-emoji canvas grid hash+tofu count, mac dot-font measurability, font fallback chain digest"
+    },
+    {
+      "pack_id": "B91_storage_disk_quota",
+      "batch_id": "B91_storage_disk_quota",
+      "aliases": [
+        "B91_storage_disk_quota"
+      ],
+      "layer": "mid",
+      "schedule": "dynamic",
+      "priority": 38,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "resource_class": "storage",
+      "note": "iss/74 K1 storage disk quota: estimate() quota/usage, grid class, round-suspect, cross-session prev-match token (VM/container/isolation clues)"
+    },
+    {
+      "pack_id": "B92_webgpu_atomic_contention",
+      "batch_id": "B92_webgpu_atomic_contention",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 55,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "resource_class": "gpu",
+      "gate": "research",
+      "note": "iss/74 R2 WebGPU atomicAdd single-counter contention → hist16/median/entropy/digest; 3 presets (short ≤300ms); seeded anti-replay. Research-gated: unlocked by B5 contradiction rule or dual-KPI gate. Engines: WebGPU shipped in all three (FE skips when adapter absent).",
+      "engines": [
+        "blink",
+        "gecko",
+        "webkit"
+      ]
+    },
+    {
+      "pack_id": "B93_blink_fork_matrix",
+      "batch_id": "B93_blink_fork_matrix",
+      "layer": "mid",
+      "schedule": "dynamic",
+      "priority": 44,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": false,
+      "resource_class": "cpu",
+      "note": "iss/74 R3 UA-CH brand vs UA order/version/GREASE + Edge surface + Brave/opr/Arc CSS var static → blink_fork_guess + fork_claim_vs_obs. No new permissions. Engines: UA-CH brand surface is blink-only.",
+      "engines": [
+        "blink"
+      ]
+    },
+    {
+      "pack_id": "B94_sab_dual_clock_differential",
+      "batch_id": "B94_sab_dual_clock_differential",
+      "layer": "mid",
+      "schedule": "dynamic",
+      "priority": 53,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "resource_class": "cpu",
+      "gate": "research",
+      "note": "iss/74 R4 SAB-calibrated performance.now/Date/rAF minimal-delta quantization recovery (Fantastic-Timers track). Needs COOP/COEP like B47. Research-gated."
+    },
+    {
+      "pack_id": "B95_gpu_eu_timing",
+      "batch_id": "B95_gpu_eu_timing",
+      "layer": "hard",
+      "schedule": "dynamic",
+      "priority": 50,
+      "source": "main",
+      "executable": true,
+      "hard_eligible": true,
+      "resource_class": "gpu",
+      "gate": "research",
+      "note": "iss/74 R1 DrawnApart-style 7-vertex sinh EU stress via OffscreenCanvas webgl2; 1/4 subset per round, cross-round accumulation (≤2s). Chromium-only engine gate. Research-gated. Engines: Chromium-only (FE engine gate mirrors FE detectEngineFamily).",
+      "engines": [
+        "blink"
+      ]
+    }
+  ],
+  "static_kick_order": [
+    "B8_gateway_early",
+    "B11_interaction",
+    "B0_bootstrap",
+    "B12_anti_camouflage",
+    "B1_conflict",
+    "B2_hardware",
+    "B85_fuzzy_helper_echo",
+    "B3_system",
+    "B10_hw_curves",
+    "B7_sandbox"
+  ]
+}

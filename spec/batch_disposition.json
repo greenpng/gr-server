@@ -1,0 +1,26 @@
+{
+  "version": "v5.9-p0-hedge",
+  "note": "supplement/hedge/dynamic-keep — not product-dead wontfix for claim-obs materials",
+  "batches": {
+    "B4_mobile": {
+      "disposition": "dynamic_keep",
+      "role": "direction_mobile_form",
+      "reason": "mobile_form direction materials (UA-CH / touch); keep schedulable"
+    },
+    "B5_census": {
+      "disposition": "supplement",
+      "role": "census_hedge",
+      "reason": "Intl/speech/api lite hedge alongside B21 digests — not wontfix"
+    },
+    "B9_network": {
+      "disposition": "dynamic_keep",
+      "role": "network_hedge",
+      "reason": "WebRTC/DNS soft hedge for os/device; prefer with B8 but keep FE path"
+    },
+    "B14_css_protocol": {
+      "disposition": "hedge",
+      "role": "claim_obs_css",
+      "reason": "CSS/MQ claim-obs materials for br/os consistency — not low-value dead"
+    }
+  }
+}

@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GR R100 sequential lab test</title>
+  <!-- Load governor FIRST so R packs inherit GL/AC quiet rules -->
+  <script src="/g5/dist/gr.gl_governor.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --ok: #3dd68c;
+      --warn: #f5a524;
+      --err: #f31260;
+      --accent: #5b8def;
+      --border: #2a3548;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #152033, var(--bg));
+    }
+    h1 { margin: 0 0 6px; font-size: 18px; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 12px; }
+    .wrap { display: grid; grid-template-columns: 320px 1fr; gap: 0; min-height: calc(100vh - 72px); }
+    @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+    aside {
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      background: var(--panel);
+    }
+    main { padding: 16px 20px; overflow: auto; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    input, select, button, textarea {
+      font: inherit;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0d121a;
+      color: var(--text);
+      padding: 8px 10px;
+    }
+    input[type="number"] { width: 100%; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    button {
+      cursor: pointer;
+      background: #243247;
+      border-color: #334560;
+    }
+    button.primary { background: var(--accent); border-color: #4a7ad6; color: #fff; font-weight: 600; }
+    button.danger { background: #5a1d33; border-color: #8a2a4a; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .stat {
+      background: #0d121a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .stat b { display: block; font-size: 18px; margin-top: 2px; }
+    .stat span { color: var(--muted); font-size: 11px; }
+    .bar {
+      height: 8px;
+      background: #0d121a;
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: 12px;
+      border: 1px solid var(--border);
+    }
+    .bar > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3d6fd6, #3dd68c);
+      transition: width 0.15s ease;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--bg); }
+    tr.ok td:first-child { color: var(--ok); }
+    tr.fail td:first-child { color: var(--err); }
+    tr.run td:first-child { color: var(--warn); }
+    #log {
+      margin-top: 16px;
+      height: 180px;
+      width: 100%;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      background: #0a0e14;
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .pill.ok { color: var(--ok); border-color: #1f5a3c; }
+    .pill.fail { color: var(--err); border-color: #6b1f36; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+    code { background: #0d121a; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>R100 sequential lab test <span class="pill" id="verPill">…</span></h1>
+    <div class="sub">
+      依次执行 R00–R99 全部 spotcheck 子任务（不走 brain 1/tick 调度）。用于快速排查 R 批次控制台/执行问题。
+      · 路径 <code>/g5/r100_lab_test.html</code>
+    </div>
+  </header>
+  <div class="wrap">
+    <aside>
+      <label>From (0–99)</label>
+      <input id="fromN" type="number" min="0" max="99" value="0" />
+      <label>To (0–99)</label>
+      <input id="toN" type="number" min="0" max="99" value="99" />
+      <label>Pack gap (ms)</label>
+      <input id="gapMs" type="number" min="0" max="5000" value="80" />
+      <label>Load source</label>
+      <select id="srcMode">
+        <option value="static">static /g5/dist/collectors/random/</option>
+        <option value="api">API /g5/v1/r100/pack/</option>
+      </select>
+      <label>
+        <input id="dryRun" type="checkbox" checked /> Dry-run（不上传 ingest，只本地结果）
+      </label>
+      <label>
+        <input id="stopOnFail" type="checkbox" /> 失败时暂停
+      </label>
+      <div class="row">
+        <button class="primary" id="btnStart">Start</button>
+        <button id="btnPause">Pause</button>
+        <button class="danger" id="btnStop">Stop</button>
+      </div>
+      <div class="row">
+        <button id="btnExport">Export JSON</button>
+        <button id="btnClear">Clear</button>
+      </div>
+      <div class="bar"><i id="progBar"></i></div>
+      <div class="stats">
+        <div class="stat"><span>done</span><b id="stDone">0</b></div>
+        <div class="stat"><span>ok</span><b id="stOk" style="color:var(--ok)">0</b></div>
+        <div class="stat"><span>fail/empty-heavy</span><b id="stFail" style="color:var(--err)">0</b></div>
+        <div class="stat"><span>ms total</span><b id="stMs">0</b></div>
+      </div>
+      <div class="hint">
+        <div>当前: <code id="curPack">—</code></div>
+        <div>Governor: <code id="govStat">—</code></div>
+        <div class="hint">建议用 Firefox/Chrome 硬刷后点 Start。控制台过滤器可看 WebGL / Audio。</div>
+      </div>
+    </aside>
+    <main>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px">pack</th>
+            <th style="width:70px">status</th>
+            <th style="width:70px">ms</th>
+            <th style="width:60px">ops</th>
+            <th style="width:60px">ok</th>
+            <th style="width:70px">empty%</th>
+            <th>note</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <textarea id="log" readonly placeholder="log…"></textarea>
+    </main>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  var V = "";
+  try {
+    // Prefer inject / bootstrap version if page is opened after lab inject; else query asset from bootstrap later
+    V = (window.__GR_PRODUCT_VERSION__ || "").trim();
+  } catch (e) {}
+
+  var state = {
+    running: false,
+    paused: false,
+    stop: false,
+    results: [],
+    t0: 0,
+  };
+
+  var el = {
+    fromN: document.getElementById("fromN"),
+    toN: document.getElementById("toN"),
+    gapMs: document.getElementById("gapMs"),
+    srcMode: document.getElementById("srcMode"),
+    dryRun: document.getElementById("dryRun"),
+    stopOnFail: document.getElementById("stopOnFail"),
+    btnStart: document.getElementById("btnStart"),
+    btnPause: document.getElementById("btnPause"),
+    btnStop: document.getElementById("btnStop"),
+    btnExport: document.getElementById("btnExport"),
+    btnClear: document.getElementById("btnClear"),
+    tbody: document.getElementById("tbody"),
+    log: document.getElementById("log"),
+    progBar: document.getElementById("progBar"),
+    stDone: document.getElementById("stDone"),
+    stOk: document.getElementById("stOk"),
+    stFail: document.getElementById("stFail"),
+    stMs: document.getElementById("stMs"),
+    curPack: document.getElementById("curPack"),
+    govStat: document.getElementById("govStat"),
+    verPill: document.getElementById("verPill"),
+  };
+
+  function log() {
+    var msg = Array.prototype.slice.call(arguments).join(" ");
+    var ts = new Date().toISOString().slice(11, 23);
+    el.log.value += "[" + ts + "] " + msg + "\n";
+    el.log.scrollTop = el.log.scrollHeight;
+  }
+
+  function packId(n) {
+    n = n | 0;
+    return "R" + (n < 10 ? "0" : "") + n + "_spotcheck";
+  }
+
+  function withVer(url) {
+    if (!V) return url;
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=" + encodeURIComponent(V);
+  }
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src;
+      s.async = false;
+      s.onload = function () { resolve(src); };
+      s.onerror = function () { reject(new Error("load_fail " + src)); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+  }
+
+  function sleep(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+  }
+
+  function waitWhilePaused() {
+    return new Promise(function (resolve) {
+      function tick() {
+        if (state.stop) return resolve();
+        if (!state.paused) return resolve();
+        setTimeout(tick, 80);
+      }
+      tick();
+    });
+  }
+
+  function ensureCollectors() {
+    if (window.GRCollectors && GRCollectors.register) return;
+    var regs = Object.create(null);
+    window.GRCollectors = {
+      register: function (id, def) {
+        regs[id] = def || {};
+        regs[id].id = id;
+      },
+      get: function (id) {
+        return regs[id] || null;
+      },
+      __randomVerifyRuntime: false,
+    };
+  }
+
+  function mockCtx() {
+    var captures = [];
+    return {
+      session_id: "r100_lab_" + Date.now().toString(36),
+      inject_path: "lab_r100_test",
+      page_id: "r100_lab",
+      source: "main",
+      queue: {
+        enqueue: function (item) {
+          captures.push(item);
+          return true;
+        },
+        _captures: captures,
+      },
+      _captures: captures,
+    };
+  }
+
+  function refreshGov() {
+    try {
+      if (window.GRGlGovernor && GRGlGovernor.stats) {
+        var s = GRGlGovernor.stats();
+        el.govStat.textContent =
+          "live=" + s.live + " reuse=" + s.reused + " create=" + s.creates +
+          " soft=" + (s.soft_release || 0) + " lose_noop=" + (s.lose_noop || 0);
+      } else {
+        el.govStat.textContent = "not installed";
+      }
+    } catch (e) {
+      el.govStat.textContent = "err";
+    }
+  }
+
+  function upsertRow(pid, patch) {
+    var tr = document.getElementById("row_" + pid);
+    if (!tr) {
+      tr = document.createElement("tr");
+      tr.id = "row_" + pid;
+      tr.innerHTML =
+        "<td>" + pid + "</td>" +
+        "<td class='st'>—</td>" +
+        "<td class='ms'>—</td>" +
+        "<td class='ops'>—</td>" +
+        "<td class='okn'>—</td>" +
+        "<td class='emp'>—</td>" +
+        "<td class='note'></td>";
+      el.tbody.appendChild(tr);
+    }
+    if (patch.status) {
+      tr.className = patch.status;
+      tr.querySelector(".st").textContent = patch.status;
+    }
+    if (patch.ms != null) tr.querySelector(".ms").textContent = String(patch.ms);
+    if (patch.ops != null) tr.querySelector(".ops").textContent = String(patch.ops);
+    if (patch.okn != null) tr.querySelector(".okn").textContent = String(patch.okn);
+    if (patch.emp != null) tr.querySelector(".emp").textContent = patch.emp;
+    if (patch.note != null) tr.querySelector(".note").textContent = patch.note;
+  }
+
+  function updateStats(done, total, ok, fail) {
+    el.stDone.textContent = done + "/" + total;
+    el.stOk.textContent = String(ok);
+    el.stFail.textContent = String(fail);
+    el.stMs.textContent = String(Date.now() - (state.t0 || Date.now()));
+    var pct = total ? Math.round((done / total) * 100) : 0;
+    el.progBar.style.width = pct + "%";
+  }
+
+  async function resolveVersion() {
+    if (V) return V;
+    try {
+      var r = await fetch("/g5/v1/sdk/bootstrap", { cache: "no-store", credentials: "same-origin" });
+      var j = await r.json();
+      V = String(j.product_version || j.version || "");
+    } catch (e) {
+      V = "";
+    }
+    el.verPill.textContent = V || "no-v";
+    el.verPill.className = "pill " + (V ? "ok" : "fail");
+    return V;
+  }
+
+  async function bootRuntime() {
+    ensureCollectors();
+    // deep_probe_lists optional (some anti ops)
+    try {
+      await loadScript(withVer("/g5/dist/collectors/deep_probe_lists.min.js"));
+    } catch (e0) {
+      try {
+        await loadScript(withVer("/g5/dist/collectors/deep_probe_lists.js"));
+      } catch (e1) {
+        log("warn deep_probe_lists skip", e1 && e1.message);
+      }
+    }
+    await loadScript(withVer("/g5/dist/collectors/registry.random.rt.min.js")).catch(function () {
+      return loadScript(withVer("/g5/dist/collectors/registry.random.rt.js"));
+    });
+    if (!window.GRRandomVerify || typeof GRRandomVerify.registerPack !== "function") {
+      throw new Error("GRRandomVerify runtime missing after rt load");
+    }
+    log("runtime ok", GRRandomVerify.algo || "", "dims", (GRRandomVerify.dimensions || []).length);
+    refreshGov();
+  }
+
+  async function loadPack(pid) {
+    if (window.GRCollectors && GRCollectors.get && GRCollectors.get(pid)) {
+      return "present";
+    }
+    if (window.__GR_R_PACK_LOADED__ && __GR_R_PACK_LOADED__[pid]) {
+      return "flag";
+    }
+    var mode = el.srcMode.value;
+    if (mode === "api") {
+      try {
+        await loadScript(withVer("/g5/v1/r100/pack/" + pid + ".js"));
+        return "api";
+      } catch (eA) {
+        log("api load fail", pid, "fallback static");
+      }
+    }
+    await loadScript(withVer("/g5/dist/collectors/random/" + pid + ".min.js")).catch(function () {
+      return loadScript(withVer("/g5/dist/collectors/random/" + pid + ".js"));
+    });
+    return "static";
+  }
+
+  async function runOne(pid) {
+    var t0 = performance.now();
+    upsertRow(pid, { status: "run", note: "loading…" });
+    el.curPack.textContent = pid;
+    var src = await loadPack(pid);
+    var def = window.GRCollectors && GRCollectors.get && GRCollectors.get(pid);
+    if (!def || typeof def.run !== "function") {
+      // Sometimes register is async-ish; small wait
+      await sleep(20);
+      def = window.GRCollectors && GRCollectors.get && GRCollectors.get(pid);
+    }
+    if (!def || typeof def.run !== "function") {
+      throw new Error("pack not registered after load (" + src + ")");
+    }
+    upsertRow(pid, { status: "run", note: "running (" + src + ")…" });
+    var ctx = mockCtx();
+    var fields = await Promise.resolve(def.run(ctx));
+    // If emit returned fields, use them; else captures
+    if (!fields || typeof fields !== "object") {
+      var cap = ctx.queue._captures && ctx.queue._captures[0];
+      fields = (cap && cap.payload && cap.payload.fields) || {};
+    }
+    // Soft release between packs
+    try {
+      if (window.GRGlGovernor) {
+        if (GRGlGovernor.releaseSoft) GRGlGovernor.releaseSoft();
+        else if (GRGlGovernor.releaseAll) GRGlGovernor.releaseAll();
+      }
+    } catch (eR) {}
+
+    var ms = Math.round(performance.now() - t0);
+    var ops = fields.verify_probe_ops_n != null ? fields.verify_probe_ops_n : fields.verify_exec_n;
+    var okn = fields.verify_ok_n;
+    var emptyN = fields.verify_empty_n;
+    var emptyRatio =
+      ops > 0 && emptyN != null ? Math.round((emptyN / ops) * 1000) / 10 : null;
+    // Heuristic fail: load/run throw already handled; empty-heavy or zero ops
+    var fail =
+      !ops ||
+      ops < 1 ||
+      (emptyRatio != null && emptyRatio >= 80) ||
+      (fields.verify_dim_fail_n != null && fields.verify_dim_fail_n >= 6);
+    var note =
+      "src=" +
+      src +
+      (fields.verify_dim_fail && fields.verify_dim_fail.length
+        ? " dim_fail=" + fields.verify_dim_fail.slice(0, 4).join(",")
+        : "");
+    return {
+      pack_id: pid,
+      ok: !fail,
+      ms: ms,
+      ops: ops,
+      okn: okn,
+      empty_n: emptyN,
+      empty_ratio: emptyRatio,
+      note: note,
+      fields: fields,
+      dry_run: !!el.dryRun.checked,
+    };
+  }
+
+  async function runAll() {
+    state.running = true;
+    state.paused = false;
+    state.stop = false;
+    state.results = [];
+    state.t0 = Date.now();
+    el.btnStart.disabled = true;
+    el.tbody.innerHTML = "";
+    el.log.value = "";
+
+    var from = Math.max(0, Math.min(99, el.fromN.value | 0));
+    var to = Math.max(0, Math.min(99, el.toN.value | 0));
+    if (to < from) {
+      var tmp = from;
+      from = to;
+      to = tmp;
+    }
+    var total = to - from + 1;
+    var ok = 0;
+    var fail = 0;
+    log("start R" + (from < 10 ? "0" : "") + from + "…R" + (to < 10 ? "0" : "") + to, "gap=" + (el.gapMs.value | 0) + "ms");
+
+    try {
+      await resolveVersion();
+      await bootRuntime();
+    } catch (eBoot) {
+      log("BOOT FAIL", eBoot && eBoot.message ? eBoot.message : eBoot);
+      el.btnStart.disabled = false;
+      state.running = false;
+      return;
+    }
+
+    for (var n = from; n <= to; n++) {
+      if (state.stop) {
+        log("stopped by user");
+        break;
+      }
+      await waitWhilePaused();
+      if (state.stop) break;
+      var pid = packId(n);
+      try {
+        var row = await runOne(pid);
+        state.results.push(row);
+        if (row.ok) ok++;
+        else fail++;
+        upsertRow(pid, {
+          status: row.ok ? "ok" : "fail",
+          ms: row.ms,
+          ops: row.ops,
+          okn: row.okn,
+          emp: row.empty_ratio != null ? row.empty_ratio + "%" : "—",
+          note: row.note,
+        });
+        log(
+          pid,
+          row.ok ? "OK" : "FAIL",
+          row.ms + "ms",
+          "ops=" + row.ops,
+          "ok=" + row.okn,
+          "empty=" + row.empty_n
+        );
+        if (!row.ok && el.stopOnFail.checked) {
+          log("stopOnFail — paused at", pid);
+          state.paused = true;
+          el.btnPause.textContent = "Resume";
+        }
+      } catch (eRun) {
+        fail++;
+        var msg = String(eRun && eRun.message ? eRun.message : eRun);
+        state.results.push({ pack_id: pid, ok: false, error: msg, ms: 0 });
+        upsertRow(pid, { status: "fail", ms: 0, ops: 0, okn: 0, emp: "—", note: msg });
+        log(pid, "ERROR", msg);
+        if (el.stopOnFail.checked) {
+          state.paused = true;
+          el.btnPause.textContent = "Resume";
+        }
+      }
+      updateStats(n - from + 1, total, ok, fail);
+      refreshGov();
+      var gap = Math.max(0, el.gapMs.value | 0);
+      if (gap) await sleep(gap);
+    }
+
+    log("done ok=" + ok + " fail=" + fail + " total_ms=" + (Date.now() - state.t0));
+    el.btnStart.disabled = false;
+    state.running = false;
+    el.curPack.textContent = "—";
+    refreshGov();
+  }
+
+  el.btnStart.onclick = function () {
+    if (state.running) return;
+    runAll();
+  };
+  el.btnPause.onclick = function () {
+    if (!state.running) return;
+    state.paused = !state.paused;
+    el.btnPause.textContent = state.paused ? "Resume" : "Pause";
+    log(state.paused ? "paused" : "resumed");
+  };
+  el.btnStop.onclick = function () {
+    state.stop = true;
+    state.paused = false;
+    el.btnPause.textContent = "Pause";
+    log("stop requested");
+  };
+  el.btnClear.onclick = function () {
+    el.tbody.innerHTML = "";
+    el.log.value = "";
+    state.results = [];
+    updateStats(0, 0, 0, 0);
+  };
+  el.btnExport.onclick = function () {
+    var blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            product_version: V,
+            exported_at: new Date().toISOString(),
+            results: state.results,
+          },
+          null,
+          2
+        ),
+      ],
+      { type: "application/json" }
+    );
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "r100_lab_results_" + Date.now() + ".json";
+    a.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(a.href);
+    }, 2000);
+  };
+
+  // boot version label
+  resolveVersion().then(function () {
+    refreshGov();
+    log("ready — open console, click Start. URL should be https://gr-lab.local:8443/g5/r100_lab_test.html");
+  });
+})();
+  </script>
+</body>
+</html>

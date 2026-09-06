@@ -1,0 +1,23 @@
+{
+  "algo": "gv5_puf_dual_kpi_v1",
+  "note": "A6 PUF 双 KPI lab 定标 SSOT. Only spec edits needed when the real-machine calibration matrix lands: uniqueness (cross-VT collision rate) and reliability (same-VT repeat consistency) thresholds gate device_id V-slot admission. Values mirror the built-in constants exactly — additive entry, no behavior change.",
+  "dual_kpi_required": true,
+  "calibration": {
+    "source": "builtin_default",
+    "status": "pending_lab",
+    "lab_todo": "real-machine matrix: seed_replay (B10x), contention_hist (B92 WebGPU atomic), eu_timing (B95 GPU EU) — record per-material cross-IP digests and same-VT repeats, then replace thresholds here"
+  },
+  "uniqueness": {
+    "min_sessions": 30,
+    "pass_rate": 0.98
+  },
+  "reliability": {
+    "min_repeats": 10,
+    "pass_rate": 0.97
+  },
+  "materials": {
+    "seed_replay": { "status": "lab_pending" },
+    "contention_hist": { "status": "lab_pending" },
+    "eu_timing": { "status": "lab_pending" }
+  }
+}

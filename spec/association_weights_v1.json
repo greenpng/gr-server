@@ -1,0 +1,51 @@
+{
+  "algo": "composite_association_v1",
+  "version": 1,
+  "note": "Group weights for soft continuity fusion. Aligned with material_trust_prior / field_product_matrix; Soft_ref never lifts commercial mint.",
+  "groups": {
+    "HW_silicon": {
+      "weight": 0.28,
+      "materials": ["hw_webgl_stable", "hw_audio_stable", "residual_class", "b10x_dual_ok"]
+    },
+    "HW_precision": {
+      "weight": 0.12,
+      "materials": ["point_agree_0p001", "point_agree_0p0001", "point_agree_0p00001"],
+      "note": "Finer than 0.001 only raises continuity; cannot override 0.001 floor conflict"
+    },
+    "HW_alt": {
+      "weight": 0.08,
+      "materials": ["hw_webgpu_compute_digest", "eu_timing_bucket"]
+    },
+    "SW_stable": {
+      "weight": 0.16,
+      "materials": ["form_class", "cores_class", "architecture", "timezone", "audio_deep_phase"]
+    },
+    "Host": {
+      "weight": 0.18,
+      "materials": ["webrtc_host_ip_hash", "os_instance_hash"],
+      "prefer": "webrtc_host_ip_hash"
+    },
+    "Nest": {
+      "weight": 0.10,
+      "materials": ["nest_vs_main_agree_0p001", "nest_vs_main_comparable"]
+    },
+    "Channel": {
+      "weight": 0.08,
+      "materials": ["sandbox_consistency", "fp_channel_scores"]
+    },
+    "Soft_ref": {
+      "weight": 0.0,
+      "max_contribution": 0.05,
+      "materials": ["engine_family", "user_agent", "server_client_ip"],
+      "note": "low-weight reference / veto only; never promote mint"
+    }
+  },
+  "bands": {
+    "confirmed": 0.82,
+    "likely": 0.62,
+    "weak": 0.40,
+    "distinct": 0.0
+  },
+  "demote_dh_below": 0.38,
+  "public_link_min": 0.60
+}

@@ -1,0 +1,443 @@
+# 正式打包 + Gate B(打包后再测) + 发行 — docs/workstreams/gr-server/11-package-retest-publish.md。
+# 前置: 同一 SHA 上 Gate A(gate-a.yml) 已全绿; 本流的 gate-a-status 强制校验并等待。
+# 流程: prepare(共享 build_id) → fe(共享 FE/admin tgz, 单源) → package(双架构原生,
+# 生产根钥 Secret, 不上传) → merge(组装 dist/release-<VER>/) → gate-b(用刚打出的包
+# 安装/升级再测) → publish(Gate B 全绿才 tag v<VERSION> + Release, 拒绝覆盖已有 tag)。
+# Gate B 红不 tag; 禁止「再编一份未测字节上传」。
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Gate B 全绿后 tag + 上传 Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate-a-status:
+    # 强制: 本次打包的 commit 必须先通过 Gate A (双架构 conclusion=success)。
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: wait for gate-a on ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 55); do
+            out=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs?per_page=100" \
+                  --jq '[.check_runs[] | select(.name | startswith("gate-a"))]') || out=""
+            n=$(printf '%s' "$out" | jq 'length')
+            if [[ "$n" -ge 2 ]]; then
+              bad=$(printf '%s' "$out" | jq -r '[.[] | select(.conclusion != "success")] | length')
+              pend=$(printf '%s' "$out" | jq -r '[.[] | select(.status != "completed")] | length')
+              if [[ "$pend" == "0" ]]; then
+                if [[ "$bad" == "0" ]]; then
+                  echo "gate-a green on this SHA ($n jobs)"; exit 0
+                fi
+                printf '%s' "$out" | jq -r '.[] | "\(.name): \(.conclusion)"'
+                echo "gate-a has non-success jobs — refusing to package" >&2; exit 1
+              fi
+            fi
+            echo "waiting for gate-a completion (${i}/55)…"; sleep 60
+          done
+          echo "gate-a did not complete within timeout — refusing to package" >&2; exit 1
+
+  prepare:
+    # P0-1: 一次 release 一个 build_id, 全架构共享 (合并后的产物是同一身份)。
+    needs: gate-a-status
+    runs-on: ubuntu-24.04
+    outputs:
+      build_id: ${{ steps.gen.outputs.build_id }}
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: ver
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+      - id: gen
+        run: echo "build_id=$(openssl rand -hex 12)" >> "$GITHUB_OUTPUT"
+
+  fe:
+    # FE/admin 包必须出自单 job: 混淆输出跨 job 不确定, 而每个 arch manifest 必须
+    # 哈希同一份 tgz (v6.0.29 事故)。确定性 tar 头 (mtime/uid/order) + gzip -n。
+    needs: prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install FE obfuscator
+        run: npm install --prefix scripts/fe --no-audit --no-fund
+      - name: Build shared FE + admin-spa bundles
+        env:
+          GR_BUILD_ID: ${{ needs.prepare.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          bash scripts/fe/rebuild_bundles.sh
+          mkdir -p dist/fe-bundle
+          tar -C "$GITHUB_WORKSPACE" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+              -cf - probe/fe | gzip -n -9 > "dist/fe-bundle/fe-${VERSION}.tgz"
+          if [[ -d panel/admin-spa ]]; then
+            tar -C "$GITHUB_WORKSPACE" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+                -cf - panel/admin-spa | gzip -n -9 > "dist/fe-bundle/admin-spa.tgz"
+          fi
+          ls -l dist/fe-bundle/
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: fe-bundle
+          path: dist/fe-bundle
+          if-no-files-found: error
+
+  package:
+    needs: [prepare, fe]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+            triple: x86_64-unknown-linux-gnu
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+            triple: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.88.0"
+      - name: Assert version SSOT
+        run: |
+          set -euo pipefail
+          ROOT_V=$(tr -d '[:space:]' < VERSION)
+          FE_V=$(tr -d '[:space:]' < probe/fe/VERSION)
+          CARGO_V=$(sed -n 's/^version = "\(.*\)"/\1/p' <(sed -n '/\[workspace.package\]/,/^\[/p' Cargo.toml) | head -1)
+          PROBE_V=$(tr -d '[:space:]' < VERSION.probe)
+          [[ "$ROOT_V" == "$FE_V" && "$ROOT_V" == "$CARGO_V" && "$ROOT_V" == "$PROBE_V" ]] || {
+            echo "version drift" >&2; exit 1; }
+      - name: Install FE obfuscator
+        run: npm install --prefix scripts/fe --no-audit --no-fund
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: fe-bundle
+          path: dist/fe-bundle
+      - name: Build host arch release tree (production root key)
+        env:
+          HOST_ONLY: "1"
+          SKIP_PUBLISH: "1"
+          GR_BUILD_ID: ${{ needs.prepare.outputs.build_id }}
+          GR_OTA_SIGNING_KEY: ${{ secrets.GR_OTA_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          if [[ -z "${GR_OTA_SIGNING_KEY:-}" ]]; then
+            echo "GR_OTA_SIGNING_KEY secret is required (production root key; never keygen here)" >&2
+            exit 1
+          fi
+          # Secret 以 base64 文本存放 (原始 32 字节会让 Actions 启动失败), 解码到
+          # 与本地构建相同的 keys/ 布局; 私钥永不进 artifact / git。
+          mkdir -p keys
+          printf '%s' "$GR_OTA_SIGNING_KEY" | base64 -d > keys/ota_ed25519.sk
+          chmod 600 keys/ota_ed25519.sk
+          # 公钥来自仓内根副本, 且必须与 install.sh 钉死的指纹一致
+          cp ota_ed25519.pk keys/ota_ed25519.pk
+          pin=$(grep -oE '4a2296d3[0-9a-f]{56}|6dffd7d3[0-9a-f]{56}' install/install.sh | head -1)
+          got=$(sha256sum keys/ota_ed25519.pk | awk '{print $1}')
+          [[ "$got" == "$pin" ]] || { echo "root pk fingerprint drift: install.sh pins $pin, repo pk is $got" >&2; exit 1; }
+          export GR_FE_MASTER_TGZ="dist/fe-bundle/fe-${VERSION}.tgz"
+          export GR_ADMIN_MASTER_TGZ="dist/fe-bundle/admin-spa.tgz"
+          [[ -f "$GR_FE_MASTER_TGZ" ]] || { echo "missing shared FE bundle" >&2; exit 1; }
+          TARGETS="${{ matrix.arch }}" SKIP_PUBLISH=1 bash release/build_multiarch.sh
+          mkdir -p dist/ci-${{ matrix.arch }}
+          SRC="dist/release-${VERSION}"
+          [[ -d "$SRC" ]] || SRC="dist/release-${VERSION}-${{ matrix.arch }}"
+          [[ -d "$SRC" ]] || { echo "no dist tree under dist/release-${VERSION}*" >&2; find dist -maxdepth 2 -type d; exit 1; }
+          cp -a "$SRC/." "dist/ci-${{ matrix.arch }}/"
+          rm -rf "dist/ci-${{ matrix.arch }}/keys-release" dist/keys-release-*
+          python3 release/cargo_cyclonedx.py > "dist/ci-${{ matrix.arch }}/sbom.cdx.json"
+          test -s "dist/ci-${{ matrix.arch }}/sbom.cdx.json"
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: release-${{ matrix.arch }}
+          path: dist/ci-${{ matrix.arch }}
+
+  merge:
+    # 组装 dist/release-<VER>/: per-arch manifest 已各自被根钥签署(内嵌自身
+    # release_pubkey/cert), 合并只做重命名 + index + 一致性守卫, 不再重签。
+    needs: [prepare, package]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          path: dist/artifacts
+      - name: Merge per-arch trees + integrity guards
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          MERGE="dist/release-$VERSION"
+          mkdir -p "$MERGE"
+          cp -a dist/artifacts/release-x86_64/. "$MERGE/" || true
+          cp -a dist/artifacts/release-aarch64/. "$MERGE/" || true
+          python3 - <<'PY'
+          import json, pathlib, re
+          version = open("VERSION").read().strip()
+          merge = pathlib.Path(f"dist/release-{version}")
+          index = {"product": "green-v7", "version": version, "architectures": {}}
+          for arch_dir in sorted(pathlib.Path("dist/artifacts").glob("release-*")):
+              man_path = arch_dir / "manifest.json"
+              if not man_path.is_file():
+                  print(f"WARN: no manifest.json in {arch_dir}")
+                  continue
+              man = json.loads(man_path.read_text())
+              arch = man.get("arch") or re.sub(r"^release-", "", arch_dir.name)
+              triples = {"x86_64": "x86_64-unknown-linux-gnu", "aarch64": "aarch64-unknown-linux-gnu"}
+              triple = man.get("triple") or triples.get(arch)
+              (merge / f"manifest-{arch}.json").write_text(json.dumps(man, indent=2) + "\n")
+              index["architectures"][arch] = {"manifest": f"manifest-{arch}.json", "triple": triple}
+          (merge / "manifest-index.json").write_text(json.dumps(index, indent=2) + "\n")
+          for p in merge.glob("manifest.json"):
+              p.unlink()
+          # 模块 sidecar 跨架构同名歧义: 消费方一律用签名 manifest 的 modules[]
+          for p in merge.glob("*.artifact.json"):
+              p.unlink()
+          print(json.dumps(index, indent=2))
+          assert len(index["architectures"]) == 2, "both architectures must be present"
+          PY
+          # 同一份 FE 包必须匹配每个 arch manifest (不发货部分安装器会拒绝的版本)
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          version = open("VERSION").read().strip()
+          merge = pathlib.Path(f"dist/release-{version}")
+          fe = merge / f"fe-{version}.tgz"
+          errors = []
+          for man_path in sorted(merge.glob("manifest-*.json")):
+              man = json.loads(man_path.read_text())
+              want = (man.get("fe") or {}).get("sha256")
+              if want and fe.is_file():
+                  got = hashlib.sha256(fe.read_bytes()).hexdigest()
+                  if got != want:
+                      errors.append(f"{man_path.name}: fe sha {got} != manifest {want}")
+          if errors:
+              print("MERGE INTEGRITY FAIL:")
+              for e in errors:
+                  print(" -", e)
+              raise SystemExit(1)
+          print("merge integrity: FE bundle matches all per-arch manifests")
+          PY
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.88.0"
+      - name: release_tree_verify on merged dir (B5a)
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          MERGE="dist/release-$VERSION"
+          GR_RT_MANIFEST="$MERGE/manifest-x86_64.json" \
+          GR_RT_PUBKEY="$MERGE/ota_ed25519.pk" \
+          GR_RT_DIR="$MERGE" \
+          cargo test -p gr-ota --test release_tree_verify -- --nocapture
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: release-dist
+          path: dist/release-${{ needs.prepare.outputs.version }}
+          if-no-files-found: error
+
+  gate-b:
+    # 打包后再测: 用户用这份字节装得上、升得上、健康门过 (双架构)。
+    needs: [prepare, merge]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.88.0"
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: release-dist
+          path: dist/release
+      - name: verify artifact pk == installer pin
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          DIST="$PWD/dist/release/release-$VERSION"
+          [[ -d "$DIST" ]] || { find dist -maxdepth 3 -type d; echo "dist tree missing" >&2; exit 1; }
+          pin=$(grep -oE '4a2296d3[0-9a-f]{56}|6dffd7d3[0-9a-f]{56}' install/install.sh | head -1)
+          got=$(sha256sum "$DIST/ota_ed25519.pk" | awk '{print $1}')
+          [[ "$got" == "$pin" ]] || { echo "artifact pk drift" >&2; exit 1; }
+          echo "DIST=$DIST" >> "$GITHUB_ENV"
+          SRV_PORT=$((18000 + RANDOM % 2000))
+          echo "SRV_PORT=$SRV_PORT" >> "$GITHUB_ENV"
+          nohup python3 -m http.server "$SRV_PORT" --bind 127.0.0.1 --directory "$DIST" >/tmp/srv.log 2>&1 &
+          sleep 2
+          curl -fsS "http://127.0.0.1:${SRV_PORT}/manifest-index.json" >/dev/null && echo "artifact server up"
+      - name: B1 sh install from this artifact
+        run: |
+          set -euo pipefail
+          cd install/docker
+          if [[ ! -f .env ]]; then
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
+            echo "REDIS_PASSWORD=$(openssl rand -hex 16)" >> .env
+          fi
+          docker compose up -d
+          for db in gr_biz gr_admin gr_assoc; do
+            ok=0
+            for i in $(seq 1 90); do
+              docker compose exec -T postgres psql -U gv6 -d postgres -c "CREATE DATABASE $db" >/dev/null 2>&1 || true
+              if docker compose exec -T postgres psql -U gv6 -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" 2>/dev/null | grep -q 1; then
+                ok=1; break
+              fi
+              sleep 1
+            done
+            [[ "$ok" == 1 ]] || { echo "db $db never appeared" >&2; exit 1; }
+          done
+          cd "$GITHUB_WORKSPACE"
+          set -a; source install/docker/.env; set +a
+          cat > "$RUNNER_TEMP/gr.env" <<EOF
+          GR_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/greenv6
+          GR_BIZ_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_biz
+          GR_ASSOCIATION_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_assoc
+          GR_ADMIN_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_admin
+          GR_REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/0
+          GR_OFFICIAL_URL=https://example.com
+          GR_OAUTH_ADMIN_EMAILS=admin@example.com
+          GR_OAUTH_LOCAL_USER=admin
+          GR_OAUTH_REDIRECT_URI=http://127.0.0.1:28680/oauth/callback
+          GR_ANALYZE_WORKERS=1
+          EOF
+          VERSION=${{ needs.prepare.outputs.version }}
+          GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
+          GR_RAW_BASE="http://127.0.0.1:${SRV_PORT}/" \
+            bash install/install.sh --arch "${{ matrix.arch }}" --version "$VERSION" \
+              --prefix "$RUNNER_TEMP/gr" --env-file "$RUNNER_TEMP/gr.env" \
+              --no-systemd --yes 2>&1 | tee /tmp/install-b1.log
+          grep -E '^(VERSION|ARCH|CONSOLE|PREFIX)=' "$RUNNER_TEMP/gr/install-state.env"
+          bash install/test/smoke_install.sh --prefix "$RUNNER_TEMP/gr"
+      - name: B2 --with-docker install from this artifact
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
+          GR_RAW_BASE="http://127.0.0.1:${SRV_PORT}/" \
+            bash install/install.sh --arch "${{ matrix.arch }}" --version "$VERSION" \
+              --with-docker --prefix "$RUNNER_TEMP/gr-docker" --no-systemd --yes 2>&1 | tee /tmp/install-b2.log
+          bash install/test/smoke_install.sh --prefix "$RUNNER_TEMP/gr-docker"
+      - name: B3 upgrade from previous stable (old repo, rotated root)
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          # 旧稳定版 v8.0.2 发布于 greenpng/install, 钉的是旧信任根指纹 → 用 ENV 覆盖
+          GR_RELEASE_REPO=greenpng/install \
+          GR_RELEASE_BASE="https://github.com/greenpng/install/releases/download/v8.0.2" \
+          GR_RAW_BASE="https://raw.githubusercontent.com/greenpng/install/main" \
+          GR_OTA_ROOT_PUBKEY_SHA256=6dffd7d3c40b75a21db766cbee97ddebef21bcf089e30ba6dea0db5d8a1754a2 \
+            bash install/install.sh --arch "${{ matrix.arch }}" --version 8.0.2 \
+              --prefix "$RUNNER_TEMP/gr-old" --env-file "$RUNNER_TEMP/gr.env" \
+              --no-systemd --yes 2>&1 | tee /tmp/install-b3-old.log
+          # 升级到本次 artifact (新信任根, pk 随 dist 树下发)
+          VERSION="$VERSION" INSTALL_ROOT="$RUNNER_TEMP/gr-old" \
+          GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
+            bash install/release/update_runtime_from_github.sh 2>&1 | tee /tmp/install-b3-up.log
+          # 升级后健康门 + 版本落位
+          bash install/test/smoke_install.sh --prefix "$RUNNER_TEMP/gr-old"
+          [[ "$(tr -d '[:space:]' < "$RUNNER_TEMP/gr-old/VERSION")" == "$VERSION" ]] || {
+            echo "upgrade did not land VERSION=$VERSION" >&2; exit 1; }
+          ls "$RUNNER_TEMP/gr-old/bin/releases/" | head -5
+      - name: B5 release_tree_verify on artifact dir
+        run: |
+          set -euo pipefail
+          GR_RT_MANIFEST="$DIST/manifest-x86_64.json" \
+          GR_RT_PUBKEY="$DIST/ota_ed25519.pk" \
+          GR_RT_DIR="$DIST" \
+          cargo test -p gr-ota --test release_tree_verify -- --nocapture
+      - name: upload gate-b logs
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: gate-b-${{ matrix.arch }}
+          path: |
+            /tmp/install-b1.log
+            /tmp/install-b2.log
+            /tmp/install-b3-old.log
+            /tmp/install-b3-up.log
+          if-no-files-found: ignore
+
+  publish:
+    # Gate B 全绿才发版: tag v<VERSION> 打在与打包相同的 commit; 已有 tag 拒绝覆盖。
+    needs: [prepare, gate-b]
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: release-dist
+          path: dist/release
+      - name: tag + create GitHub Release (immutable)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.prepare.outputs.version }}
+          MERGE="dist/release/release-$VERSION"
+          TAG="v${VERSION}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "release $TAG exists — refusing to mutate immutable tag/assets" >&2
+            exit 1
+          fi
+          sha="$(git rev-parse HEAD)"
+          mapfile -t ASSETS < <(find "$MERGE" -maxdepth 1 -type f | sort)
+          gh release create "$TAG" "${ASSETS[@]}" --repo "${{ github.repository }}" \
+            --target "$sha" \
+            --title "Green V7 / GR ${VERSION}" \
+            --notes "Multi-arch release (x86_64 + aarch64). VERSION=${VERSION} commit=${sha}.
+
+          Install: \`curl -fsSL https://raw.githubusercontent.com/greenpng/gr-server/main/install/install.sh | bash\`
+          Update: panel OTA or \`install/release/update_runtime_from_github.sh\` (same tag).
+
+          Assets are immutable; fixes ship as a new PATCH version."
+          echo "published $TAG"
+
+  provenance:
+    needs: publish
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: release-dist
+          path: dist/release
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/release/release-*/gr-service-*
+            dist/release/release-*/gr-cli-*
+            dist/release/release-*/libgr_*.so
+            dist/release/release-*/manifest-*.json
+            dist/release/release-*/manifest-index.json
+            dist/release/release-*/fe-*.tgz
+            dist/release/release-*/admin-spa.tgz
+            dist/release/release-*/sbom.cdx.json
+            dist/release/release-*/build_id
+            dist/release/release-*/ota_ed25519.pk

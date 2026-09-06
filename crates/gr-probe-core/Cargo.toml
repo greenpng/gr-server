@@ -1,0 +1,29 @@
+[package]
+name = "gr-probe-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "green-v6 probe core (copied from v5; maintained in-tree): contracts, truth, bot, link, soft_v2, brain, inject, evaluate"
+build = "build.rs"
+
+[dependencies]
+gr-abi = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+md-5 = "0.10"
+regex = { workspace = true }
+thiserror = { workspace = true }
+flate2 = "1"
+hmac = "0.12"
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
+ed25519-dalek = { workspace = true }
+maxminddb = "0.24"
+once_cell = "1.19"
+gr-obf = { path = "../gr-obf" }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+hex = { workspace = true }

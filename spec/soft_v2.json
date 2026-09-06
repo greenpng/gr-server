@@ -1,0 +1,9 @@
+{
+  "version": "v5.0",
+  "promote_to_commercial_id": false,
+  "p1_window_ms": 300000,
+  "p2_window_ms": 3600000,
+  "hot_bucket_threshold": 32,
+  "legacy_bare_hs2_edges_default": false,
+  "notes": "WP3.5 Soft Blocking V2 — must be green before Phase D pack amplify"
+}

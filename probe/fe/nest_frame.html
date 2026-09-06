@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>gr nest frame</title>
+    <!-- Standard-C opaque: never hardcode product basenames (gl_governor / rpa_monitor).
+         Parent passes ?gl= and ?rpa= as /g5/dist/<hash>.min.js (or same-origin parent manifest). -->
+    <script>
+      (function () {
+        function isOpaqueUrl(u) {
+          try {
+            var base = String(u || "")
+              .split("?")[0]
+              .split("#")[0]
+              .replace(/^.*\//, "");
+            return (
+              /^[a-f0-9]{8,16}\.(min\.)?(js|wasm|html)$/i.test(base) ||
+              /\.[a-f0-9]{8,16}\.(min\.)?(js|wasm|html)$/i.test(base)
+            );
+          } catch (e) {
+            return false;
+          }
+        }
+        function loadScript(src) {
+          return new Promise(function (resolve) {
+            try {
+              if (!src || !isOpaqueUrl(src)) return resolve(false);
+              if (document.querySelector('script[src="' + src + '"]')) return resolve(true);
+              var s = document.createElement("script");
+              s.async = false;
+              s.src = src;
+              s.onload = function () {
+                resolve(true);
+              };
+              s.onerror = function () {
+                resolve(false);
+              };
+              (document.head || document.documentElement).appendChild(s);
+            } catch (eL) {
+              resolve(false);
+            }
+          });
+        }
+        function resolveFromParent(key) {
+          try {
+            if (!parent || parent === window) return "";
+            var man =
+              parent.__GR_MANIFEST__ ||
+              (parent.__GR_BOOT__ && parent.__GR_BOOT__.manifest) ||
+              null;
+            if (man && man.assets && man.assets[key]) return String(man.assets[key]);
+            if (key === "gl_governor" && man && man.gl_governor_url)
+              return String(man.gl_governor_url);
+          } catch (eP) {}
+          return "";
+        }
+        var params = new URLSearchParams(location.search || "");
+        var gl = params.get("gl") || resolveFromParent("gl_governor") || "";
+        var rpa = params.get("rpa") || resolveFromParent("rpa_monitor") || "";
+        // Gate body work until optional opaque deps settle (best-effort).
+        window.__GR_NEST_DEPS_P__ = Promise.all([loadScript(gl), loadScript(rpa)]);
+      })();
+    </script>
+  </head>
+  <body>
+    <script>
+      (function () {
+        function start() {
+        var params = new URLSearchParams(location.search);
+        var kind = params.get("kind") || "iframe";
+        var depth = parseInt(params.get("depth") || "1", 10);
+        var session_id = params.get("session_id") || "";
+        var page_id = params.get("page_id") || null;
+        var page_url = params.get("page_url") || "";
+        try {
+          if (!page_url) page_url = String(params.get("parent_href") || "");
+        } catch (e) {}
+        var source = kind + ":d" + depth;
+        var inject_path = params.get("inject_path") || null;
+
+        var payload = {
+          user_agent: navigator.userAgent || "",
+          hardware_concurrency: navigator.hardwareConcurrency != null ? navigator.hardwareConcurrency : null,
+          device_memory: navigator.deviceMemory != null ? navigator.deviceMemory : null,
+          language: navigator.language || "",
+          languages: navigator.languages ? Array.prototype.slice.call(navigator.languages) : [],
+          platform: navigator.platform || "",
+          vendor: navigator.vendor || "",
+          webdriver: !!navigator.webdriver,
+          max_touch_points: navigator.maxTouchPoints != null ? navigator.maxTouchPoints : null,
+          plugins_len: navigator.plugins ? navigator.plugins.length : 0,
+          mime_types_len: navigator.mimeTypes ? navigator.mimeTypes.length : 0,
+          chrome_runtime: !!(window.chrome && window.chrome.runtime),
+          chrome_present: !!window.chrome,
+          toStringNative: (function () {
+            try {
+              return Function.prototype.toString.toString().indexOf("[native code]") >= 0;
+            } catch (e) {
+              return false;
+            }
+          })(),
+          product_sub: navigator.productSub || "",
+          app_version: navigator.appVersion || "",
+          timezone: (function () {
+            try {
+              return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+            } catch (e) {
+              return "";
+            }
+          })(),
+          timezone_offset_min: (function () {
+            try {
+              return new Date().getTimezoneOffset();
+            } catch (e2) {
+              return null;
+            }
+          })(),
+          os_family: (function () {
+            var p = String(navigator.platform || "").toLowerCase();
+            var u = String(navigator.userAgent || "").toLowerCase();
+            if (/win/.test(p) || /windows/.test(u)) return "windows";
+            if (/mac/.test(p) || /mac os/.test(u)) return "macos";
+            if (/linux|x11/.test(p) || /linux/.test(u)) return "linux";
+            if (/android/.test(u)) return "android";
+            if (/iphone|ipad|ios/.test(u)) return "ios";
+            return "other";
+          })(),
+          sandbox_kind: kind,
+          nest_depth: depth,
+          href: String(location.href),
+          rpa_surface_ready: true,
+          identity_surface: true,
+          nest_silicon_algo: "gr_nest_silicon_lite_v1",
+        };
+
+        function postParent(msg) {
+          try {
+            parent.postMessage(msg, "*");
+          } catch (e) {}
+        }
+
+        /**
+         * Safe multi-source silicon recollect (iframe): lite residual + audio.
+         * Goal: true dual-source residual for mint gate (main + nest), not dual-channel only.
+         * Budget: short, no unit surface / no multiround — conf + multi-source compare.
+         */
+        function collectNestSiliconLite(done) {
+          var out = {};
+          var pending = 2;
+          function step() {
+            pending--;
+            if (pending <= 0) done(out);
+          }
+          // --- WebGL residual: same v3b shader+strip mean as main (not hist-lite scale) ---
+          try {
+            var SZ = 64;
+            var c = document.createElement("canvas");
+            c.width = SZ;
+            c.height = SZ;
+            var gl =
+              c.getContext("webgl", { antialias: false, preserveDrawingBuffer: true }) ||
+              c.getContext("experimental-webgl", { antialias: false, preserveDrawingBuffer: true });
+            if (gl) {
+              var vs = gl.createShader(gl.VERTEX_SHADER);
+              gl.shaderSource(vs, "attribute vec2 a;void main(){gl_Position=vec4(a,0.0,1.0);}");
+              gl.compileShader(vs);
+              var fs = gl.createShader(gl.FRAGMENT_SHADER);
+              gl.shaderSource(
+                fs,
+                "precision mediump float;void main(){vec2 uv=gl_FragCoord.xy;float k=0.0;" +
+                  "float ax=uv.x*(0.137+k*0.01)+uv.y*(0.091+k*0.007);" +
+                  "float ay=uv.y*(0.173+k*0.009)-uv.x*(0.053+k*0.005);" +
+                  "float n=sin(ax*1.7)*cos(ay*2.3)+sin((ax+ay)*(3.1+k));" +
+                  "float m=fract(pow(abs(n)+1.001,1.61)*(97.3+k*3.0));" +
+                  "float t=fract(m*17.0+k+uv.x*uv.y*0.00031);" +
+                  "gl_FragColor=vec4(t,fract(t*3.7+m*2.1),fract(m+t),1.0);}"
+              );
+              gl.compileShader(fs);
+              var prog = gl.createProgram();
+              gl.attachShader(prog, vs);
+              gl.attachShader(prog, fs);
+              gl.linkProgram(prog);
+              if (gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+                gl.useProgram(prog);
+                var buf = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+                var loc = gl.getAttribLocation(prog, "a");
+                gl.enableVertexAttribArray(loc);
+                gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+                gl.viewport(0, 0, SZ, SZ);
+                gl.clearColor(0, 0, 0, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+                var pix = new Uint8Array(SZ * SZ * 4);
+                gl.readPixels(0, 0, SZ, SZ, gl.RGBA, gl.UNSIGNED_BYTE, pix);
+                var strips = 6;
+                var stripH = Math.floor(SZ / strips) || 1;
+                var curve = [];
+                var gSum = 0, gSum2 = 0, gN = 0;
+                var ti, y0, y1, y, x, off, v, sum, sum2, nn, mean, varr;
+                for (ti = 0; ti < strips; ti++) {
+                  y0 = ti * stripH;
+                  y1 = ti === strips - 1 ? SZ : y0 + stripH;
+                  sum = 0; sum2 = 0; nn = 0;
+                  for (y = y0; y < y1; y++) {
+                    for (x = 0; x < SZ; x += 2) {
+                      off = (y * SZ + x) * 4;
+                      v = (pix[off] + pix[off + 1] * 0.35) / (255 * 1.35);
+                      sum += v; sum2 += v * v; nn++;
+                      gSum += v; gSum2 += v * v; gN++;
+                    }
+                  }
+                  if (nn < 1) { curve.push(0); continue; }
+                  mean = sum / nn;
+                  varr = sum2 / nn - mean * mean;
+                  if (varr < 0) varr = 0;
+                  curve.push(Math.round(Math.sqrt(varr) * 1e5) / 1e5);
+                }
+                if (gN > 0) {
+                  var gm = gSum / gN;
+                  var gv = gSum2 / gN - gm * gm;
+                  if (gv < 0) gv = 0;
+                  curve.push(Math.round(gm * 1e5) / 1e5);
+                  curve.push(Math.round(Math.sqrt(gv) * 1e5) / 1e5);
+                }
+                var cSum = 0;
+                for (ti = 0; ti < curve.length; ti++) cSum += curve[ti];
+                // nest_* only — never residual_mean/hw_curve_webgl (no conflict with main B10)
+                out.nest_hw_curve_webgl = curve;
+                out.nest_residual_mean = Math.round((cSum / (curve.length || 1)) * 1e6) / 1e6;
+                var cVa = 0;
+                for (ti = 0; ti < curve.length; ti++) {
+                  var dd = curve[ti] - out.nest_residual_mean;
+                  cVa += dd * dd;
+                }
+                out.nest_residual_std = Math.round(Math.sqrt(cVa / (curve.length || 1)) * 1e6) / 1e6;
+                out.nest_residual_ok = out.nest_residual_std > 0;
+                out.nest_residual_algo = "gr_webgl_residual_hist_v3b";
+                out.nest_webgl_probe_path = "iframe_noderiv_v3b";
+              } else {
+                out.nest_webgl_probe_path = "link_fail";
+              }
+              try {
+                // Soft free only — hard loseContext floods Firefox console ("context was lost").
+                try {
+                  if (gl.useProgram) gl.useProgram(null);
+                } catch (eU) {}
+                try {
+                  if (window.GRGlGovernor && GRGlGovernor.releaseSoft) GRGlGovernor.releaseSoft();
+                } catch (eR) {}
+              } catch (eLose) {}
+              try {
+                c.width = 1;
+                c.height = 1;
+              } catch (eSz) {}
+            } else {
+              out.nest_webgl_probe_path = "no_gl";
+            }
+          } catch (eG) {
+            out.nest_webgl_probe_path = "err";
+          }
+          step();
+          // --- Audio lite (Offline dual-fail → sampleRate) ---
+          try {
+            var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            if (OAC) {
+              var len = 2048;
+              var sr = 44100;
+              var ctx = new OAC(1, len, sr);
+              var osc = ctx.createOscillator();
+              osc.type = "triangle";
+              osc.frequency.value = 10000;
+              osc.connect(ctx.destination);
+              osc.start(0);
+              ctx
+                .startRendering()
+                .then(function (buf) {
+                  try {
+                    var data = buf.getChannelData(0);
+                    var nBins = 8;
+                    var stepB = Math.floor(data.length / nBins);
+                    var binsA = [];
+                    var i, j, s2;
+                    for (i = 0; i < nBins; i++) {
+                      s2 = 0;
+                      for (j = 0; j < stepB; j++) {
+                        var v = data[i * stepB + j] || 0;
+                        s2 += v * v;
+                      }
+                      binsA.push(Math.round(Math.sqrt(s2 / (stepB || 1)) * 1e6) / 1e6);
+                    }
+                    out.nest_hw_curve_audio = binsA;
+                    out.nest_audio_noise_sr = sr;
+                    out.nest_audio_noise_algo = "gr_nest_audio_oac_lite_v1";
+                    out.nest_audio_probe_path = "iframe_oac_lite";
+                  } catch (eB) {
+                    out.nest_audio_probe_path = "oac_parse_err";
+                  }
+                  step();
+                })
+                .catch(function () {
+                  out.audio_sample_rate = sr;
+                  out.nest_audio_probe_path = "oac_fail_sr";
+                  step();
+                });
+            } else {
+              var AC = window.AudioContext || window.webkitAudioContext;
+              if (AC) {
+                var ac = new AC();
+                out.nest_audio_sample_rate = ac.sampleRate;
+                out.nest_hw_curve_audio = [ac.sampleRate / 48000];
+                out.nest_audio_noise_algo = "gr_nest_audio_ac_sr_v1";
+                out.nest_audio_probe_path = "iframe_ac_sr";
+                try {
+                  ac.close && ac.close();
+                } catch (eC) {}
+              } else {
+                out.nest_audio_probe_path = "no_audio";
+              }
+              step();
+            }
+          } catch (eA) {
+            out.nest_audio_probe_path = "err";
+            step();
+          }
+        }
+
+        // Identity first (fast multi-source compare), then silicon lite append.
+        postParent({
+          from: "gr_nest",
+          type: "result",
+          source: source,
+          sandbox_kind: kind,
+          ok: true,
+          payload: payload,
+        });
+
+        // Second message: silicon fields merge onto same nest source for multi-source mint.
+        collectNestSiliconLite(function (sil) {
+          var merged = {};
+          var k;
+          for (k in payload) {
+            if (Object.prototype.hasOwnProperty.call(payload, k)) merged[k] = payload[k];
+          }
+          for (k in sil) {
+            if (Object.prototype.hasOwnProperty.call(sil, k)) merged[k] = sil[k];
+          }
+          merged.nest_silicon_ready = true;
+          postParent({
+            from: "gr_nest",
+            type: "result",
+            source: source,
+            sandbox_kind: kind,
+            ok: true,
+            payload: merged,
+            silicon_recollect: true,
+          });
+        });
+
+        // Continuous RPA: real listeners in THIS frame's document, flush via parent bridge.
+        // Parent enqueues B11_interaction with source=iframe:dN (honest multi-source).
+        if (window.GRRpaMonitor && typeof window.GRRpaMonitor.bind === "function") {
+          window.GRRpaMonitor.bind({
+            source: source,
+            session_id: session_id,
+            page_id: page_id,
+            page_url: page_url || String(location.href),
+            inject_path: inject_path,
+            win: window,
+            doc: document,
+            post: function (fields, reason, force) {
+              postParent({
+                from: "gr_nest",
+                type: "rpa_flush",
+                source: source,
+                sandbox_kind: kind,
+                ok: true,
+                reason: reason || "tick",
+                force: !!force,
+                payload: fields,
+              });
+            },
+          });
+        } else {
+          // Fallback minimal bind if rpa_monitor.js failed to load
+          var events = [];
+          function push(kindEv, ev) {
+            if (events.length >= 80) events.shift();
+            events.push({
+              t: Date.now(),
+              kind: kindEv,
+              type: kindEv,
+              source: source,
+              x: (ev && ev.clientX) || 0,
+              y: (ev && ev.clientY) || 0,
+            });
+          }
+          ["pointerdown", "pointermove", "click", "scroll", "keydown", "touchstart"].forEach(
+            function (t) {
+              document.addEventListener(
+                t,
+                function (ev) {
+                  push(t, ev);
+                },
+                { passive: true, capture: true }
+              );
+            }
+          );
+          function flush(reason) {
+            postParent({
+              from: "gr_nest",
+              type: "rpa_flush",
+              source: source,
+              sandbox_kind: kind,
+              ok: true,
+              reason: reason,
+              payload: {
+                behavior_early_bound: true,
+                behavior_events: events.slice(),
+                behavior_count: events.length,
+                pagehide_flush: reason === "pagehide",
+                rpa_flush_reason: reason,
+                rpa_idle_flush: reason === "idle_30s",
+                page_id: page_id,
+                page_url: page_url || String(location.href),
+                collected_at: Date.now(),
+                rpa_source: source,
+                sandbox_kind: kind,
+              },
+            });
+          }
+          setInterval(function () {
+            if (events.length) flush("continuous");
+          }, 2000);
+          window.addEventListener("pagehide", function () {
+            flush("pagehide");
+          });
+          flush("bind");
+        }
+        } // end start()
+        // Wait for opaque gl/rpa scripts when provided; still run identity without them.
+        var dep = window.__GR_NEST_DEPS_P__;
+        if (dep && typeof dep.then === "function") {
+          dep.then(function () {
+            start();
+          }).catch(function () {
+            start();
+          });
+        } else {
+          start();
+        }
+      })();
+    </script>
+  </body>
+</html>

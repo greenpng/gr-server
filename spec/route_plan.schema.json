@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "green-v5/route_plan",
+  "title": "RoutePlan",
+  "type": "object",
+  "required": ["version", "session_id", "packs", "parallel_groups"],
+  "additionalProperties": true,
+  "properties": {
+    "version": { "type": "string" },
+    "session_id": { "type": "string", "minLength": 1 },
+    "strategy_id": { "type": "string" },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pack_id", "priority"],
+        "properties": {
+          "pack_id": { "type": "string", "minLength": 1 },
+          "batch_id": { "type": "string", "minLength": 1 },
+          "priority": { "type": "integer" },
+          "base_priority": { "type": "integer" },
+          "effective_priority": { "type": "integer" },
+          "source": { "type": "string" },
+          "layer": { "type": "string" },
+          "schedule": { "type": "string" },
+          "direction_id": { "type": "string" },
+          "direction_score": { "type": "number" },
+          "mission_scoped": { "type": "boolean" },
+          "support_fill": { "type": "boolean" },
+          "resource_class": { "type": "string" },
+          "resource_classes": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "deadline_ms": { "type": "integer", "minimum": 0 },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "expected_axes": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "dag_v2": { "type": "object" }
+        }
+      }
+    },
+    "parallel_groups": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "stop_probe": { "type": "boolean" },
+    "notes": { "type": "string" }
+  }
+}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>green-v5 业务看板</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="loginGate">
+  <div class="box">
+    <h2>green-v5 业务看板</h2>
+    <p class="muted">配置中心：站点·部署中心（nginx/CF/注入/验证）·域名·SSL·SDK·轻量访问</p>
+    <label>用户名</label>
+    <input id="loginUser" autocomplete="username" />
+    <label>密码</label>
+    <input id="loginPass" type="password" autocomplete="current-password" />
+    <div id="loginErr" class="err"></div>
+    <button id="btnLogin">登录</button>
+  </div>
+</div>
+
+<div id="appShell" class="layout">
+  <aside class="nav">
+    <div class="brand">green-v5</div>
+    <div class="nav-section">业务</div>
+    <a href="#/dashboard" data-route="dashboard">业务看板</a>
+    <a href="#/visits" data-route="visits">访客 / 访问</a>
+    <a href="#/sites" data-route="sites">站点</a>
+    <a href="#/deploy" data-route="deploy">部署中心</a>
+    <a href="#/domains" data-route="domains">域名</a>
+    <a href="#/ssl" data-route="ssl">SSL 证书</a>
+    <a href="#/sdk" data-route="sdk">SDK 嵌入</a>
+    <div class="nav-section">配置</div>
+    <a href="#/config" data-route="config">全局默认</a>
+    <a href="#/config-site" data-route="config-site">站点覆盖</a>
+    <a href="#/cluster" data-route="cluster">集群节点</a>
+    <div class="nav-section">运维</div>
+    <a href="#/runtime" data-route="runtime">运行时</a>
+    <a href="#/system" data-route="system">系统健康</a>
+    <a href="#/governance" data-route="governance">身份治理</a>
+    <a href="/ops.html" target="_blank" rel="noopener" data-route="ops">探测会话 ops</a>
+    <button id="btnLogout" class="danger nav-btn">退出</button>
+  </aside>
+  <div class="main">
+    <header>
+      <h1 id="pageTitle">总览</h1>
+      <div class="header-tools">
+        <label class="muted">站点筛选</label>
+        <select id="globalSite"></select>
+        <span id="userChip" class="muted"></span>
+      </div>
+    </header>
+    <main id="view"></main>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+[package]
+name = "gr-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "gr-cli"
+path = "src/main.rs"
+
+[dependencies]
+gr-abi = { workspace = true }
+gr-ota = { workspace = true }
+gr-admin = { workspace = true }
+gr-runtime = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

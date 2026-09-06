@@ -1,0 +1,20 @@
+{
+  "version": "v5.0",
+  "bands": [
+    "insufficient",
+    "likely_bot",
+    "crawler",
+    "watch",
+    "likely_real",
+    "confirmed_real"
+  ],
+  "confirmed_real_minimum": {
+    "require_server_side": true,
+    "require_main_core": true,
+    "require_xsrc_not_conflict": true,
+    "require_no_strong_bot": true,
+    "require_not_fe_only": true,
+    "require_credibility": true
+  },
+  "notes": "FE-only must never yield confirmed_real (R-TRU / cursor P0-4)"
+}

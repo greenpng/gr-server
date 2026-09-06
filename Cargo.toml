@@ -1,0 +1,84 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gr-abi",
+    "crates/gr-ota",
+    "crates/gr-cluster",
+    "crates/gr-admin",
+    "crates/gr-runtime",
+    "crates/gr-cli",
+    "crates/gr-harden",
+    "crates/gr-obf",
+    # 插件模块源码: modules/<name> → 打包产物 libgr_<name>-<ver>-<triple>.so
+    "modules/identity",
+    "modules/brain",
+    "modules/analyze",
+    "modules/ingest",
+    "modules/edge",
+    "modules/probe-assets",
+    "modules/lb",
+    "crates/gr-lb",
+    "crates/gr-service",
+    "crates/gr-probe-core",
+    "crates/gr-probe-store",
+    "crates/gr-probe-net",
+    "crates/gr-probe-plane",
+]
+default-members = [
+    "crates/gr-cli",
+    "crates/gr-runtime",
+    "crates/gr-service",
+    "crates/gr-admin",
+]
+
+[workspace.package]
+version = "8.0.3"
+edition = "2021"
+license = "MIT"
+authors = ["green-v7"]
+
+[workspace.dependencies]
+gr-abi = { path = "crates/gr-abi" }
+gr-ota = { path = "crates/gr-ota" }
+gr-cluster = { path = "crates/gr-cluster" }
+gr-admin = { path = "crates/gr-admin" }
+gr-runtime = { path = "crates/gr-runtime" }
+gr-lb = { path = "crates/gr-lb" }
+gr-probe-core = { path = "crates/gr-probe-core" }
+gr-probe-store = { path = "crates/gr-probe-store" }
+gr-probe-net = { path = "crates/gr-probe-net" }
+gr-probe-plane = { path = "crates/gr-probe-plane" }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+blake3 = "1"
+parking_lot = "0.12"
+arc-swap = "1"
+libloading = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "fs", "io-util", "signal"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+scrypt = "0.11"
+password-hash = "0.5"
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.30"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+semver = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+opt-level = 3

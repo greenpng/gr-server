@@ -1,0 +1,150 @@
+{
+  "version": "1",
+  "note": "iss/38 D-19 labeled pairs for conf_cal ingest",
+  "pairs": [
+    {
+      "same_host": true,
+      "score": 0.82,
+      "label_source": "lab_chrome_ff",
+      "association_level": "hardware"
+    },
+    {
+      "same_host": true,
+      "score": 0.75,
+      "label_source": "lab_chrome_ff",
+      "association_level": "hardware"
+    },
+    {
+      "same_host": false,
+      "score": 0.22,
+      "label_source": "lab_diff_host",
+      "association_level": "gateway"
+    },
+    {
+      "same_host": false,
+      "score": 0.18,
+      "label_source": "lab_diff_host",
+      "association_level": "profile"
+    },
+    {
+      "same_host": true,
+      "score": 0.61,
+      "label_source": "lab_soft_sep",
+      "association_level": "env"
+    },
+    {
+      "same_host": false,
+      "score": 0.55,
+      "label_source": "lab_soft_collision",
+      "association_level": "env"
+    },
+    {
+      "same_host": false,
+      "score": 0.63,
+      "label_source": "lab_expand_6",
+      "association_level": "profile"
+    },
+    {
+      "same_host": true,
+      "score": 0.71,
+      "label_source": "lab_expand_7",
+      "association_level": "gateway"
+    },
+    {
+      "same_host": true,
+      "score": 0.79,
+      "label_source": "lab_expand_8",
+      "association_level": "hardware"
+    },
+    {
+      "same_host": false,
+      "score": 0.87,
+      "label_source": "lab_expand_9",
+      "association_level": "env"
+    },
+    {
+      "same_host": true,
+      "score": 0.15,
+      "label_source": "lab_expand_10",
+      "association_level": "profile"
+    },
+    {
+      "same_host": true,
+      "score": 0.23,
+      "label_source": "lab_expand_11",
+      "association_level": "gateway"
+    },
+    {
+      "same_host": false,
+      "score": 0.31,
+      "label_source": "lab_expand_12",
+      "association_level": "hardware"
+    },
+    {
+      "same_host": true,
+      "score": 0.39,
+      "label_source": "lab_expand_13",
+      "association_level": "env"
+    },
+    {
+      "same_host": true,
+      "score": 0.47,
+      "label_source": "lab_expand_14",
+      "association_level": "profile"
+    },
+    {
+      "same_host": false,
+      "score": 0.55,
+      "label_source": "lab_expand_15",
+      "association_level": "gateway"
+    },
+    {
+      "same_host": true,
+      "score": 0.63,
+      "label_source": "lab_expand_16",
+      "association_level": "hardware"
+    },
+    {
+      "same_host": true,
+      "score": 0.71,
+      "label_source": "lab_expand_17",
+      "association_level": "env"
+    },
+    {
+      "same_host": false,
+      "score": 0.79,
+      "label_source": "lab_expand_18",
+      "association_level": "profile"
+    },
+    {
+      "same_host": true,
+      "score": 0.87,
+      "label_source": "lab_expand_19",
+      "association_level": "gateway"
+    },
+    {
+      "same_host": false,
+      "score": 0.12,
+      "label_source": "lab_expand_20",
+      "association_level": "gateway"
+    },
+    {
+      "same_host": true,
+      "score": 0.58,
+      "label_source": "lab_expand_21",
+      "association_level": "env"
+    },
+    {
+      "same_host": true,
+      "score": 0.91,
+      "label_source": "lab_expand_22",
+      "association_level": "hardware"
+    },
+    {
+      "same_host": false,
+      "score": 0.33,
+      "label_source": "lab_expand_23",
+      "association_level": "profile"
+    }
+  ]
+}

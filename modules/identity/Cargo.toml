@@ -1,0 +1,20 @@
+[package]
+name = "gr-module-identity"
+version.workspace = true
+edition.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gr-abi = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+parking_lot = { workspace = true }
+
+[features]
+default = []
+plugin = []

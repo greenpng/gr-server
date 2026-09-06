@@ -1,0 +1,8 @@
+{
+  "strategy_id": "canary_pack_order",
+  "pack_order": ["gateway", "lite", "mid", "deep"],
+  "pack_priorities": {"lite": 110, "gateway": 100, "mid": 75, "deep": 30},
+  "locale_weight": 1,
+  "bot_soft_weights": {"locale": 1, "swiftshader_alone": 8},
+  "canary_percent": 5
+}
