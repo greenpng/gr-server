@@ -1,0 +1,117 @@
+[package]
+name = "pingora-core"
+version = "0.8.0"
+authors = ["Yuchen Wu <yuchen@cloudflare.com>"]
+license = "Apache-2.0"
+edition = "2021"
+repository = "https://github.com/cloudflare/pingora"
+categories = ["asynchronous", "network-programming"]
+keywords = ["async", "http", "network", "pingora"]
+exclude = ["tests/*"]
+description = """
+Pingora's APIs and traits for the core network protocols.
+"""
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "pingora_core"
+path = "src/lib.rs"
+
+[dependencies]
+pingora-runtime = { version = "0.8.0", path = "../pingora-runtime" }
+pingora-openssl = { version = "0.8.0", path = "../pingora-openssl", optional = true }
+pingora-boringssl = { version = "0.8.0", path = "../pingora-boringssl", optional = true }
+pingora-pool = { version = "0.8.0", path = "../pingora-pool" }
+pingora-error = { version = "0.8.0", path = "../pingora-error" }
+pingora-timeout = { version = "0.8.0", path = "../pingora-timeout" }
+pingora-http = { version = "0.8.0", path = "../pingora-http" }
+pingora-rustls = { version = "0.8.0", path = "../pingora-rustls", optional = true }
+# pingora-s2n optional dep removed: its s2n-tls 0.3.4x requires rustc >= 1.91
+# (host toolchain is 1.88); no consumer enables the s2n feature (plane uses
+# openssl). Removes s2n-tls from the workspace unit graph entirely.
+bstr = "1.12.0"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "signal"] }
+tokio-stream = "0.1"
+futures = "0.3"
+async-trait = "0.1.42"
+httparse = "1"
+bytes = "1.0"
+http = "1"
+log = "0.4"
+h2 = ">=0.4.11"
+derivative = "2.2.0"
+clap = { version = "4.5", features = ["derive"] }
+once_cell = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+strum = "0.26.2"
+strum_macros = "0.26.2"
+libc = "0.2.70"
+chrono = { version = "~0.4.31", features = ["alloc"], default-features = false }
+sentry = { version = "0.36", features = [
+    "backtrace",
+    "contexts",
+    "panic",
+    "reqwest",
+    "rustls",
+], default-features = false, optional = true }
+regex = "1"
+percent-encoding = "2.1"
+parking_lot = { version = "0.12", features = ["arc_lock"] }
+socket2 = { version = ">=0.4, <1.0.0", features = ["all"] }
+flate2 = { version = "1", features = ["zlib-ng"], default-features = false }
+sfv = "0.10.4"
+rand = "0.8"
+ahash = ">=0.8.9"
+unicase = "2"
+brotli = "3"
+openssl-probe = "0.1.6"
+tokio-test = "0.4"
+zstd = "0"
+httpdate = "1"
+x509-parser = { version = "0.16.0", optional = true }
+ouroboros = { version = "0.18.4", optional = true }
+lru = { version = "0.16.3", optional = true }
+daggy = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+flurry = "0.5"
+daemonix = "0.1.0"
+nix = { version = "~0.31.1", features = ["socket", "net", "fs", "uio"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59.0", features = ["Win32_Networking_WinSock"] }
+
+[dev-dependencies]
+h2 = { version = ">=0.4.11", features = ["unstable"] }
+tokio-stream = { version = "0.1", features = ["full"] }
+env_logger = "0.11"
+reqwest = { version = "0.12", features = [
+    "rustls-tls",
+    "http2",
+], default-features = false }
+hyper = { version = "1", features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2"] }
+http-body-util = "0.1"
+rstest = "0.23.0"
+rustls = "0.23"
+
+[target.'cfg(unix)'.dev-dependencies]
+hyperlocal = "0.9"
+jemallocator = "0.5"
+
+[features]
+default = []
+# Requires building with `--cfg tokio_unstable`.
+dial9 = ["pingora-runtime/dial9"]
+dial9-worker-s3 = ["dial9", "pingora-runtime/dial9-worker-s3"]
+dial9-cpu-profiling = ["dial9", "pingora-runtime/dial9-cpu-profiling"]
+openssl = ["pingora-openssl", "openssl_derived"]
+boringssl = ["pingora-boringssl", "openssl_derived"]
+rustls = ["pingora-rustls", "any_tls", "dep:x509-parser", "ouroboros"]
+patched_http1 = ["pingora-http/patched_http1"]
+openssl_derived = ["any_tls"]
+any_tls = []
+sentry = ["dep:sentry"]
+connection_filter = []
