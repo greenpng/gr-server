@@ -2,8 +2,11 @@
 # Rebuild FE race/entry/boot/pin min bundles + ASSET_GEN for current VERSION.
 # Standard C: ship artifacts only; content-hash URLs come from bootstrap at runtime.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"   # 02-probe-analysis (FE assets + scripts/fe node_modules)
-REPO="$(cd "$ROOT/.." && pwd)"                # workspace root (VERSION lives here since the area split)
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"   # 区域根: greenpng=02-probe-analysis / 扁平发行仓=仓库根 (FE assets + scripts/fe node_modules)
+# REPO: VERSION 所在工作区根 — 编号布局在上一级, 扁平布局即 ROOT 自身, 上溯定位两用
+REPO="$ROOT"
+while [[ "$REPO" != "/" && ! -f "$REPO/VERSION" ]]; do REPO="$(dirname "$REPO")"; done
+[[ -f "$REPO/VERSION" ]] || { echo "[fe-build] ERROR: cannot locate VERSION from $ROOT" >&2; exit 1; }
 V="$(tr -d '[:space:]' < "$REPO/VERSION")"
 echo "[fe-build] VERSION=$V ROOT=$ROOT REPO=$REPO"
 FE="$ROOT/probe/fe"
