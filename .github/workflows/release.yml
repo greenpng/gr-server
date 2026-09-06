@@ -359,18 +359,24 @@ jobs:
             bash install/install.sh --arch "${{ matrix.arch }}" --version "$VERSION" \
               --with-docker --prefix "$RUNNER_TEMP/gr-docker" --no-systemd --yes 2>&1 | tee /tmp/install-b2.log
           bash install/test/smoke_install.sh --prefix "$RUNNER_TEMP/gr-docker"
-      - name: B3 upgrade from previous stable (old repo, rotated root)
+      - name: B3 upgrade from previous stable (gr-server channel)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # 旧稳定版 v8.0.2 发布于私有仓 greenpng/install — 本仓 runner 的 GITHUB_TOKEN
-          # 无法跨仓拉取其 Release 资产 (404)。通道可达性探测:
-          #   可达   → 完整跑 旧根安装 → 新根升级 → 冒烟;
-          #   不可达 → 跳过 (旧→新根轮换升级已在本地实验室对同一 dist 树同等验证)。
-          # 若后续把旧仓转公开或将 v8.0.2 资产镜像进本仓, B3 自动恢复全量执行。
-          if ! curl -fsSI --max-time 10 "https://github.com/greenpng/install/releases/download/v8.0.2/manifest-index.json" >/dev/null 2>&1; then
-            echo "[B3] legacy channel greenpng/install unreachable from public runners (private repo) — old-root install/upgrade skipped; verified locally against the same dist tree"
+          # 上一稳定版 = 本公开发行仓 (greenpng/gr-server) 上版本号最高的历史 Release。
+          # 旧私有仓 greenpng/install 已废弃 (8.0.2 及更早的发行渠道不再使用);
+          # 本仓 v8.0.3 起为唯一发行/OTA 通道, 升级路径始终在仓内闭环验证。
+          VERSION=${{ needs.prepare.outputs.version }}
+          PREV="$(gh release list -R greenpng/gr-server --limit 30 \
+                --json tagName,isPrerelease \
+                --jq '.[] | select(.isPrerelease|not) | .tagName | ltrimstr("v")' \
+                | sort -rV | grep -v "^${VERSION}$" | head -1 || true)"
+          if [[ -z "${PREV:-}" ]]; then
+            echo "[B3] no previous stable release on greenpng/gr-server yet (first release on this channel) — upgrade test skipped"
             exit 0
           fi
+          echo "[B3] previous stable: v${PREV} → upgrade target v${VERSION}"
           # 清场: B1/B2 的 gr-service 可能仍占默认端口 (同 B2 的双击 kill + 端口释放等待)
           pkill -f gr-service 2>/dev/null || true
           sleep 1
@@ -385,16 +391,12 @@ jobs:
             ss -ltnp | grep -E ':28680' >&2 || true
             exit 1
           fi
-          VERSION=${{ needs.prepare.outputs.version }}
-          # 旧稳定版 v8.0.2 发布于 greenpng/install, 钉的是旧信任根指纹 → 用 ENV 覆盖
-          GR_RELEASE_REPO=greenpng/install \
-          GR_RELEASE_BASE="https://github.com/greenpng/install/releases/download/v8.0.2" \
-          GR_RAW_BASE="https://raw.githubusercontent.com/greenpng/install/main" \
-          GR_OTA_ROOT_PUBKEY_SHA256=6dffd7d3c40b75a21db766cbee97ddebef21bcf089e30ba6dea0db5d8a1754a2 \
-            bash install/install.sh --arch "${{ matrix.arch }}" --version 8.0.2 \
+          # 安装上一稳定版 (公开仓资产, 同一信任根, install.sh 默认通道即本仓)
+          GR_RELEASE_BASE="https://github.com/greenpng/gr-server/releases/download/v${PREV}" \
+            bash install/install.sh --arch "${{ matrix.arch }}" --version "$PREV" \
               --prefix "$RUNNER_TEMP/gr-old" --env-file "$RUNNER_TEMP/gr.env" \
               --no-systemd --yes 2>&1 | tee /tmp/install-b3-old.log
-          # 升级到本次 artifact (新信任根, pk 随 dist 树下发)
+          # 升级到本次 artifact (本地资产服务器, 与用户从 Release 页升级同字节)
           VERSION="$VERSION" INSTALL_ROOT="$RUNNER_TEMP/gr-old" \
           GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
             bash install/release/update_runtime_from_github.sh 2>&1 | tee /tmp/install-b3-up.log
