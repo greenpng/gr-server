@@ -108,9 +108,10 @@ jobs:
             x86_64) file "$tree/$runtime" | grep -Eqi 'x86-64|x86_64' ;;
             aarch64) file "$tree/$runtime" | grep -Eqi 'aarch64|arm aarch64' ;;
           esac
-          GR_RT_MANIFEST="$tree/manifest.json" \
-          GR_RT_PUBKEY="$tree/ota_ed25519.pk" \
-          GR_RT_DIR="$tree" \
+          # release_tree_verify 测试进程 CWD 在 crate 目录 — GR_RT_* 必须绝对路径
+          GR_RT_MANIFEST="$PWD/$tree/manifest.json" \
+          GR_RT_PUBKEY="$PWD/$tree/ota_ed25519.pk" \
+          GR_RT_DIR="$PWD/$tree" \
           cargo test -p gr-ota --test release_tree_verify -- --nocapture
           rm -rf "$tree/keys-release" dist/keys-release-*
           # 预打包产物即弃 — 仅保留日志证据
