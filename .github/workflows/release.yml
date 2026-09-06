@@ -31,9 +31,11 @@ jobs:
       - name: wait for gate-a on ${{ github.sha }}
         run: |
           set -euo pipefail
+          # 只匹配 gate-a 矩阵 job ("gate-a (arch, os)")。注意不能 startswith("gate-a"):
+          # 本 job 自身的 check-run 也叫 "gate-a-status", 会把 pend 永远占住 → 自等死锁。
           for i in $(seq 1 55); do
             out=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs?per_page=100" \
-                  --jq '[.check_runs[] | select(.name | startswith("gate-a"))]') || out=""
+                  --jq '[.check_runs[] | select(.name | startswith("gate-a ("))]') || out=""
             n=$(printf '%s' "$out" | jq 'length')
             if [[ "$n" -ge 2 ]]; then
               bad=$(printf '%s' "$out" | jq -r '[.[] | select(.conclusion != "success")] | length')
