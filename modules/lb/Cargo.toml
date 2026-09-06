@@ -1,0 +1,21 @@
+[package]
+name = "gr-module-lb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Paid multi-node load-balancer module (docs/guides/08-LB-MODULE.md): entitlement gate, private distribution"
+
+[lib]
+crate-type = ["cdylib"]
+# artifact libgr_lb-<ver>-<triple>.so (private distribution, docs/08)
+name = "gr_lb"
+
+[features]
+default = []
+plugin = []
+
+[dependencies]
+gr-abi = { workspace = true }
+gr-probe-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

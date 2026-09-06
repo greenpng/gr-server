@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gv6
+      POSTGRES_PASSWORD: gv6
+      POSTGRES_DB: gv6_official
+    ports:
+      - "5432:5432"
+    volumes:
+      - gv6_official_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gv6 -d gv6_official"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gv6_official_pg:

@@ -1,0 +1,50 @@
+{
+  "session_id": "sess_human_page_001",
+  "page_id": "page_checkout_1",
+  "sources": ["main", "gateway"],
+  "batches": [
+    {"batch_id": "B8_gateway", "source": "gateway"},
+    {"batch_id": "B0_bootstrap", "source": "main"},
+    {"batch_id": "B1_conflict", "source": "main"},
+    {"batch_id": "B2_hardware", "source": "main"},
+    {"batch_id": "B3_system", "source": "main"},
+    {"batch_id": "B12_anti_camouflage", "source": "main"},
+    {"batch_id": "B11_interaction", "source": "main"},
+    {"batch_id": "B10_hw_curves", "source": "main"}
+  ],
+  "has_gateway": true,
+  "gateway_fields": {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+  },
+  "fields": {
+    "session_id": "sess_human_page_001",
+    "page_id": "page_checkout_1",
+    "page_rev": 1,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "os_family": "windows",
+    "form_class": "desktop",
+    "platform": "Win32",
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "timezone": "Asia/Shanghai",
+    "hardware_concurrency": 8,
+    "device_memory": 8,
+    "languages": ["zh-CN", "zh"],
+    "webgl_unmasked_renderer": "ANGLE (Intel, Intel(R) UHD Graphics 620)",
+    "webdriver": false,
+    "automation": {"webdriver": false},
+    "vm_score": 0.08,
+    "stack_class": "native",
+    "spoof_score": 0.05,
+    "behavior_early_bound": true,
+    "behavior_count": 24,
+    "behavior_events": [
+      {"t": 10, "type": "pointermove"},
+      {"t": 40, "type": "click"},
+      {"t": 90, "type": "scroll"},
+      {"t": 140, "type": "keydown"}
+    ],
+    "hw_curve_audio": [0.12, 0.18, 0.25, 0.31, 0.28, 0.22, 0.19, 0.27],
+    "hw_curve_webgl": [0.11, 0.19, 0.24, 0.3, 0.27, 0.21, 0.18, 0.26]
+  }
+}

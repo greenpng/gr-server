@@ -1,0 +1,25 @@
+{
+  "session_id": "sess_locale_noise_001",
+  "sources": ["main", "gateway"],
+  "batches": [
+    {"batch_id": "B0_bootstrap", "source": "main"},
+    {"batch_id": "B8_gateway", "source": "gateway"}
+  ],
+  "has_gateway": true,
+  "gateway_fields": {
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36"
+  },
+  "fields": {
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36",
+    "os_family": "mac",
+    "form_class": "desktop",
+    "screen_width": 1440,
+    "screen_height": 900,
+    "timezone": "America/Los_Angeles",
+    "hardware_concurrency": 8,
+    "languages": ["en-US", "en"],
+    "site_locale": "zh",
+    "webgl_unmasked_renderer": "ANGLE (Apple, Apple M1)",
+    "automation": {"webdriver": false}
+  }
+}

@@ -1,0 +1,610 @@
+{
+  "algo": "gv5_probe_fallback_priority_v1",
+  "notes": [
+    "Each B-batch field family lists ordered methods. First success wins for that family.",
+    "Engine profiles override order: webkit / gecko / blink / mobile.",
+    "Success means non-null usable value, not merely no-throw.",
+    "Failed paths recorded in probe_paths for diagnostics — never invent values.",
+    "engine_profiles[family].capabilities = per-family API availability table (SSOT). pack_engine_gate = engine allowlist for engine-gated B packs; component_catalog engines must match."
+  ],
+  "engine_profiles": {
+    "blink": {
+      "webrtc_budget_ms": 2500,
+      "prefer": [
+        "webgl2",
+        "offline_audio",
+        "ua_ch"
+      ],
+      "capabilities": {
+        "wasm": true,
+        "wasm_simd": true,
+        "webgpu": true,
+        "sab_coi": true,
+        "ua_ch": true,
+        "offscreen_webgl2": true,
+        "offline_audio": true
+      }
+    },
+    "gecko": {
+      "webrtc_budget_ms": 3000,
+      "prefer": [
+        "webgl",
+        "offline_audio",
+        "no_ua_ch"
+      ],
+      "capabilities": {
+        "wasm": true,
+        "wasm_simd": true,
+        "webgpu": true,
+        "sab_coi": true,
+        "ua_ch": false,
+        "offscreen_webgl2": true,
+        "offline_audio": true
+      }
+    },
+    "webkit": {
+      "webrtc_budget_ms": 4500,
+      "prefer": [
+        "webgl",
+        "live_audio_sr",
+        "empty_ice",
+        "no_ua_ch"
+      ],
+      "capabilities": {
+        "wasm": true,
+        "wasm_simd": true,
+        "webgpu": true,
+        "sab_coi": true,
+        "ua_ch": false,
+        "offscreen_webgl2": false,
+        "offline_audio": true
+      }
+    },
+    "mobile_blink": {
+      "webrtc_budget_ms": 3500,
+      "prefer": [
+        "webgl",
+        "offline_audio",
+        "ua_ch",
+        "touch"
+      ],
+      "capabilities": {
+        "wasm": true,
+        "wasm_simd": true,
+        "webgpu": true,
+        "sab_coi": true,
+        "ua_ch": true,
+        "offscreen_webgl2": true,
+        "offline_audio": true,
+        "touch": true
+      }
+    },
+    "mobile_webkit": {
+      "webrtc_budget_ms": 5000,
+      "prefer": [
+        "webgl",
+        "live_audio_sr",
+        "touch"
+      ],
+      "capabilities": {
+        "wasm": true,
+        "wasm_simd": true,
+        "webgpu": true,
+        "sab_coi": true,
+        "ua_ch": false,
+        "offscreen_webgl2": false,
+        "offline_audio": true,
+        "touch": true
+      }
+    }
+  },
+  "families": {
+    "webgl_residual": {
+      "batches": [
+        "B10_hw_curves",
+        "B17_hw_physical",
+        "B2_hardware"
+      ],
+      "paths": [
+        {
+          "id": "residual_v3e",
+          "api": "webgl_shader_readpixels",
+          "engines": [
+            "blink",
+            "gecko",
+            "webkit"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "residual_hist",
+          "api": "webgl_simple_shader_hist",
+          "engines": [
+            "blink",
+            "gecko",
+            "webkit"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "webgl2_params",
+          "api": "webgl2_getParameter",
+          "engines": [
+            "blink",
+            "gecko"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "webgl_params",
+          "api": "webgl_getParameter",
+          "engines": [
+            "blink",
+            "gecko",
+            "webkit"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "experimental_webgl_params",
+          "api": "experimental-webgl",
+          "engines": [
+            "webkit",
+            "gecko"
+          ],
+          "form": [
+            "desktop"
+          ]
+        }
+      ]
+    },
+    "audio_noise": {
+      "batches": [
+        "B10_hw_curves",
+        "B46_audio_deep",
+        "B16_fast_signals"
+      ],
+      "paths": [
+        {
+          "id": "oac_dual_seed",
+          "api": "OfflineAudioContext",
+          "engines": [
+            "blink",
+            "gecko",
+            "webkit"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "oac_single_seed",
+          "api": "OfflineAudioContext",
+          "engines": [
+            "blink",
+            "gecko",
+            "webkit"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "live_audiocontext_sr",
+          "api": "AudioContext.sampleRate",
+          "engines": [
+            "webkit",
+            "blink",
+            "gecko"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "webkit_audio_ctx",
+          "api": "webkitAudioContext",
+          "engines": [
+            "webkit"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        }
+      ]
+    },
+    "canvas_noise": {
+      "batches": [
+        "B10_hw_curves",
+        "B23_native_canvas_hedge"
+      ],
+      "paths": [
+        {
+          "id": "canvas_2d",
+          "api": "HTMLCanvasElement.getContext(2d)",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "offscreen_2d",
+          "api": "OffscreenCanvas",
+          "engines": [
+            "blink",
+            "gecko"
+          ],
+          "form": [
+            "desktop",
+            "mobile"
+          ]
+        },
+        {
+          "id": "canvas_toDataURL_lite",
+          "api": "toDataURL",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "webrtc_host": {
+      "batches": [
+        "B10_hw_curves",
+        "B9_network"
+      ],
+      "paths": [
+        {
+          "id": "stun_dual",
+          "api": "RTCPeerConnection+STUN",
+          "engines": [
+            "blink",
+            "gecko"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "empty_ice_host",
+          "api": "RTCPeerConnection iceServers=[]",
+          "engines": [
+            "webkit",
+            "blink"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "webkitRTC",
+          "api": "webkitRTCPeerConnection",
+          "engines": [
+            "webkit"
+          ],
+          "form": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "media_devices": {
+      "batches": [
+        "B10_hw_curves",
+        "B17_hw_physical",
+        "B28_permissions_media"
+      ],
+      "paths": [
+        {
+          "id": "enumerateDevices",
+          "api": "mediaDevices.enumerateDevices",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "legacy_getMediaDevices",
+          "api": "navigator.getMediaDevices",
+          "engines": [
+            "webkit"
+          ],
+          "form": [
+            "mobile"
+          ]
+        }
+      ]
+    },
+    "display": {
+      "batches": [
+        "B10_hw_curves",
+        "B17_hw_physical",
+        "B45_display_hdr",
+        "B0_bootstrap"
+      ],
+      "paths": [
+        {
+          "id": "screen_primary",
+          "api": "window.screen",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "getScreenDetails",
+          "api": "window.getScreenDetails",
+          "engines": [
+            "blink"
+          ],
+          "form": [
+            "desktop"
+          ]
+        },
+        {
+          "id": "screen_isExtended",
+          "api": "screen.isExtended",
+          "engines": [
+            "blink"
+          ],
+          "form": [
+            "desktop"
+          ]
+        },
+        {
+          "id": "matchMedia_display",
+          "api": "matchMedia",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "network_class": {
+      "batches": [
+        "B16_fast_signals",
+        "B9_network",
+        "B17_hw_physical"
+      ],
+      "paths": [
+        {
+          "id": "network_information",
+          "api": "navigator.connection",
+          "engines": [
+            "blink"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "moz_connection",
+          "api": "navigator.mozConnection",
+          "engines": [
+            "gecko"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "webkit_connection",
+          "api": "navigator.webkitConnection",
+          "engines": [
+            "webkit",
+            "blink"
+          ],
+          "form": [
+            "mobile"
+          ]
+        }
+      ]
+    },
+    "cpu_timing": {
+      "batches": [
+        "B10_hw_curves",
+        "B17_hw_physical",
+        "B34_cpu_cache_ladder"
+      ],
+      "paths": [
+        {
+          "id": "perf_now_loop_full",
+          "api": "performance.now loop 24x8000",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "desktop"
+          ]
+        },
+        {
+          "id": "perf_now_loop_lite",
+          "api": "performance.now loop 24x4000",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "mobile"
+          ]
+        },
+        {
+          "id": "date_now_loop",
+          "api": "Date.now loop",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "ua_platform": {
+      "batches": [
+        "B0_bootstrap",
+        "B1_conflict",
+        "B3_system"
+      ],
+      "paths": [
+        {
+          "id": "ua_ch_high_entropy",
+          "api": "userAgentData.getHighEntropyValues",
+          "engines": [
+            "blink"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "navigator_platform",
+          "api": "navigator.platform",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "ua_string_parse",
+          "api": "navigator.userAgent",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "hardware_concurrency": {
+      "batches": [
+        "B0_bootstrap",
+        "B2_hardware",
+        "B3_system",
+        "B7_sandbox"
+      ],
+      "paths": [
+        {
+          "id": "nav_cores",
+          "api": "navigator.hardwareConcurrency",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        },
+        {
+          "id": "worker_cores",
+          "api": "Worker navigator.hardwareConcurrency",
+          "engines": [
+            "*"
+          ],
+          "form": [
+            "*"
+          ]
+        }
+      ]
+    }
+  },
+  "mint_dual_source_rule": {
+    "summary": "A field enters commercial device_id only if ≥2 sources agree OR dual-channel pair present",
+    "sources": [
+      "main",
+      "iframe",
+      "worker",
+      "shared_worker"
+    ],
+    "dual_channels": [
+      [
+        "hw_curve_webgl",
+        "hw_curve_audio"
+      ],
+      [
+        "residual_std",
+        "hw_curve_webgl"
+      ],
+      [
+        "webrtc_host_ip_hash",
+        "os_instance_hash"
+      ],
+      [
+        "media_device_count",
+        "display_count"
+      ]
+    ]
+  },
+  "pack_engine_gate": {
+    "B92_webgpu_atomic_contention": {
+      "engines": [
+        "blink",
+        "gecko",
+        "webkit"
+      ],
+      "capability": "webgpu",
+      "note": "WebGPU shipped in all three; FE still honest-skips when adapter absent."
+    },
+    "B93_blink_fork_matrix": {
+      "engines": [
+        "blink"
+      ],
+      "capability": "ua_ch",
+      "note": "UA-CH brand surface is blink-only (gecko/webkit do not ship sec-ch-ua)."
+    },
+    "B94_sab_dual_clock_differential": {
+      "engines": [
+        "blink",
+        "gecko",
+        "webkit"
+      ],
+      "capability": "sab_coi",
+      "note": "SAB+COOP/COEP available in all three; FE skips without isolation."
+    },
+    "B95_gpu_eu_timing": {
+      "engines": [
+        "blink"
+      ],
+      "capability": "offscreen_webgl2",
+      "note": "DrawnApart EU timing via OffscreenCanvas webgl2; Chromium-only (engine gate)."
+    },
+    "B88_wasm_instruction_throughput": {
+      "engines": [
+        "blink",
+        "gecko",
+        "webkit"
+      ],
+      "capability": "wasm",
+      "note": "wasm 核能力表登记 — wasm is universal across families; SIMD flag consumption lives in the FE wasm_feature_matrix gate."
+    }
+  }
+}

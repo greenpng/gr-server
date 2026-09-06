@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>B10x cause isolation demos</title>
+  <style>
+    body { font-family: ui-monospace, monospace; margin: 16px; background: #0b0f14; color: #d7e0ea; }
+    h1 { font-size: 16px; }
+    button { margin: 4px 6px 4px 0; padding: 6px 10px; }
+    pre { background: #151b24; padding: 10px; overflow: auto; max-height: 55vh; white-space: pre-wrap; }
+    .ok { color: #6dffa8; }
+    .bad { color: #ff7b7b; }
+    .warn { color: #ffd36d; }
+  </style>
+</head>
+<body>
+  <h1>B10x cause isolation (independent demos)</h1>
+  <p>Does not run full brain schedule. Isolates upload / helpers / multipath / enqueue / pack.run.</p>
+  <div>
+    <button id="btnAll">Run all demos</button>
+    <button id="btnT1">T1 upload-only</button>
+    <button id="btnT2">T2 helpers</button>
+    <button id="btnT3">T3 multipath+timeout</button>
+    <button id="btnT4">T4 enqueue paths</button>
+    <button id="btnT5">T5 B10x pack run</button>
+    <button id="btnT6">T6 eager chain</button>
+  </div>
+  <pre id="out">ready · open via https://gr-lab.local:8443/g5/fe/diag/b10x_causes.html?auto=1</pre>
+  <script>
+(function () {
+  "use strict";
+  var out = document.getElementById("out");
+  var logLines = [];
+  var ingestSpy = [];
+
+  function log(s) {
+    logLines.push(String(s));
+    out.textContent = logLines.join("\n");
+  }
+  function clearLog() {
+    logLines = [];
+    out.textContent = "";
+  }
+  function now() {
+    return Date.now();
+  }
+  function withTimeout(p, ms, label) {
+    return new Promise(function (resolve) {
+      var done = false;
+      var to = setTimeout(function () {
+        if (done) return;
+        done = true;
+        resolve({ __timeout: true, label: label || "timeout", ms: ms });
+      }, ms);
+      Promise.resolve(p).then(
+        function (v) {
+          if (done) return;
+          done = true;
+          clearTimeout(to);
+          resolve(v);
+        },
+        function (e) {
+          if (done) return;
+          done = true;
+          clearTimeout(to);
+          resolve({ __error: String(e && e.message ? e.message : e) });
+        }
+      );
+    });
+  }
+
+  function apiBase() {
+    return "/g5";
+  }
+
+  // Absolute FE asset bases that work behind lab nginx (/g5/fe via ingest static, /g5/dist via nginx alias).
+  function assetBases() {
+    return ["/g5/fe", "/g5/dist", ".."];
+  }
+
+  function installIngestSpy() {
+    if (window.__DIAG_INGEST_SPY__) return;
+    window.__DIAG_INGEST_SPY__ = true;
+    var orig = window.fetch;
+    window.fetch = function (input, init) {
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      var isIngest = /\/v1\/ingest\b/.test(url);
+      var started = now();
+      var batchHint = null;
+      try {
+        if (isIngest && init && init.body) {
+          var j = typeof init.body === "string" ? JSON.parse(init.body) : null;
+          batchHint = j && j.batch_id;
+        }
+      } catch (e0) {}
+      return orig.apply(this, arguments).then(
+        function (resp) {
+          if (isIngest) {
+            var row = {
+              url: url,
+              batch_id: batchHint,
+              http: resp.status,
+              ok: resp.ok,
+              dt_ms: now() - started,
+              at: now(),
+            };
+            ingestSpy.push(row);
+            try {
+              log("NET ingest batch=" + batchHint + " http=" + resp.status + " dt=" + row.dt_ms + "ms");
+            } catch (eL) {}
+          }
+          return resp;
+        },
+        function (err) {
+          if (isIngest) {
+            ingestSpy.push({
+              url: url,
+              batch_id: batchHint,
+              ok: false,
+              error: String(err && err.message ? err.message : err),
+              dt_ms: now() - started,
+              at: now(),
+            });
+            log("NET ingest FAIL batch=" + batchHint + " " + err);
+          }
+          throw err;
+        }
+      );
+    };
+  }
+
+  function spySince(t0, batchPrefix) {
+    return ingestSpy.filter(function (r) {
+      if (r.at < t0) return false;
+      if (!batchPrefix) return true;
+      return String(r.batch_id || "").indexOf(batchPrefix) === 0;
+    });
+  }
+
+  function openSession() {
+    return fetch(apiBase() + "/v1/session/open", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ site_id: "local-fp", product_version: "diag-b10x" }),
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error("open_http_" + r.status + " " + JSON.stringify(j).slice(0, 200));
+        return j;
+      });
+    });
+  }
+
+  function ensureSession() {
+    if (window.__DIAG_SID__) return Promise.resolve(window.__DIAG_SID__);
+    return openSession().then(function (open) {
+      var sid = open.session_id || open.cycle_id || open.sid;
+      if (!sid) throw new Error("no_session_id " + JSON.stringify(open).slice(0, 200));
+      window.__DIAG_SID__ = sid;
+      window.__GR_SESSION_ID__ = sid;
+      return sid;
+    });
+  }
+
+  function ingest(sessionId, batchId, fields, force) {
+    var body = {
+      session_id: sessionId,
+      batch_id: batchId,
+      source: "main",
+      analyze: false,
+      inject_path: "diag",
+      payload: { fields: fields || {}, sandbox_kind: "main" },
+      force: !!force,
+    };
+    return fetch(apiBase() + "/v1/ingest", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.text().then(function (txt) {
+        var j = null;
+        try {
+          j = JSON.parse(txt);
+        } catch (e) {
+          j = { raw: txt.slice(0, 300) };
+        }
+        return { http: r.status, ok: r.ok, body: j };
+      });
+    });
+  }
+
+  function configureQueue(sessionId) {
+    var Q = window.GRUploadQueue;
+    if (!Q) return false;
+    try {
+      if (Q.configure) {
+        Q.configure({
+          apiBase: apiBase(),
+          session_id: sessionId,
+          inject_path: "diag",
+        });
+      } else if (Q.cfg) {
+        Q.cfg.apiBase = apiBase();
+        Q.cfg.session_id = sessionId;
+        Q.cfg.inject_path = "diag";
+      }
+      // Clear halt if a previous cool response armed it (diag must stay open).
+      if (typeof Q.clearHalt === "function") Q.clearHalt();
+      else if (Q._clearHalt) Q._clearHalt();
+    } catch (eC) {
+      log("queue configure warn " + eC);
+    }
+    return !!(Q.enqueue);
+  }
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src + (src.indexOf("?") >= 0 ? "&" : "?") + "v=" + now();
+      s.async = false;
+      s.onload = function () {
+        resolve(src);
+      };
+      s.onerror = function () {
+        reject(new Error("load_fail " + src));
+      };
+      document.head.appendChild(s);
+    });
+  }
+
+  function loadScriptWithFallback(relPath) {
+    var bases = assetBases();
+    var i = 0;
+    function next() {
+      if (i >= bases.length) return Promise.reject(new Error("all_bases_fail " + relPath));
+      var src = bases[i] + "/" + relPath.replace(/^\//, "");
+      i++;
+      return loadScript(src).then(
+        function (ok) {
+          log("loaded " + ok);
+          return ok;
+        },
+        function (e) {
+          log("skip " + src + " " + e.message);
+          return next();
+        }
+      );
+    }
+    return next();
+  }
+
+  var collectorsLoaded = false;
+  function loadCollectors() {
+    if (collectorsLoaded && window.GRCollectors) return Promise.resolve();
+    installIngestSpy();
+    var files = [
+      "collectors/registry.static.lite.min.js",
+      "collectors/registry.static.hard.min.js",
+      "collectors/registry.b10x.min.js",
+      "pack_loader.min.js",
+      "upload_queue.min.js",
+    ];
+    var chain = Promise.resolve();
+    files.forEach(function (f) {
+      chain = chain.then(function () {
+        return loadScriptWithFallback(f);
+      });
+    });
+    return chain.then(function () {
+      collectorsLoaded = true;
+    });
+  }
+
+  function packMeta(id) {
+    var C = window.GRCollectors;
+    var p = C && C.get && C.get(id);
+    if (!p) return { present: false };
+    return {
+      present: true,
+      hard_inline: !!p._hard_inline,
+      priority: p.priority,
+      schedule: p.schedule,
+      layer: p.layer,
+      has_run: typeof p.run === "function",
+    };
+  }
+
+  // ---------- T1: upload channel only ----------
+  function testT1() {
+    log("=== T1: pure upload (no multipath, no collectors) ===");
+    installIngestSpy();
+    var t0 = now();
+    return ensureSession()
+      .then(function (sid) {
+        log("open ok sid=" + sid + " dt=" + (now() - t0) + "ms");
+        var fields = {
+          b10x_pack: "B10x_silicon_noderiv",
+          b10x_ok: false,
+          b10x_err: "diag_dry_run",
+          b10x_diag: "T1",
+          diag_ts: now(),
+          residual_paths_n: 0,
+        };
+        return ingest(sid, "B10x_silicon_noderiv", fields, true).then(function (res) {
+          log("ingest http=" + res.http + " ok=" + res.ok + " body=" + JSON.stringify(res.body).slice(0, 240));
+          return {
+            test: "T1_upload_only",
+            pass: !!res.ok && res.http >= 200 && res.http < 300,
+            session_id: sid,
+            http: res.http,
+            accepts_identity_ingest: !!(res.body && res.body.accepts_identity_ingest),
+            body_keys: res.body && typeof res.body === "object" ? Object.keys(res.body).slice(0, 12) : [],
+            dt_ms: now() - t0,
+          };
+        });
+      })
+      .catch(function (e) {
+        log("T1 FAIL " + e);
+        return { test: "T1_upload_only", pass: false, error: String(e) };
+      });
+  }
+
+  // ---------- T2: helpers present? ----------
+  function testT2() {
+    log("=== T2: helper availability after progressive load ===");
+    return loadCollectors()
+      .then(function () {
+        var C = window.GRCollectors || null;
+        var h = (C && C.__h) || {};
+        var report = {
+          hasCollectors: !!C,
+          hardLoaded: !!(C && C.__hardLoaded),
+          midFields_C: typeof (C && C.midFields),
+          midFields_h: typeof h.midFields,
+          midEnqueue_C: typeof (C && C.midEnqueue),
+          midEnqueue_h: typeof h.midEnqueue,
+          multipath_C: typeof (C && C.webglResidualMultiPath),
+          multipath_h: typeof h.webglResidualMultiPath,
+          get_b10x: packMeta("B10x_silicon_noderiv"),
+          get_b10: !!(C && C.get && C.get("B10_hw_curves")),
+          scheduleEager: typeof (C && C.scheduleEagerB10xChain),
+          packLoader: !!(window.GRPackLoader && GRPackLoader.kickAll),
+          hwLock: !!(window.GRPackLoader && GRPackLoader.withHardwareLock),
+          uploadQueue: !!(window.GRUploadQueue && GRUploadQueue.enqueue),
+        };
+        log(JSON.stringify(report, null, 2));
+        var pass =
+          report.hasCollectors &&
+          (report.midFields_h === "function" || report.midFields_C === "function") &&
+          (report.midEnqueue_h === "function" || report.midEnqueue_C === "function") &&
+          (report.multipath_h === "function" || report.multipath_C === "function") &&
+          report.get_b10x.present &&
+          report.get_b10x.has_run &&
+          report.uploadQueue;
+        return { test: "T2_helpers", pass: pass, report: report };
+      })
+      .catch(function (e) {
+        log("T2 FAIL " + e);
+        return { test: "T2_helpers", pass: false, error: String(e) };
+      });
+  }
+
+  // ---------- T3: multipath isolation with timeout ----------
+  function testT3() {
+    log("=== T3: webglResidualMultiPath only (+20s timeout) ===");
+    var C = window.GRCollectors;
+    var h = (C && C.__h) || {};
+    var mp = (C && C.webglResidualMultiPath) || h.webglResidualMultiPath;
+    if (typeof mp !== "function") {
+      log("no multipath function — run T2 first");
+      return Promise.resolve({ test: "T3_multipath", pass: false, error: "no_multipath_fn" });
+    }
+    var profiles = ["silicon_noderiv", "silicon_ulp", "default"];
+    var results = [];
+    var chain = Promise.resolve();
+    profiles.forEach(function (prof) {
+      chain = chain.then(function () {
+        var t0 = now();
+        log("start multipath profile=" + prof);
+        return withTimeout(mp({ profile: prof }), 20000, "mp_" + prof).then(function (v) {
+          var dt = now() - t0;
+          var row = {
+            profile: prof,
+            dt_ms: dt,
+            timeout: !!(v && v.__timeout),
+            error: (v && v.__error) || null,
+            has_curve: !!(v && v.curve && v.curve.length),
+            curve_n: v && v.curve ? v.curve.length : 0,
+            paths_n: v && v.residual_paths ? v.residual_paths.length : 0,
+            mean: v && v.residual_mean,
+            std: v && v.residual_std,
+          };
+          log("done " + JSON.stringify(row));
+          results.push(row);
+        });
+      });
+    });
+    return chain.then(function () {
+      var anyOk = results.some(function (r) {
+        return r.has_curve && !r.timeout && !r.error;
+      });
+      var anyTimeout = results.some(function (r) {
+        return r.timeout;
+      });
+      // Pass if all profiles finished (timeout counts) AND at least one produced a curve.
+      // If all timeout → pass=false (hang root cause).
+      var pass = results.length === profiles.length && anyOk && !anyTimeout;
+      return {
+        test: "T3_multipath",
+        pass: pass,
+        any_curve_ok: anyOk,
+        any_timeout: anyTimeout,
+        results: results,
+        verdict: anyTimeout
+          ? "MULTIPATH_HANG_OR_SLOW"
+          : anyOk
+            ? "MULTIPATH_OK"
+            : "MULTIPATH_NO_CURVE",
+      };
+    });
+  }
+
+  // ---------- T4: enqueue path comparison ----------
+  function testT4() {
+    log("=== T4: midEnqueue vs direct UploadQueue vs raw fetch ===");
+    return ensureSession()
+      .then(function (sessionId) {
+        var C = window.GRCollectors;
+        var h = (C && C.__h) || {};
+        var midEnqueue = (C && C.midEnqueue) || h.midEnqueue;
+        var rows = [];
+        var t0 = now();
+        configureQueue(sessionId);
+
+        // Must use catalog batch_ids (A-DF-1 allowlist). Fake B10x_diag_* → HTTP 400.
+        return ingest(
+          sessionId,
+          "B10x_silicon_noderiv",
+          { b10x_diag: "T4a_fetch", b10x_ok: false, b10x_err: "diag_t4a", ts: now() },
+          true
+        )
+          .then(function (r) {
+            rows.push({ path: "raw_fetch", http: r.http, ok: r.ok, err: r.body && r.body.error });
+            log("4a raw_fetch " + r.http + (r.body && r.body.error ? " " + r.body.error : ""));
+          })
+          .then(function () {
+            var Q = window.GRUploadQueue;
+            if (!Q || !Q.enqueue) {
+              rows.push({ path: "upload_queue", ok: false, error: "no_queue" });
+              log("4b no UploadQueue");
+              return null;
+            }
+            var mark = now();
+            Q.enqueue({
+              session_id: sessionId,
+              batch_id: "B10x_silicon_ulp",
+              source: "main",
+              inject_path: "diag",
+              priority: 99,
+              force: true,
+              payload: {
+                fields: { b10x_diag: "T4b_queue", b10x_ok: false, b10x_err: "diag_t4b", ts: now() },
+                sandbox_kind: "main",
+              },
+            });
+            log("4b queue.enqueue called");
+            return new Promise(function (r) {
+              setTimeout(r, 2000);
+            }).then(function () {
+              var hits = spySince(mark, "B10x_silicon_ulp");
+              var okHit = hits.some(function (x) {
+                return x.ok;
+              });
+              rows.push({
+                path: "upload_queue",
+                ok: okHit,
+                enqueued: true,
+                net_hits: hits.length,
+                http: hits[0] && hits[0].http,
+              });
+              log("4b queue net_hits=" + hits.length + " ok=" + okHit);
+            });
+          })
+          .then(function () {
+            if (typeof midEnqueue !== "function") {
+              rows.push({ path: "midEnqueue", ok: false, error: "no_midEnqueue" });
+              log("4c no midEnqueue");
+              return null;
+            }
+            var mark = now();
+            var ctx = {
+              session_id: sessionId,
+              queue: window.GRUploadQueue,
+              inject_path: "diag",
+              apiBase: apiBase(),
+            };
+            return Promise.resolve(
+              midEnqueue(
+                ctx,
+                "B10x_silicon_rint",
+                { b10x_diag: "T4c_midEnqueue", b10x_ok: false, b10x_err: "diag_t4c", ts: now() },
+                99
+              )
+            )
+              .then(function (ret) {
+                log("4c midEnqueue returned " + JSON.stringify(ret));
+              })
+              .catch(function (e) {
+                rows.push({ path: "midEnqueue", ok: false, error: String(e) });
+                log("4c midEnqueue fail " + e);
+              })
+              .then(function () {
+                return new Promise(function (r) {
+                  setTimeout(r, 2000);
+                });
+              })
+              .then(function () {
+                var hits = spySince(mark, "B10x_silicon_rint");
+                var okHit = hits.some(function (x) {
+                  return x.ok;
+                });
+                if (!rows.some(function (r) { return r.path === "midEnqueue"; })) {
+                  rows.push({
+                    path: "midEnqueue",
+                    ok: okHit,
+                    net_hits: hits.length,
+                    http: hits[0] && hits[0].http,
+                  });
+                }
+                log("4c midEnqueue net_hits=" + hits.length + " ok=" + okHit);
+              });
+          })
+          .then(function () {
+            var rawOk = rows.some(function (r) {
+              return r.path === "raw_fetch" && r.ok;
+            });
+            var qOk = rows.some(function (r) {
+              return r.path === "upload_queue" && r.ok;
+            });
+            var mOk = rows.some(function (r) {
+              return r.path === "midEnqueue" && r.ok;
+            });
+            var verdict =
+              rawOk && qOk && mOk
+                ? "ALL_ENQUEUE_PATHS_OK"
+                : rawOk && !qOk
+                  ? "QUEUE_BROKEN_RAW_OK"
+                  : rawOk && qOk && !mOk
+                    ? "MIDENQUEUE_BROKEN"
+                    : "UPLOAD_CHANNEL_BROKEN";
+            return {
+              test: "T4_enqueue_paths",
+              pass: rawOk && qOk && mOk,
+              session_id: sessionId,
+              rows: rows,
+              verdict: verdict,
+              dt_ms: now() - t0,
+            };
+          });
+      })
+      .catch(function (e) {
+        return { test: "T4_enqueue_paths", pass: false, error: String(e) };
+      });
+  }
+
+  // ---------- T5: actual B10x pack.run with 25s outer timeout ----------
+  function testT5() {
+    log("=== T5: B10x_silicon_noderiv pack.run (25s outer timeout) ===");
+    var C = window.GRCollectors;
+    if (!C || !C.get || !C.get("B10x_silicon_noderiv")) {
+      return Promise.resolve({ test: "T5_pack_run", pass: false, error: "pack_missing" });
+    }
+    var pack = C.get("B10x_silicon_noderiv");
+    var meta = packMeta("B10x_silicon_noderiv");
+    log("pack meta " + JSON.stringify(meta));
+    return ensureSession().then(function (sessionId) {
+      configureQueue(sessionId);
+      var ctx = {
+        session_id: sessionId,
+        queue: window.GRUploadQueue,
+        inject_path: "diag",
+        apiBase: apiBase(),
+      };
+      var t0 = now();
+      var mark = now();
+      log("calling pack.run ...");
+      // Bypass HW lock for isolation — hang on lock is a separate cause.
+      var runP = Promise.resolve().then(function () {
+        return pack.run(ctx);
+      });
+      return withTimeout(runP, 25000, "pack_run").then(function (v) {
+        return new Promise(function (r) {
+          setTimeout(r, 1500);
+        }).then(function () {
+          var hits = spySince(mark, "B10x_silicon_noderiv");
+          var uploadOk = hits.some(function (x) {
+            return x.ok;
+          });
+          var startedMarker = hits.some(function (x) {
+            return x.ok;
+          });
+          var dt = now() - t0;
+          var timedOut = !!(v && v.__timeout);
+          var row = {
+            test: "T5_pack_run",
+            // Pass if pack finished OR at least one B10x ingest landed (hard-inline "started" marker).
+            pass: (!timedOut && !v.__error) || uploadOk,
+            timeout: timedOut,
+            error: (v && v.__error) || null,
+            pack_meta: meta,
+            result_keys: v && typeof v === "object" && !v.__timeout ? Object.keys(v).slice(0, 20) : typeof v,
+            result_preview: v && typeof v === "object" ? JSON.stringify(v).slice(0, 280) : String(v),
+            net_hits: hits,
+            upload_ok: uploadOk,
+            started_marker_likely: startedMarker && meta.hard_inline,
+            dt_ms: dt,
+            session_id: sessionId,
+            verdict: timedOut
+              ? uploadOk
+                ? "PACK_TIMEOUT_BUT_UPLOAD_LANDED"
+                : "PACK_HANG_NO_UPLOAD"
+              : uploadOk
+                ? "PACK_RUN_AND_UPLOAD_OK"
+                : "PACK_FINISHED_BUT_NO_UPLOAD",
+          };
+          log("T5 " + JSON.stringify(row, null, 2));
+          return row;
+        });
+      });
+    });
+  }
+
+  // ---------- T6: double-lock probe + scheduleEagerB10xChain ----------
+  function testT6() {
+    log("=== T6: HW lock reentrancy + scheduleEagerB10xChain ===");
+    var C = window.GRCollectors;
+    var PL = window.GRPackLoader;
+    if (!C || !C.get || !C.get("B10x_silicon_noderiv")) {
+      return Promise.resolve({ test: "T6_eager_chain", pass: false, error: "pack_missing" });
+    }
+    if (!PL || typeof PL.withHardwareLock !== "function") {
+      return Promise.resolve({ test: "T6_eager_chain", pass: false, error: "no_hw_lock" });
+    }
+    return ensureSession().then(function (sessionId) {
+      configureQueue(sessionId);
+      var ctx = {
+        session_id: sessionId,
+        queue: window.GRUploadQueue,
+        inject_path: "diag",
+        apiBase: apiBase(),
+      };
+      var pack = C.get("B10x_silicon_noderiv");
+      var t0 = now();
+
+      // 6a: kickAll wraps pack.run that itself takes withHardwareLock → classic deadlock.
+      var runnable = [
+        {
+          id: "B10x_silicon_noderiv",
+          pack_id: "B10x_silicon_noderiv",
+          batch_id: "B10x_silicon_noderiv",
+          priority: 89,
+          schedule: "dynamic",
+          layer: "hard",
+          run: function (c) {
+            return pack.run(c || ctx);
+          },
+        },
+      ];
+      var mark = now();
+      log("6a kickAll(pack.selfLock) with 8s timeout...");
+      return withTimeout(PL.kickAll(runnable, ctx), 8000, "kickAll_double_lock").then(function (kickV) {
+        var kickTimeout = !!(kickV && kickV.__timeout);
+        var kickHits = spySince(mark, "B10x_silicon_noderiv");
+        var kickUpload = kickHits.some(function (x) {
+          return x.ok;
+        });
+        log(
+          "6a timeout=" +
+            kickTimeout +
+            " upload=" +
+            kickUpload +
+            " lock=" +
+            JSON.stringify(window.__GR_HW_LOCK__)
+        );
+
+        // 6b: eager chain (post-B10 path used in hard registry)
+        var mark2 = now();
+        var eagerP =
+          typeof C.scheduleEagerB10xChain === "function"
+            ? C.scheduleEagerB10xChain(ctx)
+            : Promise.resolve({ __error: "no_scheduleEagerB10xChain" });
+        log("6b scheduleEagerB10xChain with 20s timeout...");
+        return withTimeout(eagerP, 20000, "eager_chain").then(function (v) {
+          return new Promise(function (r) {
+            setTimeout(r, 1500);
+          }).then(function () {
+            var hits = spySince(mark2, "B10x_");
+            var byBatch = {};
+            hits.forEach(function (h) {
+              byBatch[h.batch_id] = byBatch[h.batch_id] || [];
+              byBatch[h.batch_id].push({ http: h.http, ok: h.ok, dt_ms: h.dt_ms });
+            });
+            var uploadOk = hits.some(function (x) {
+              return x.ok;
+            });
+            var doubleLockDeadlock = kickTimeout && !kickUpload;
+            var row = {
+              test: "T6_eager_chain",
+              pass: !doubleLockDeadlock && uploadOk && !(v && v.__timeout),
+              timeout: !!(v && v.__timeout),
+              double_lock_deadlock: doubleLockDeadlock,
+              kickAll_timeout: kickTimeout,
+              kickAll_upload: kickUpload,
+              eager_meta: window.__GR_EAGER_B10X__ || null,
+              hw_lock: window.__GR_HW_LOCK__ || null,
+              net_by_batch: byBatch,
+              net_hit_n: hits.length,
+              upload_ok: uploadOk,
+              dt_ms: now() - t0,
+              session_id: sessionId,
+              verdict: doubleLockDeadlock
+                ? "HW_LOCK_DOUBLE_LOCK_DEADLOCK"
+                : uploadOk
+                  ? "EAGER_CHAIN_UPLOAD_OK"
+                  : v && v.__timeout
+                    ? "EAGER_CHAIN_TIMEOUT_NO_UPLOAD"
+                    : "EAGER_CHAIN_NO_UPLOAD",
+            };
+            log("T6 " + JSON.stringify(row, null, 2));
+            return row;
+          });
+        });
+      });
+    });
+  }
+
+  function summarize(results) {
+    var lines = ["", "======== DIAGNOSIS ========"];
+    results.forEach(function (r) {
+      lines.push(
+        (r.pass ? "PASS" : "FAIL") +
+          " " +
+          r.test +
+          (r.verdict ? " → " + r.verdict : "") +
+          (r.error ? " err=" + r.error : "")
+      );
+    });
+    var map = {};
+    results.forEach(function (r) {
+      map[r.test] = r;
+    });
+    var cause = "unknown";
+    if (map.T1_upload_only && !map.T1_upload_only.pass) cause = "UPLOAD_CHANNEL (session/ingest broken)";
+    else if (map.T2_helpers && !map.T2_helpers.pass) cause = "HELPERS_MISSING (lite/hard/b10x load order or __h)";
+    else if (map.T3_multipath && map.T3_multipath.any_timeout) cause = "MULTIPATH_HANG (webglResidualMultiPath)";
+    else if (map.T3_multipath && !map.T3_multipath.any_curve_ok) cause = "MULTIPATH_NO_CURVE (GL/profile)";
+    else if (map.T4_enqueue_paths && map.T4_enqueue_paths.verdict === "QUEUE_BROKEN_RAW_OK")
+      cause = "UPLOAD_QUEUE (enqueue/pump/halt)";
+    else if (map.T4_enqueue_paths && map.T4_enqueue_paths.verdict === "MIDENQUEUE_BROKEN")
+      cause = "MIDENQUEUE (helper enqueue path)";
+    else if (map.T5_pack_run && map.T5_pack_run.verdict === "PACK_HANG_NO_UPLOAD")
+      cause = "PACK_RUN_HANG before any ingest (lock/multipath/exception)";
+    else if (map.T5_pack_run && map.T5_pack_run.verdict === "PACK_FINISHED_BUT_NO_UPLOAD")
+      cause = "PACK_RUN_NO_ENQUEUE (midEnqueue/queue not called or dropped)";
+    else if (map.T6_eager_chain && map.T6_eager_chain.double_lock_deadlock)
+      cause =
+        "HW_LOCK_DEADLOCK — kickAll/withHardwareLock nests pack.run which also takes withHardwareLock (non-reentrant). Main: B10→scheduleEagerB10xChain→kickAll hangs → b10x_ticks=0";
+    else if (map.T6_eager_chain && !map.T6_eager_chain.pass)
+      cause = "EAGER_CHAIN (scheduleEagerB10xChain / kickAll / HW lock)";
+    else if (
+      map.T1_upload_only &&
+      map.T1_upload_only.pass &&
+      map.T5_pack_run &&
+      map.T5_pack_run.pass &&
+      map.T6_eager_chain &&
+      map.T6_eager_chain.pass
+    )
+      cause =
+        "COMPONENT_OK — main app issue likely BRAIN_SCHEDULE / cool-down skip / pack never kicked";
+    lines.push("LIKELY_CAUSE: " + cause);
+    lines.push("ALL_DONE");
+    lines.forEach(log);
+    window.__DIAG_CAUSE__ = cause;
+    return cause;
+  }
+
+  function runAll() {
+    clearLog();
+    ingestSpy = [];
+    window.__DIAG_RESULTS__ = [];
+    window.__DIAG_DONE__ = false;
+    installIngestSpy();
+    var seq = [testT1, testT2, testT3, testT4, testT5, testT6];
+    var chain = Promise.resolve();
+    seq.forEach(function (fn) {
+      chain = chain.then(function () {
+        return fn().then(function (r) {
+          window.__DIAG_RESULTS__.push(r);
+          log("--- result " + r.test + " pass=" + r.pass + " ---");
+        });
+      });
+    });
+    return chain.then(function () {
+      summarize(window.__DIAG_RESULTS__);
+      window.__DIAG_DONE__ = true;
+      return window.__DIAG_RESULTS__;
+    });
+  }
+
+  document.getElementById("btnAll").onclick = function () {
+    runAll();
+  };
+  document.getElementById("btnT1").onclick = function () {
+    clearLog();
+    testT1().then(function (r) {
+      window.__DIAG_RESULTS__ = [r];
+      window.__DIAG_DONE__ = true;
+    });
+  };
+  document.getElementById("btnT2").onclick = function () {
+    clearLog();
+    testT2().then(function (r) {
+      window.__DIAG_RESULTS__ = [r];
+      window.__DIAG_DONE__ = true;
+    });
+  };
+  document.getElementById("btnT3").onclick = function () {
+    clearLog();
+    testT2()
+      .then(function () {
+        return testT3();
+      })
+      .then(function (r) {
+        window.__DIAG_RESULTS__ = [r];
+        window.__DIAG_DONE__ = true;
+      });
+  };
+  document.getElementById("btnT4").onclick = function () {
+    clearLog();
+    testT2()
+      .then(function () {
+        return testT4();
+      })
+      .then(function (r) {
+        window.__DIAG_RESULTS__ = [r];
+        window.__DIAG_DONE__ = true;
+      });
+  };
+  document.getElementById("btnT5").onclick = function () {
+    clearLog();
+    testT2()
+      .then(function () {
+        return testT5();
+      })
+      .then(function (r) {
+        window.__DIAG_RESULTS__ = [r];
+        window.__DIAG_DONE__ = true;
+      });
+  };
+  document.getElementById("btnT6").onclick = function () {
+    clearLog();
+    testT2()
+      .then(function () {
+        return testT6();
+      })
+      .then(function (r) {
+        window.__DIAG_RESULTS__ = [r];
+        window.__DIAG_DONE__ = true;
+      });
+  };
+
+  if (/[?&]auto=1/.test(location.search)) {
+    setTimeout(function () {
+      runAll();
+    }, 300);
+  }
+  window.__DIAG_RUN_ALL__ = runAll;
+  window.__DIAG_T1__ = testT1;
+  window.__DIAG_T2__ = testT2;
+  window.__DIAG_T3__ = testT3;
+  window.__DIAG_T4__ = testT4;
+  window.__DIAG_T5__ = testT5;
+  window.__DIAG_T6__ = testT6;
+})();
+  </script>
+</body>
+</html>

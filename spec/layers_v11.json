@@ -1,0 +1,36 @@
+{
+  "version": "v11.3",
+  "scheme": "v11.3",
+  "layers": {
+    "lite5": [
+      "B0_bootstrap",
+      "B12_anti_camouflage",
+      "B1_conflict",
+      "B2_hardware",
+      "B3_system"
+    ],
+    "b8": ["B8_gateway"],
+    "mid4": [
+      "B10_hw_curves",
+      "B13_authorized",
+      "B15_cross_curves",
+      "B16_fast_signals"
+    ],
+    "deep": [
+      "B4_mobile",
+      "B5_census",
+      "B6_risk",
+      "B7_sandbox",
+      "B9_network",
+      "B11_interaction",
+      "B14_css_protocol"
+    ]
+  },
+  "main_core_batches": [
+    "B0_bootstrap",
+    "B1_conflict",
+    "B2_hardware",
+    "B3_system",
+    "B12_anti_camouflage"
+  ]
+}

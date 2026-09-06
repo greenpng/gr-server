@@ -1,0 +1,57 @@
+[package]
+name = "gr-service"
+version.workspace = true
+edition.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "gr-service"
+path = "src/main.rs"
+
+[dependencies]
+gr-abi = { workspace = true }
+gr-runtime = { workspace = true }
+gr-admin = { workspace = true }
+gr-cluster = { workspace = true }
+gr-ota = { workspace = true }
+gr-lb = { workspace = true }
+gr-module-identity = { path = "../../modules/identity" }
+gr-module-brain = { path = "../../modules/brain" }
+gr-module-analyze = { path = "../../modules/analyze" }
+gr-module-ingest = { path = "../../modules/ingest" }
+gr-module-edge = { path = "../../modules/edge" }
+gr-module-probe-assets = { path = "../../modules/probe-assets" }
+# In-tree probe plane (copied from v5; maintained only in green-v6)
+gr-probe-plane = { workspace = true }
+gr-probe-store = { workspace = true }
+gr-probe-core = { workspace = true }
+gr-obf = { path = "../gr-obf" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+log = "0.4"
+env_logger = "0.11"
+reqwest = { workspace = true }
+postgres = "0.19"
+aes-gcm = "0.10"
+base64 = "0.22"
+sha2 = { workspace = true }
+hmac = "0.12"
+hkdf = "0.12"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+rand = "0.8"
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+gr-probe-core = { workspace = true }
+gr-probe-store = { workspace = true }
+gr-probe-plane = { workspace = true }

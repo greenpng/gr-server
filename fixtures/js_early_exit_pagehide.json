@@ -1,0 +1,25 @@
+{
+  "session_id": "sess_early_exit_001",
+  "sources": ["main", "gateway"],
+  "has_gateway": true,
+  "batches": [
+    {"batch_id": "B0_bootstrap", "source": "main"},
+    {"batch_id": "B8_gateway", "source": "gateway"}
+  ],
+  "gateway_fields": {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
+  },
+  "fields": {
+    "session_id": "sess_early_exit_001",
+    "page_id": "p_early_1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+    "os_family": "windows",
+    "form_class": "desktop",
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "pagehide_flush": true,
+    "behavior_early_bound": true,
+    "behavior_count": 0,
+    "behavior_events": []
+  }
+}

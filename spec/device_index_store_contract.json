@@ -1,0 +1,31 @@
+{
+  "version": "1",
+  "algo": "device_index_store_contract_v1",
+  "date": "2026-07-30",
+  "note": "iss/38 D-17: FileDeviceIndex on-disk schema vs future store table semantics. Lab/single-node uses file JSON; PG multi-tenant DeviceIndex is NOT required to match row-for-row yet — this contract freezes the file v1 keys for parity tests.",
+  "file_device_index_v1": {
+    "required_top_keys": [
+      "version",
+      "tenant_id",
+      "algo",
+      "server_mint_algo",
+      "devices",
+      "index"
+    ],
+    "version_value": "file_device_index_v1",
+    "devices_value": "object map device_id → BinderObs JSON",
+    "index_value": "object map binder_key → [device_id]"
+  },
+  "store_alignment": {
+    "status": "lab_file_primary_plus_sqlite_and_pg_lab",
+    "pg_multi_tenant": false,
+    "pg_lab_single_region": true,
+    "parity_rule": "FileDeviceIndex::save() must emit required_top_keys; Store::device_index_export (sqlite|pg) matches same top keys",
+    "sqlite_tables": ["device_index_devices", "device_index_keys"],
+    "pg_tables": [
+      "device_index_devices(tenant_id, device_id, binder_obs_json, updated_ms)",
+      "device_index_keys(tenant_id, binder_key, device_id)"
+    ],
+    "note": "PG multi-region / multi-worker production SLA still false; local :25432 greenv5 can exercise upsert/export"
+  }
+}

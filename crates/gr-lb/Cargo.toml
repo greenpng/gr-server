@@ -1,0 +1,15 @@
+[package]
+name = "gr-lb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Paid multi-node load-balancer engine (docs/guides/08-LB-MODULE.md): selectors, health pool, 302/internal-IP routing"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }

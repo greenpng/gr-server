@@ -1,0 +1,58 @@
+[package]
+name = "gr-probe-plane"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "green-v6 probe plane (copied from v5 service; maintained in-tree): Pingora gateway + HTTP API"
+
+[lib]
+name = "gr_probe_plane"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gr-probe-plane"
+path = "src/main.rs"
+
+[dependencies]
+gr-abi = { workspace = true }
+gr-probe-core = { workspace = true }
+gr-probe-store = { workspace = true }
+gr-probe-net = { workspace = true }
+gr-lb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+async-trait = "0.1"
+bytes = "1"
+log = "0.4"
+env_logger = "0.11"
+libc = "0.2"
+dashmap = "6"
+foreign-types = "0.3"
+openssl = "0.10"
+openssl-sys = "0.9"
+reqwest = { workspace = true }
+
+# Cloudflare Pingora — vendored in-tree under green-v6/vendor
+pingora = { path = "../../vendor/pingora/pingora", features = ["proxy", "openssl"] }
+pingora-core = { path = "../../vendor/pingora/pingora-core", default-features = false, features = ["openssl"] }
+pingora-http = { path = "../../vendor/pingora/pingora-http" }
+pingora-proxy = { path = "../../vendor/pingora/pingora-proxy", default-features = false, features = ["openssl"] }
+
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+quinn = { version = "0.11", default-features = true, features = ["rustls-ring"] }
+http = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
+sha2 = "0.10"
+rusqlite = { workspace = true }
+postgres = "0.19"
+scrypt = "0.11"
+rand = "0.8"
+base64 = "0.22"
+hex = "0.4"
+rcgen = "0.13"
+time = "0.3"
+instant-acme = "0.7"

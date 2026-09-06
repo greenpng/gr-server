@@ -1,0 +1,18 @@
+[package]
+name = "gr-module-analyze"
+version.workspace = true
+edition.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gr-abi = { workspace = true }
+gr-probe-core = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+
+[features]
+default = []
+plugin = []

@@ -1,0 +1,125 @@
+{
+  "version": "v1",
+  "mode": "shadow",
+  "date": "2026-07-30",
+  "note": "Relationship predicates only — not UA/brand allowlists (iss/38 D-13).",
+  "rules": [
+    {
+      "id": "R_soft_mobile_no_touch",
+      "axis": "os",
+      "weight": 0.08,
+      "when": [
+        {
+          "op": "field_true",
+          "field": "residual_soft_like"
+        },
+        {
+          "op": "field_eq",
+          "field": "form_class",
+          "value": "mobile"
+        },
+        {
+          "op": "field_eq",
+          "field": "max_touch_points",
+          "value": "0"
+        }
+      ],
+      "then_reasons": [
+        "rule_sample_soft_mobile_no_touch"
+      ]
+    },
+    {
+      "id": "R_antidetect_present",
+      "axis": "br",
+      "weight": 0.06,
+      "when": [
+        {
+          "op": "field_true",
+          "field": "antidetect_vendor_hint"
+        }
+      ],
+      "then_reasons": [
+        "rule_sample_antidetect_present"
+      ]
+    },
+    {
+      "id": "R_webdriver_control",
+      "axis": "rpa",
+      "weight": 0.1,
+      "when": [
+        {
+          "op": "field_true",
+          "field": "webdriver"
+        }
+      ],
+      "then_reasons": [
+        "rule_sample_webdriver_control"
+      ]
+    },
+    {
+      "id": "R_emu_mobile_no_sensor",
+      "axis": "os",
+      "weight": 0.1,
+      "when": [
+        {
+          "op": "field_eq",
+          "field": "form_class",
+          "value": "mobile"
+        },
+        {
+          "op": "field_true",
+          "field": "residual_soft_like"
+        },
+        {
+          "op": "field_false",
+          "field": "sensor_accel_present"
+        }
+      ],
+      "then_reasons": [
+        "rule_sample_emu_mobile_no_sensor"
+      ]
+    },
+    {
+      "id": "R_emu_touch_zero",
+      "axis": "os",
+      "weight": 0.08,
+      "when": [
+        {
+          "op": "field_true",
+          "field": "mobile_ua_claim"
+        },
+        {
+          "op": "field_eq",
+          "field": "max_touch_points",
+          "value": "0"
+        }
+      ],
+      "then_reasons": [
+        "rule_sample_emu_touch_zero"
+      ]
+    },
+    {
+      "id": "R_soft_mobile_egress",
+      "axis": "os",
+      "weight": 0.06,
+      "when": [
+        {
+          "op": "field_true",
+          "field": "residual_soft_like"
+        },
+        {
+          "op": "field_eq",
+          "field": "form_class",
+          "value": "mobile"
+        },
+        {
+          "op": "field_present",
+          "field": "server_asn"
+        }
+      ],
+      "then_reasons": [
+        "rule_sample_soft_mobile_egress"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# 构建与运行时产物
+/target/
+/dist/
+**/dist/
+node_modules/
+*.log
+
+# 密钥与本地环境（永不入库；公钥 ota_ed25519.pk 除外）
+*.sk
+keys/
+**/.env
+secrets.env
+guard.env
+
+# 数据与本地状态
+/data/
+**/data/
+/reports/
+*.sqlite*
+OPAQUE_MAP.json

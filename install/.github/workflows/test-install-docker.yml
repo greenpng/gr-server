@@ -1,0 +1,65 @@
+# GitHub runner 上测试 Docker 路径 (x86_64 + aarch64)
+#
+# install.sh --with-docker: 由安装器自动起 postgres(4库)+redis 数据服务容器,
+# 自动生成随机密码并预填连接串, 其余与 sh 安装一致。
+name: test-install-docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "V7/GR 发布版本(默认 8.0.0)"
+        type: string
+        required: false
+        default: "8.0.0"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  install-docker:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: clean stale services from previous runs (reused runners)
+        run: |
+          pkill -f 'gr-service|gv6-service' 2>/dev/null || true
+          (cd docker && docker compose down -v 2>/dev/null || true) || true
+          sleep 2
+
+      - name: run install.sh --with-docker
+        id: install
+        run: |
+          set -euo pipefail
+          ARGS=(--arch "${{ matrix.arch }}" --prefix "$RUNNER_TEMP/gv6" --with-docker --no-systemd --yes)
+          VERSION="${{ inputs.version || '8.0.0' }}"
+          [[ "$VERSION" =~ ^(7|8)\.[0-9]+\.[0-9]+$ ]] || { echo "V7/GR workflow requires 7.x.y or 8.x.y"; exit 1; }
+          ARGS+=(--version "$VERSION")
+          bash install.sh "${ARGS[@]}" 2>&1 | tee /tmp/install.log
+          [[ -f "$RUNNER_TEMP/gv6/install-state.env" ]] || { cat /tmp/install.log; exit 1; }
+          grep -E '^(VERSION|ARCH|CONSOLE|PREFIX)=' "$RUNNER_TEMP/gv6/install-state.env"
+
+      - name: smoke test
+        run: bash test/smoke_install.sh --prefix "$RUNNER_TEMP/gv6"
+
+      - name: upload logs
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: install-docker-${{ matrix.arch }}
+          path: |
+            /tmp/install.log
+            ${{ runner.temp }}/gv6/log/
+          if-no-files-found: ignore

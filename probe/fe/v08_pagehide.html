@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>gr V-08 pagehide flush</title>
+  </head>
+  <body>
+    <p id="status">booting</p>
+    <script>
+      window.GR_ENDPOINT = window.location.origin.replace(/:\d+$/, "") + ":28770";
+      // When served from file:// or same guest static port, endpoint is injected by harness.
+      if (window.__GR_TEST_ENDPOINT__) {
+        window.GR_ENDPOINT = window.__GR_TEST_ENDPOINT__;
+      }
+    </script>
+    <script src="./gr.boot.js" data-autostart="0"></script>
+    <script>
+      (async function () {
+        var st = document.getElementById("status");
+        try {
+          var ep =
+            window.__GR_TEST_ENDPOINT__ ||
+            window.GR_ENDPOINT ||
+            "http://127.0.0.1:28770";
+          // Lite packs may already upload B2; use a dedicated late batch for pagehide.
+          var out = await GRBoot.start({
+            endpoint: ep,
+            inject_path: "app",
+            waitAnalyze: false,
+            waitPacks: true,
+          });
+          // Hold a batch that is only flushed on pagehide (enqueue after pausing pump via direct pending).
+          var Q = GRUploadQueue;
+          var held = {
+            session_id: out.session_id,
+            batch_id: "B16_fast_signals",
+            source: "main",
+            inject_path: "app",
+            priority: 10,
+            payload: {
+              fields: {
+                user_agent: navigator.userAgent,
+                v08_marker: "pagehide_flush_pending",
+              },
+            },
+          };
+          // Put into queue but mark hiding=false path: temporarily raise concurrency 0 by flush later only.
+          // Simpler: stash on window and flush helper posts on pagehide via Boot.flush after enqueue.
+          window.__GR_V08_HELD__ = held;
+          document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === "hidden" && window.__GR_V08_HELD__) {
+              Q.enqueue(window.__GR_V08_HELD__);
+              window.__GR_V08_HELD__ = null;
+            }
+          });
+          window.addEventListener("pagehide", function () {
+            if (window.__GR_V08_HELD__) {
+              Q.enqueue(window.__GR_V08_HELD__);
+              window.__GR_V08_HELD__ = null;
+            }
+            Q.flush("pagehide");
+          });
+          window.__GR_V08_READY__ = {
+            session_id: out.session_id,
+            pending: 1,
+          };
+          st.textContent = "ready session=" + out.session_id + " pending=1";
+        } catch (e) {
+          st.textContent = "error " + (e && e.message ? e.message : e);
+          window.__GR_V08_ERROR__ = String(e && e.message ? e.message : e);
+        }
+      })();
+    </script>
+  </body>
+</html>

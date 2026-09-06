@@ -1,0 +1,16 @@
+{
+  "session_id": "sess_crawler_001",
+  "sources": ["main", "gateway"],
+  "batches": [
+    {"batch_id": "B8_gateway", "source": "gateway"},
+    {"batch_id": "B0_bootstrap", "source": "main"}
+  ],
+  "has_gateway": true,
+  "fields": {
+    "user_agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "os_family": "linux",
+    "form_class": "desktop",
+    "languages": ["en"],
+    "site_locale": "zh"
+  }
+}

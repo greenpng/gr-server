@@ -1,0 +1,18 @@
+[package]
+name = "gr-probe-net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "green-v6 network side-channel (copied from v5; maintained in-tree)"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+md-5 = "0.10"
+hex = "0.4"
+hkdf = "0.12"
+aes = "0.8"
+aes-gcm = "0.10"
+hmac = "0.12"
+libc = "0.2"

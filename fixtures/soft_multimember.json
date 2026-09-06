@@ -1,0 +1,53 @@
+{
+  "tenant": "t_demo",
+  "members": [
+    {
+      "session_id": "s1",
+      "hs2": "hs2_shared_bucket",
+      "net_shard": null,
+      "ts_ms": 1000,
+      "env_class": "residential",
+      "tenant": "t_demo"
+    },
+    {
+      "session_id": "s2",
+      "hs2": "hs2_shared_bucket",
+      "net_shard": null,
+      "ts_ms": 2000,
+      "env_class": "residential",
+      "tenant": "t_demo"
+    },
+    {
+      "session_id": "s3",
+      "hs2": "hs2_shared_bucket",
+      "net_shard": null,
+      "ts_ms": 3000,
+      "env_class": "residential",
+      "tenant": "t_demo"
+    },
+    {
+      "session_id": "s4",
+      "hs2": "hs2_shared_bucket",
+      "net_shard": "asn_4134",
+      "ts_ms": 4000,
+      "env_class": "residential",
+      "tenant": "t_demo"
+    },
+    {
+      "session_id": "s5",
+      "hs2": "hs2_shared_bucket",
+      "net_shard": "asn_4134",
+      "ts_ms": 4500,
+      "env_class": "residential",
+      "tenant": "t_demo"
+    },
+    {
+      "session_id": "s6",
+      "hs2": "hs2_other",
+      "net_shard": "asn_9999",
+      "ts_ms": 5000,
+      "env_class": "residential",
+      "tenant": "t_demo"
+    }
+  ]
+}

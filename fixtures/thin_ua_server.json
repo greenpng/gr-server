@@ -1,0 +1,19 @@
+{
+  "session_id": "sess_thin_ua_server",
+  "sources": ["gateway", "cloudflare"],
+  "batches": [
+    {"batch_id": "B8_gateway", "source": "gateway"}
+  ],
+  "has_gateway": true,
+  "has_cloudflare": true,
+  "gateway_fields": {
+    "user_agent": "Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36"
+  },
+  "cf_fields": {
+    "bot_score": 1
+  },
+  "fields": {
+    "user_agent": "Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36",
+    "ua": "Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "session_id": "sess_fe_only_001",
+  "sources": ["main"],
+  "batches": [
+    {"batch_id": "B0_bootstrap", "source": "main"},
+    {"batch_id": "B3_system", "source": "main"}
+  ],
+  "fields": {
+    "session_id": "sess_fe_only_001",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "os_family": "windows",
+    "form_class": "desktop",
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "timezone": "Asia/Shanghai",
+    "hardware_concurrency": 8,
+    "languages": ["en-US", "en"],
+    "site_locale": "zh",
+    "webgl_unmasked_renderer": "ANGLE (Intel, Intel(R) UHD Graphics 620)"
+  }
+}

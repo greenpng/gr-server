@@ -1,0 +1,48 @@
+{
+  "policy_id": "site_default_v1",
+  "version": "v5.3",
+  "notes": [
+    "L4 business thresholds only (G-ARCH-13). Does not change Soft/IP/UA redlines.",
+    "Display status cutoffs in product_scores remain separate from these OTP gates.",
+    "link_threshold: override via GV5_LINK_THRESHOLD env or this field (lab-calibrate).",
+    "confidence_adopt: NEVER silent — env GV5_CONF_ADOPT=1 or this flag + labeled pairs + ECE gate.",
+    "sla_alerts: organic anchor rates for identity_sla daily + ops."
+  ],
+  "bot_block_verdicts": ["bot", "crawler", "automation"],
+  "otp_if": {
+    "br_score_lt": 0.55,
+    "os_score_lt": 0.50,
+    "rpa_score_lt": 0.45,
+    "device_confidence_lt": 0.55
+  },
+  "allow_anonymous_if_no_device_id": true,
+  "link_threshold": 0.60,
+  "confidence_adopt": false,
+  "confidence_adopt_max_ece": 0.35,
+  "confidence_adopt_min_pairs": 8,
+  "sla_alerts": {
+    "min_sessions": 3,
+    "min_has_device_id_rate": 0.10,
+    "min_both_curves_rate": 0.05,
+    "min_eligible_rate": 0.10,
+    "max_soft_promote_violations": 0
+  },
+  "multi_source_conflict": {
+    "notes": [
+      "Lab-calibrate via scripts/calibrate_conflict_weights.py against greenv5_lab.",
+      "Env overrides: GV5_MSC_OS_BASE, GV5_MSC_OS_PER, GV5_MSC_BR_BASE, GV5_MSC_BR_PER,",
+      "GV5_MSC_RPA_BASE, GV5_MSC_RPA_MISMATCH (optional floats)."
+    ],
+    "os_base": 0.08,
+    "os_per": 0.04,
+    "os_max_n": 4,
+    "br_base": 0.10,
+    "br_per": 0.05,
+    "br_max_n": 4,
+    "rpa_base": 0.06,
+    "rpa_mismatch_add": 0.08,
+    "rpa_match_ratio_lt": 0.50,
+    "single_source_pressure_lt": 0.25,
+    "single_source_scale": 0.05
+  }
+}

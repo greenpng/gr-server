@@ -1,0 +1,31 @@
+{
+  "algo": "silicon_fusion_weights_v1",
+  "version": 1,
+  "note": "Hand defaults (iss/54 F5). Replace via offline fit when labeled pairs exist; load with GV5_SILICON_FUSION_WEIGHTS_PATH or place at this path.",
+  "learned": false,
+  "channels": {
+    "lane_c_healthy": 1.0,
+    "lane_c_dead": 0.45,
+    "lane_s_healthy": 1.25,
+    "lane_s_weak": 0.7,
+    "timing": 1.1,
+    "audio_healthy": 0.95,
+    "audio_weak": 0.55,
+    "webgpu_healthy": 0.9,
+    "webgpu_weak": 0.5,
+    "cpu": 0.55,
+    "canvas": 0.4,
+    "ensemble": 0.85,
+    "anti_collision_composite": 0.95,
+    "seed_ulp": 0.35,
+    "seed_residual": 0.25
+  },
+  "separability_boosts": {
+    "lane_s_entropy": 0.28,
+    "timing": 0.22,
+    "audio_ok": 0.18,
+    "webgpu_ok": 0.14,
+    "multi_fn_disagrees": 0.12,
+    "n_paths_ok_ge3": 0.06
+  }
+}

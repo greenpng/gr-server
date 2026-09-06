@@ -1,0 +1,36 @@
+{
+  "version": "v5.0",
+  "aligned_with": "feasibility-v9/docs/01-algorithms-and-fields.md PKG_*",
+  "packages": {
+    "PKG_UA": {
+      "fields": ["user_agent", "ua"],
+      "unlocks": ["crawler_coarse"]
+    },
+    "PKG_AUTO": {
+      "fields": ["automation", "webdriver", "playwright", "selenium", "cdc"],
+      "batches": ["B1_conflict"],
+      "unlocks": ["automation_hard"]
+    },
+    "PKG_GPU": {
+      "fields": ["webgl_unmasked_renderer", "webgl_unmasked_vendor"],
+      "batches": ["B2_hardware"],
+      "unlocks": ["device_hard_anchor", "soft_gpu"]
+    },
+    "PKG_GEOCPU": {
+      "fields": ["screen_width", "screen_height", "timezone", "hardware_concurrency", "os_family"],
+      "batches": ["B3_system", "B0_bootstrap"],
+      "unlocks": ["link_without_gpu"]
+    },
+    "PKG_LINK": {
+      "any_of": ["PKG_GPU", "PKG_GEOCPU"],
+      "unlocks": ["sparse_safe_link"]
+    },
+    "PKG_XSRC": {
+      "requires": {
+        "server_any": ["gateway", "cloudflare"],
+        "browser_any": ["main"]
+      },
+      "unlocks": ["cross_source_truth"]
+    }
+  }
+}

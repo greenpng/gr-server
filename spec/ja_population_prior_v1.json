@@ -1,0 +1,13 @@
+{
+  "version": "1",
+  "algo": "ja_population_prior_v1",
+  "note": "iss/39 R8: static/lab population prior for br aux \u2014 not live hourly CDN stats. Keys are engine families.",
+  "engine_family_share": {
+    "blink": 0.72,
+    "gecko": 0.14,
+    "webkit": 0.1,
+    "unknown": 0.04
+  },
+  "rare_family_threshold": 0.08,
+  "weight_cap": 0.04
+}

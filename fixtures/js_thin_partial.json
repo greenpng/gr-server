@@ -1,0 +1,26 @@
+{
+  "session_id": "sess_js_thin_partial_001",
+  "sources": ["main", "gateway"],
+  "has_gateway": true,
+  "batches": [
+    {"batch_id": "B11_interaction", "source": "main"},
+    {"batch_id": "B13_authorized", "source": "main"},
+    {"batch_id": "B6_risk", "source": "main"},
+    {"batch_id": "B8_gateway", "source": "gateway"}
+  ],
+  "gateway_fields": {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "server_client_ip": "203.0.113.10"
+  },
+  "fields": {
+    "session_id": "sess_js_thin_partial_001",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "os_family": "windows",
+    "form_class": "desktop",
+    "platform": "Win32",
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "languages": ["zh-CN", "en"],
+    "plugins_length": 3
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "algo": "lane_s_engine_norm_v1",
+  "version": 1,
+  "note": "Provisional engine-family normalization for Lane-S (iss/54 F6). Tables are design defaults; replace with fleet-measured mean/std per engine when available. Does not invent materials — only affine reshape of fine curves before digest/LSH.",
+  "learned_from_fleet": false,
+  "engines": {
+    "blink": {
+      "scale": 1.0,
+      "bias": 0.0,
+      "lsh_salt": "eng_blink_v1",
+      "mag_quanta_scale": 1.0
+    },
+    "gecko": {
+      "scale": 1.02,
+      "bias": 0.0,
+      "lsh_salt": "eng_gecko_v1",
+      "mag_quanta_scale": 1.05
+    },
+    "webkit": {
+      "scale": 1.08,
+      "bias": -0.002,
+      "lsh_salt": "eng_webkit_v1",
+      "mag_quanta_scale": 1.12,
+      "drop_cold_first_seed": true
+    },
+    "unknown": {
+      "scale": 1.0,
+      "bias": 0.0,
+      "lsh_salt": "eng_unknown_v1",
+      "mag_quanta_scale": 1.0
+    }
+  }
+}

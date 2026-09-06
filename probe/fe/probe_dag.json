@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "description": "Machine-readable probe batch DAG for green-v6 FE (static reference view). The authoritative probe_dag_v2 metadata is emitted by the server per pack: catalog.rs::PackDef::probe_dag_v2(), shipped inside route_plan.packs[].dag_v2 and consumed by pack_loader.js (engine gate / depends_on defer / deadline bookkeeping). Depends are soft unless hard=true.",
+  "layers": {
+    "L0": ["B0_bootstrap"],
+    "L1": ["B1_conflict", "B12_anti_camouflage", "B2_hardware", "B3_system", "B8_gateway", "B8_gateway_early"],
+    "HARD": ["B10_hw_curves", "B7_sandbox", "B47_sab_clock"],
+    "B10x": [
+      "B10x_silicon_noderiv",
+      "B10x_silicon_rint",
+      "B10x_silicon_ulp",
+      "B10x_silicon_deep",
+      "B10x_webkit_gl_noise",
+      "B10x_webkit_wave2_warm4",
+      "B10x_softgl_hedge",
+      "B10x_legacy_webgl1",
+      "B10x_angle_crosscheck",
+      "B10x_unknown_kernel"
+    ],
+    "MID_GPU": ["B17_hw_physical", "B18_webgpu", "B22_gpu_timer", "B23_native_canvas_hedge", "B30_gpu_bandwidth", "B31_shader_numeric", "B46_audio_deep"],
+    "BEHAVIOR": ["B11_interaction"],
+    "DENSE": ["B50_font_matrix_detail", "B55_webrtc_ice_deep", "B57_canvas_emoji_path", "B59_webgl_params_full"]
+  },
+  "edges": [
+    { "from": "B0_bootstrap", "to": "B2_hardware", "hard": false },
+    { "from": "B0_bootstrap", "to": "B3_system", "hard": false },
+    { "from": "B0_bootstrap", "to": "B10_hw_curves", "hard": true },
+    { "from": "B10_hw_curves", "to": "B10x_silicon_noderiv", "hard": false, "note": "eager after residual" },
+    { "from": "B10_hw_curves", "to": "B10x_silicon_rint", "hard": false },
+    { "from": "B10_hw_curves", "to": "B10x_silicon_ulp", "hard": false },
+    { "from": "B10_hw_curves", "to": "B18_webgpu", "hard": false },
+    { "from": "B10_hw_curves", "to": "B46_audio_deep", "hard": false },
+    { "from": "B10_hw_curves", "to": "B7_sandbox", "hard": false, "note": "companion hard" },
+    { "from": "B2_hardware", "to": "B12_anti_camouflage", "hard": false },
+    { "from": "B11_interaction", "to": "analyze_idle", "hard": false, "note": "server idle 30s" }
+  ],
+  "resource_class": {
+    "B10_hw_curves": "gpu",
+    "B10x_*": "gpu",
+    "B18_webgpu": "gpu",
+    "B46_audio_deep": "audio",
+    "B47_sab_clock": "cpu",
+    "B11_interaction": "none"
+  },
+  "commercial_primary": ["B10_hw_curves"],
+  "must_defer_until_primary": true,
+  "method_matrix_module": "probe_method_matrix.js"
+}

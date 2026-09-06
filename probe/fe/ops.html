@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>green-v5 ops · session timeline</title>
+  <style>
+    :root { --bg:#0b1220; --card:#111827; --fg:#e5e7eb; --muted:#9ca3af; --acc:#38bdf8; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:14px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+    header { padding:16px 20px; border-bottom:1px solid #1f2937; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    header h1 { font-size:16px; margin:0; font-weight:600; }
+    header .muted { color:var(--muted); font-size:12px; }
+    main { padding:16px 20px; max-width:1100px; margin:0 auto; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    input, button, select { background:#0f172a; color:var(--fg); border:1px solid #334155; border-radius:6px; padding:8px 10px; }
+    input { min-width:280px; flex:1; }
+    button { cursor:pointer; background:#0369a1; border-color:#0284c7; }
+    button:hover { filter:brightness(1.1); }
+    .card { background:var(--card); border:1px solid #1f2937; border-radius:10px; padding:14px; margin-bottom:12px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+    .stat .k { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+    .stat .v { font-size:18px; font-weight:600; margin-top:2px; word-break:break-all; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #1f2937; vertical-align:top; }
+    th { color:var(--muted); font-weight:500; font-size:11px; text-transform:uppercase; }
+    .band-confirmed_real { color:var(--ok); }
+    .band-watch { color:var(--warn); }
+    .band-insufficient, .band-crawler { color:var(--bad); }
+    .tag { display:inline-block; padding:1px 6px; border-radius:4px; background:#1e293b; font-size:11px; margin:1px; }
+    pre { background:#0f172a; padding:10px; border-radius:8px; overflow:auto; font-size:12px; max-height:320px; }
+    .err { color:var(--bad); }
+    a { color:var(--acc); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>green-v5 lite ops</h1>
+    <span class="muted">session timeline · coverage · device_id · 不替代完整分析台</span>
+  </header>
+  <main>
+    <div class="row">
+      <input id="sid" placeholder="session_id (sess_…)" />
+      <button id="btnLoad">Load</button>
+      <button id="btnOverview" type="button">Overview</button>
+      <button id="btnSla" type="button">Identity SLA 大盘</button>
+      <button id="btnB10" type="button">B10 完整率 / 错误 Top</button>
+      <button id="btnOpsErr" type="button">Ops 错误事件</button>
+      <button id="btnExport" type="button">导出日志 JSON</button>
+      <button id="btnVtBest" type="button" title="prefer silicon over B8-only latest">VT best silicon</button>
+      <input id="vtid" placeholder="visitor_terminal_id (vt_…)" style="min-width:200px" />
+      <input id="opsTok" placeholder="ops/result token (prod)" style="min-width:160px" title="X-Gr-Ops-Token or RESULT_TOKEN; stored sessionStorage" />
+      <label class="muted" style="display:flex;align-items:center;gap:6px">
+        <span>客户端上传</span>
+        <select id="opsClientPolicy" title="admin setting ops_client_events_enabled">
+          <option value="">(查看需 admin)</option>
+          <option value="1">开启</option>
+          <option value="0">关闭</option>
+        </select>
+      </label>
+    </div>
+    <div id="vtbest" class="card" style="display:none"></div>
+    <div id="overview" class="card" style="display:none"></div>
+    <div id="sla" class="card" style="display:none"></div>
+    <div id="b10health" class="card" style="display:none"></div>
+    <div id="opserr" class="card" style="display:none"></div>
+    <div id="err" class="err"></div>
+    <div id="summary" class="card" style="display:none"></div>
+    <div id="timeline" class="card" style="display:none">
+      <h3 style="margin:0 0 8px;font-size:14px">Analysis timeline</h3>
+      <table>
+        <thead><tr><th>rev</th><th>band</th><th>device</th><th>stop</th><th>coverage</th><th>packs</th><th>ms</th></tr></thead>
+        <tbody id="tlbody"></tbody>
+      </table>
+    </div>
+    <div id="batches" class="card" style="display:none">
+      <h3 style="margin:0 0 8px;font-size:14px">Batches</h3>
+      <div id="blist"></div>
+    </div>
+    <div id="raw" class="card" style="display:none">
+      <h3 style="margin:0 0 8px;font-size:14px">Latest / evidence</h3>
+      <pre id="rawpre"></pre>
+    </div>
+  </main>
+  <script>
+(function () {
+  var apiBase = (function () {
+    try {
+      if (location.origin && location.origin.indexOf("http") === 0) return location.origin;
+    } catch (e) {}
+    return "";
+  })();
+
+  function qs(id) { return document.getElementById(id); }
+  function show(el, on) { el.style.display = on ? "" : "none"; }
+
+  var OPS_TOK_KEY = "gr_ops_token";
+  try {
+    var savedTok = sessionStorage.getItem(OPS_TOK_KEY) || "";
+    if (savedTok && qs("opsTok")) qs("opsTok").value = savedTok;
+  } catch (e) {}
+
+  function opsHeaders() {
+    var h = { Accept: "application/json" };
+    var tok = "";
+    try {
+      tok = (qs("opsTok") && qs("opsTok").value) || sessionStorage.getItem(OPS_TOK_KEY) || "";
+    } catch (e) {
+      tok = (qs("opsTok") && qs("opsTok").value) || "";
+    }
+    tok = String(tok || "").trim();
+    if (tok) {
+      h["X-Gr-Ops-Token"] = tok;
+      h["Authorization"] = "Bearer " + tok;
+      try {
+        sessionStorage.setItem(OPS_TOK_KEY, tok);
+      } catch (e) {}
+    }
+    return h;
+  }
+
+  function getJson(path) {
+    return fetch(apiBase + path, {
+      credentials: "omit",
+      mode: "cors",
+      headers: opsHeaders(),
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || j.ok === false) throw new Error((j && j.error) || ("HTTP " + r.status));
+        return j;
+      });
+    });
+  }
+  if (qs("opsTok")) {
+    qs("opsTok").addEventListener("change", function () {
+      try {
+        sessionStorage.setItem(OPS_TOK_KEY, qs("opsTok").value || "");
+      } catch (e) {}
+    });
+  }
+
+  function renderOverview(j) {
+    var el = qs("overview");
+    show(el, true);
+    el.innerHTML =
+      "<div class='grid'>" +
+      stat("backend", j.backend) +
+      stat("role", j.role) +
+      stat("pending jobs", j.pending_analyze_jobs) +
+      stat("analyze runs", j.analyze_runs) +
+      stat("queue due", j.analyze_queue && j.analyze_queue.due_now) +
+      stat("queue locked", j.analyze_queue && j.analyze_queue.locked) +
+      "</div>" +
+      "<p class='muted' style='margin:10px 0 0'>policy: " +
+      ((j.policy && j.policy.terminal) || "") +
+      " · " +
+      ((j.policy && j.policy.resources) || "") +
+      "</p>";
+  }
+
+  function stat(k, v) {
+    return "<div class='stat'><div class='k'>" + k + "</div><div class='v'>" + (v == null ? "—" : v) + "</div></div>";
+  }
+
+  function renderSession(j) {
+    var sum = qs("summary");
+    show(sum, true);
+    var latest = j.latest || {};
+    var cov = latest.coverage || {};
+    var prov = latest.provisional_gateway === true;
+    if (latest.visitor_terminal_id && qs("vtid") && !qs("vtid").value) {
+      qs("vtid").value = String(latest.visitor_terminal_id);
+    }
+    sum.innerHTML =
+      "<div class='grid'>" +
+      stat("session", j.session_id) +
+      stat("batches", j.batch_count) +
+      stat("revs", j.analysis_count) +
+      stat("real_band", latest.real_band) +
+      stat("device_id", latest.device_id) +
+      stat("device_tier", latest.device_tier) +
+      stat("provisional", prov ? "YES (B8/gw?)" : "no") +
+      stat("digest", (latest.digest_path || "").slice(0, 28)) +
+      stat("coverage", cov.coverage_complete) +
+      stat("stop_probe", latest.stop_probe) +
+      stat("terminal", latest.analysis_terminal) +
+      "</div>" +
+      (prov
+        ? "<p class='err' style='margin:10px 0 0'>latest 可能为网关/B8-only 污染 — 点「VT best silicon」用 silicon 优选，勿直接当商业 device_id。</p>"
+        : "") +
+      (latest.note
+        ? "<p class='muted' style='margin:6px 0 0'>" + latest.note + "</p>"
+        : "");
+
+    var body = qs("tlbody");
+    body.innerHTML = "";
+    (j.timeline || []).forEach(function (t) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + (t.rev != null ? t.rev : "") + "</td>" +
+        "<td class='band-" + (t.real_band || "") + "'>" + (t.real_band || "") + "</td>" +
+        "<td>" + (t.device_id || "") + "</td>" +
+        "<td>" + t.stop_probe + "</td>" +
+        "<td>" + t.coverage_complete + "</td>" +
+        "<td>" + (t.packs != null ? t.packs : "") + "</td>" +
+        "<td>" + (t.created_ms || "") + "</td>";
+      body.appendChild(tr);
+    });
+    show(qs("timeline"), true);
+
+    var bl = qs("blist");
+    bl.innerHTML = "";
+    (j.batches || []).forEach(function (b) {
+      var span = document.createElement("span");
+      span.className = "tag";
+      span.textContent = (b.batch_id || "?") + "@" + (b.source || "main");
+      bl.appendChild(span);
+    });
+    show(qs("batches"), true);
+
+    qs("rawpre").textContent = JSON.stringify(
+      { latest: j.latest, evidence_summary: j.evidence_summary, window: j.window },
+      null,
+      2
+    );
+    show(qs("raw"), true);
+  }
+
+  qs("btnOverview").onclick = function () {
+    qs("err").textContent = "";
+    getJson("/v1/ops/overview")
+      .then(renderOverview)
+      .catch(function (e) {
+        qs("err").textContent = String(e.message || e);
+      });
+  };
+
+  function renderSla(j) {
+    var el = qs("sla");
+    show(el, true);
+    var s = (j && j.sla) || j || {};
+    var rates = s.rates || {};
+    var hist = s.no_id_reason_histogram || {};
+    var histHtml = Object.keys(hist).map(function (k) {
+      return "<span class='tag'>" + k + "=" + hist[k] + "</span>";
+    }).join(" ");
+    el.innerHTML =
+      "<h3 style='margin:0 0 8px;font-size:14px'>Identity SLA（guest/local 模拟大盘）</h3>" +
+      "<div class='grid'>" +
+      stat("n_sessions", s.n_sessions) +
+      stat("eligible", rates.eligible != null ? (rates.eligible * 100).toFixed(1) + "%" : "—") +
+      stat("has_dv", rates.has_device_id != null ? (rates.has_device_id * 100).toFixed(1) + "%" : "—") +
+      stat("both_curves", rates.has_both_curves != null ? (rates.has_both_curves * 100).toFixed(1) + "%" : "—") +
+      stat("soft_promote_viol", s.soft_promote_violations) +
+      stat("unique_dv", (s.counts && s.counts.unique_device_ids) || "—") +
+      "</div>" +
+      "<p class='muted' style='margin:10px 0 4px'>no_id_reasons</p>" +
+      "<div>" + (histHtml || "<span class='muted'>—</span>") + "</div>" +
+      "<pre style='margin-top:10px'>" + JSON.stringify(j, null, 2).slice(0, 4000) + "</pre>";
+  }
+
+  qs("btnSla").onclick = function () {
+    qs("err").textContent = "";
+    getJson("/v1/ops/identity_sla")
+      .then(renderSla)
+      .catch(function (e) {
+        qs("err").textContent = String(e.message || e);
+      });
+  };
+
+  qs("btnB10").onclick = function () {
+    qs("err").textContent = "";
+    getJson("/v1/ops/b10_health?hours=24")
+      .then(function (j) {
+        var el = qs("b10health");
+        show(el, true);
+        var eng = (j.by_engine || [])
+          .map(function (r) {
+            return (
+              "<tr><td>" +
+              (r.engine || "") +
+              "</td><td>" +
+              r.sessions +
+              "</td><td>" +
+              r.with_b10 +
+              "</td><td>" +
+              (r.b10_rate != null ? (r.b10_rate * 100).toFixed(1) + "%" : "—") +
+              "</td></tr>"
+            );
+          })
+          .join("");
+        var top = (j.top_errors || [])
+          .map(function (e) {
+            return "<span class='tag'>" + e.code + "=" + e.n + "</span>";
+          })
+          .join(" ");
+        el.innerHTML =
+          "<h3 style='margin:0 0 8px;font-size:14px'>B10 完整率（按 engine）</h3>" +
+          "<div class='grid'>" +
+          stat("sessions", j.sessions) +
+          stat("with_b10", j.with_b10) +
+          stat("b10_rate", j.b10_rate != null ? (j.b10_rate * 100).toFixed(1) + "%" : "—") +
+          "</div>" +
+          "<table style='margin-top:10px'><thead><tr><th>engine</th><th>n</th><th>b10</th><th>rate</th></tr></thead><tbody>" +
+          (eng || "<tr><td colspan=4 class='muted'>—</td></tr>") +
+          "</tbody></table>" +
+          "<p class='muted' style='margin:10px 0 4px'>top errors (client+server)</p><div>" +
+          (top || "—") +
+          "</div>";
+      })
+      .catch(function (e) {
+        qs("err").textContent = String(e.message || e);
+      });
+  };
+
+  var lastOpsExport = null;
+
+  qs("btnOpsErr").onclick = function () {
+    qs("err").textContent = "";
+    var lim = 200;
+    Promise.all([
+      getJson("/v1/ops/events?source=server&limit=" + lim),
+      getJson("/v1/ops/events?source=client&limit=" + lim),
+    ])
+      .then(function (arr) {
+        lastOpsExport = {
+          exported_at: new Date().toISOString(),
+          server: arr[0],
+          client: arr[1],
+        };
+        var el = qs("opserr");
+        show(el, true);
+        function rows(evs) {
+          return (evs || [])
+            .map(function (e) {
+              return (
+                "<tr><td>" +
+                (e.ts_ms || e.server_recv_ms || "") +
+                "</td><td>" +
+                (e.code || "") +
+                "</td><td>" +
+                (e.severity || "") +
+                "</td><td>" +
+                (e.session_id || "").slice(0, 18) +
+                "</td><td>" +
+                (e.visitor_terminal_id || "").slice(0, 16) +
+                "</td><td>" +
+                (e.engine_family || "") +
+                "</td><td>" +
+                (e.product_version || "").slice(0, 24) +
+                "</td></tr>"
+              );
+            })
+            .join("");
+        }
+        el.innerHTML =
+          "<p class='muted'>客户端错误上传默认开启；关闭：业务台 API <code>POST …/ops/client-events-policy</code> 或 env <code>GR_OPS_CLIENT_EVENTS=0</code> 或 boot <code>ops_client_events:false</code>。导出用「导出日志 JSON」。</p>" +
+          "<h3 style='margin:0 0 8px;font-size:14px'>Server ops events</h3>" +
+          "<table><thead><tr><th>ts</th><th>code</th><th>sev</th><th>session</th><th>vt</th><th>eng</th><th>ver</th></tr></thead><tbody>" +
+          rows(arr[0].events) +
+          "</tbody></table>" +
+          "<h3 style='margin:16px 0 8px;font-size:14px'>Client ops events</h3>" +
+          "<table><thead><tr><th>ts</th><th>code</th><th>sev</th><th>session</th><th>vt</th><th>eng</th><th>ver</th></tr></thead><tbody>" +
+          rows(arr[1].events) +
+          "</tbody></table>";
+      })
+      .catch(function (e) {
+        qs("err").textContent = String(e.message || e);
+      });
+  };
+
+  qs("btnExport").onclick = function () {
+    qs("err").textContent = "";
+    function download(obj, name) {
+      var blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(function () {
+        URL.revokeObjectURL(a.href);
+      }, 2000);
+    }
+    // Prefer server combined export API
+    getJson("/v1/ops/events/export?limit=500")
+      .then(function (j) {
+        lastOpsExport = j;
+        download(j, "gr-ops-events-" + Date.now() + ".json");
+      })
+      .catch(function () {
+        if (lastOpsExport) {
+          download(lastOpsExport, "gr-ops-events-" + Date.now() + ".json");
+          return;
+        }
+        Promise.all([
+          getJson("/v1/ops/events?source=server&limit=500"),
+          getJson("/v1/ops/events?source=client&limit=500"),
+        ])
+          .then(function (arr) {
+            download(
+              { exported_at: new Date().toISOString(), server: arr[0], client: arr[1] },
+              "gr-ops-events-" + Date.now() + ".json"
+            );
+          })
+          .catch(function (e) {
+            qs("err").textContent = String(e.message || e);
+          });
+      });
+  };
+
+  qs("btnVtBest").onclick = function () {
+    qs("err").textContent = "";
+    var vt = (qs("vtid").value || "").trim();
+    var sid = (qs("sid").value || "").trim();
+    if (!vt && !sid) {
+      qs("err").textContent = "需要 visitor_terminal_id 或先 Load session";
+      return;
+    }
+    var q = "/v1/ops/vt_best_silicon?limit=40";
+    if (vt) q += "&visitor_terminal_id=" + encodeURIComponent(vt);
+    if (sid) q += "&session_id=" + encodeURIComponent(sid);
+    getJson(q)
+      .then(function (j) {
+        var el = qs("vtbest");
+        show(el, true);
+        var best = j.best || {};
+        el.innerHTML =
+          "<h3 style='margin:0 0 8px;font-size:14px'>VT best silicon（非 latest 盲信）</h3>" +
+          "<p class='muted'>" +
+          (j.policy || "") +
+          " · candidates=" +
+          (j.candidates_n != null ? j.candidates_n : "—") +
+          "</p>" +
+          "<div class='grid'>" +
+          stat("best device_id", best.device_id) +
+          stat("tier", best.device_tier) +
+          stat("provisional", best.provisional_gateway) +
+          stat("session", best.session_id) +
+          stat("digest", (best.digest_path || "").slice(0, 32)) +
+          stat("mint_ok", best.mint_silicon_ok) +
+          "</div>" +
+          "<pre style='margin-top:10px;max-height:240px'>" +
+          JSON.stringify({ best: best, candidates: (j.candidates || []).slice(0, 8) }, null, 2) +
+          "</pre>";
+      })
+      .catch(function (e) {
+        qs("err").textContent = String(e.message || e);
+      });
+  };
+
+  qs("btnLoad").onclick = function () {
+    var sid = (qs("sid").value || "").trim();
+    qs("err").textContent = "";
+    if (!sid) {
+      qs("err").textContent = "enter session_id";
+      return;
+    }
+    getJson("/v1/ops/session/" + encodeURIComponent(sid))
+      .then(renderSession)
+      .catch(function (e) {
+        qs("err").textContent = String(e.message || e);
+      });
+  };
+
+  // Auto-load overview
+  qs("btnOverview").click();
+  // ?sid=
+  try {
+    var u = new URL(location.href);
+    var s = u.searchParams.get("sid");
+    if (s) {
+      qs("sid").value = s;
+      qs("btnLoad").click();
+    }
+  } catch (e) {}
+})();
+  </script>
+</body>
+</html>

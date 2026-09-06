@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Green V7 Official</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #18202a;
+      --text: #e8eef5;
+      --muted: #8b9bb0;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+      --warn: #f0b429;
+      --danger: #f07178;
+      --line: #2a3544;
+      --font: "IBM Plex Sans", "Segoe UI", sans-serif;
+      --display: "IBM Plex Serif", Georgia, serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1a3a55 0%, transparent 55%),
+        radial-gradient(900px 500px at 90% 0%, #243018 0%, transparent 50%),
+        var(--bg);
+    }
+    a { color: var(--accent); }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 32px 20px 64px; }
+    header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 28px; }
+    header h1 { font-family: var(--display); font-weight: 600; font-size: 1.75rem; margin: 0; letter-spacing: -0.02em; }
+    header p { margin: 6px 0 0; color: var(--muted); font-size: 0.95rem; }
+    .panel {
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(8px);
+    }
+    h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin: 10px 0 4px; }
+    input, button {
+      font: inherit; border-radius: 8px; border: 1px solid var(--line);
+      padding: 10px 12px; background: #0c1117; color: var(--text); width: 100%;
+    }
+    button {
+      background: linear-gradient(180deg, #4aa3f0, #2f7fc7);
+      border: none; cursor: pointer; font-weight: 600; margin-top: 12px;
+    }
+    button.secondary { background: #243041; }
+    button.ok { background: linear-gradient(180deg, #47d49a, #2aa870); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; background: #243041; }
+    .tag.paid { background: #1e3d30; color: var(--ok); }
+    .tag.free { background: #3a3420; color: var(--warn); }
+    .msg { margin-top: 10px; color: var(--muted); font-size: 0.85rem; white-space: pre-wrap; }
+    .msg.err { color: var(--danger); }
+    .hidden { display: none !important; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .actions button { width: auto; margin-top: 0; padding: 8px 12px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Green V7 Official</h1>
+        <p>访客 / 请求分析 · 站点 $99/年 · 免费=设备精度 dv4/5/6 · 付费=全精度+RPA · OAuth 登录管理面板</p>
+      </div>
+      <div id="who" class="tag">未登录</div>
+    </header>
+
+    <section id="auth" class="panel">
+      <h2>注册 / 登录</h2>
+      <div class="row">
+        <div>
+          <label>Email</label>
+          <input id="email" type="email" placeholder="you@company.com" />
+        </div>
+        <div>
+          <label>Password (≥10)</label>
+          <input id="password" type="password" placeholder="············" />
+        </div>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button id="btnRegister">注册</button>
+        <button class="secondary" id="btnLogin">登录</button>
+        <button class="secondary" id="btnLogout">退出</button>
+      </div>
+      <div class="msg" id="authMsg"></div>
+    </section>
+
+    <section id="app" class="panel hidden">
+      <h2>我的业务站点</h2>
+      <p class="msg">产品定位：分析请求与访客（设备唯一标识、OS/BR；付费含 RPA）。不拦截请求。无需配置分析算法。</p>
+      <div class="row">
+        <div>
+          <label>绑定域名</label>
+          <input id="domain" placeholder="shop.example.com" />
+        </div>
+        <div>
+          <label>显示名称</label>
+          <input id="siteName" placeholder="Shop" />
+        </div>
+      </div>
+      <button id="btnAddSite">添加站点（默认免费）</button>
+      <div class="msg" id="siteMsg"></div>
+      <table style="margin-top:16px">
+        <thead>
+          <tr><th>站点</th><th>计划与能力</th><th>操作</th></tr>
+        </thead>
+        <tbody id="siteRows"></tbody>
+      </table>
+    </section>
+
+    <section id="plans" class="panel hidden">
+      <h2>套餐说明</h2>
+      <table>
+        <thead><tr><th></th><th>免费</th><th>付费 $99/年</th></tr></thead>
+        <tbody>
+          <tr><td>设备 KV 精度</td><td>dv4 / dv5 / dv6</td><td>dv0 + dv4 / dv5 / dv6</td></tr>
+          <tr><td>OS / BR 分析</td><td>有</td><td>有</td></tr>
+          <tr><td>RPA 探测与分析</td><td>无（不触发采集与算法）</td><td>有</td></tr>
+          <tr><td>IP 信誉/信息</td><td colspan="2">管理面板接入第三方 API 后写入分析结果</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+  <script>
+    const API = localStorage.getItem('gr_official_api') || localStorage.getItem('gv6_official_api') || (location.port === '4101' || location.port === '' ? '' : 'http://127.0.0.1:4101');
+    const $ = (id) => document.getElementById(id);
+
+    async function api(method, path, body) {
+      const res = await fetch(API + path, {
+        method,
+        credentials: 'include',
+        headers: body ? { 'content-type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const json = await res.json().catch(() => ({}));
+      return { status: res.status, json };
+    }
+
+    function showErr(el, r) {
+      el.className = 'msg err';
+      el.textContent = r.json.error || JSON.stringify(r.json);
+    }
+
+    async function refreshMe() {
+      const r = await api('GET', '/v1/me');
+      if (r.status !== 200) {
+        $('who').textContent = '未登录';
+        $('app').classList.add('hidden');
+        $('plans').classList.add('hidden');
+        return null;
+      }
+      $('who').textContent = r.json.user.email;
+      $('app').classList.remove('hidden');
+      $('plans').classList.remove('hidden');
+      await loadSites();
+      return r.json.user;
+    }
+
+    async function loadSites() {
+      const r = await api('GET', '/v1/sites');
+      if (r.status !== 200) return;
+      const rows = r.json.sites || [];
+      $('siteRows').innerHTML = rows.map(s => {
+        const until = s.paid_until ? new Date(s.paid_until).toISOString().slice(0,10) : '-';
+        const lanes = (s.device_precisions || []).join(', ');
+        return `<tr>
+          <td><strong>${s.name}</strong><br/><code>${s.domain}</code><br/><span class="msg">${s.site_id}</span></td>
+          <td>
+            <span class="tag ${s.plan}">${s.plan}</span>
+            <br/><span class="msg">至 ${until}
+            <br/>精度：${lanes}
+            <br/>RPA：${s.rpa_enabled ? '开' : '关'}</span>
+          </td>
+          <td class="actions">
+            <button class="ok payBtn" data-site="${s.site_id}" ${s.plan==='paid'?'disabled':''}>付费 $99/年</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    $('btnRegister').onclick = async () => {
+      const r = await api('POST', '/v1/auth/register', { email: $('email').value, password: $('password').value });
+      if (r.status !== 200) return showErr($('authMsg'), r);
+      $('authMsg').className = 'msg'; $('authMsg').textContent = '注册成功';
+      await refreshMe();
+    };
+    $('btnLogin').onclick = async () => {
+      const r = await api('POST', '/v1/auth/login', { email: $('email').value, password: $('password').value });
+      if (r.status !== 200) return showErr($('authMsg'), r);
+      $('authMsg').className = 'msg'; $('authMsg').textContent = '登录成功';
+      await refreshMe();
+      const next = new URLSearchParams(location.search).get('next');
+      if (next) location.href = next;
+    };
+    $('btnLogout').onclick = async () => { await api('POST', '/v1/auth/logout'); await refreshMe(); };
+    $('btnAddSite').onclick = async () => {
+      const r = await api('POST', '/v1/sites', { domain: $('domain').value, name: $('siteName').value || undefined });
+      if (r.status !== 200) return showErr($('siteMsg'), r);
+      $('siteMsg').className = 'msg'; $('siteMsg').textContent = '已添加 ' + r.json.site.domain;
+      await loadSites();
+    };
+    document.addEventListener('click', async (e) => {
+      const pay = e.target.closest('.payBtn');
+      if (pay) {
+        const r = await api('POST', `/v1/sites/${pay.dataset.site}/pay`, {});
+        if (r.status !== 200) return showErr($('siteMsg'), r);
+        if (r.json.checkout_url) {
+          $('siteMsg').className = 'msg';
+          $('siteMsg').textContent = '正在跳转 Stripe Checkout…';
+          location.href = r.json.checkout_url;
+          return;
+        }
+        $('siteMsg').className = 'msg'; $('siteMsg').textContent = '已开通付费';
+        await loadSites();
+      }
+    });
+
+    refreshMe();
+  </script>
+</body>
+</html>

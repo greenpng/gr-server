@@ -1,0 +1,40 @@
+{
+  "version": "v5.0",
+  "primary_options": ["cf_worker", "nginx"],
+  "secondary": "next_cfg_only",
+  "fallback": "next_full_if_no_boot",
+  "single_flight_flag": "__GV5_BOOT_STARTED__",
+  "boot_cfg_global": "__GV5_BOOT__",
+  "legacy_single_flight_flag": "__MP_BOOT_STARTED__",
+  "legacy_boot_cfg_global": "__MP_BOOT__",
+  "inject_path_values": ["cf_worker", "nginx", "app"],
+  "rules": {
+    "at_most_one_primary": true,
+    "next_must_not_load_boot_when_primary_present": true,
+    "boot_body_runs_once_per_document": true
+  },
+  "roles": {
+    "cf_worker": {
+      "plane": "edge",
+      "can_be_primary": true,
+      "inserts_boot_script": true
+    },
+    "nginx": {
+      "plane": "origin",
+      "can_be_primary": true,
+      "inserts_boot_script": true
+    },
+    "next_cfg_only": {
+      "plane": "app",
+      "can_be_primary": false,
+      "inserts_boot_script": false,
+      "merges_cfg_only": true
+    },
+    "next_full": {
+      "plane": "app",
+      "can_be_primary": false,
+      "inserts_boot_script": true,
+      "only_if_boot_not_started": true
+    }
+  }
+}

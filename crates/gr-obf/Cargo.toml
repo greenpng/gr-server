@@ -1,0 +1,9 @@
+[package]
+name = "gr-obf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Compile-time string obfuscation with per-release salt (runtime hardening)"
+
+[dependencies]

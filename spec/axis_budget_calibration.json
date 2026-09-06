@@ -1,0 +1,35 @@
+{
+  "algo": "gv5_axis_budget_v1",
+  "note": "B1 axis per-device-class pack budgets. Lab calibration SSOT: 7-browser matrix on real hardware records per-axis probe cost/benefit, then only this file is edited (brain.rs reads it via axis_budget_resolved, falling back to built-in defaults if missing/invalid). Values below mirror the built-in table exactly — additive entry, no behavior change.",
+  "calibration": {
+    "source": "builtin_default",
+    "status": "pending_lab",
+    "lab_todo": "record per-axis probe cost/benefit per device class (census/gpu/audio/cpu/network/peripheral), then replace values here"
+  },
+  "classes": {
+    "desktop": {
+      "census": 6,
+      "gpu": 4,
+      "audio": 3,
+      "cpu": 3,
+      "network": 3,
+      "peripheral": 3
+    },
+    "mobile": {
+      "census": 4,
+      "gpu": 2,
+      "audio": 2,
+      "cpu": 2,
+      "network": 2,
+      "peripheral": 2
+    },
+    "headless": {
+      "census": 3,
+      "gpu": 1,
+      "audio": 1,
+      "cpu": 2,
+      "network": 2,
+      "peripheral": 1
+    }
+  }
+}

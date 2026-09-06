@@ -1,0 +1,16 @@
+[package]
+name = "gr-module-edge"
+version.workspace = true
+edition.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gr-abi = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+plugin = []

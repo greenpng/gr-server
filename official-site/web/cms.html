@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Green V7 Content CMS</title>
+  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+  <style>
+    :root { --bg:#0f1419; --panel:#18202a; --text:#e8eef5; --muted:#8b9bb0; --accent:#3d9cf0; --line:#2a3544; --ok:#3ecf8e; --danger:#f07178; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 16px 0; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin: 8px 0 4px; }
+    input, select, textarea, button { font: inherit; border-radius: 8px; border: 1px solid var(--line); padding: 8px 10px; background: #0c1117; color: var(--text); width: 100%; }
+    textarea { min-height: 120px; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+    button { width: auto; cursor: pointer; background: var(--accent); border: none; font-weight: 600; margin-top: 8px; margin-right: 8px; }
+    button.secondary { background: #243041; }
+    button.ok { background: #2aa870; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; background: #243041; }
+    .tag.pub { background: #1e3d30; color: var(--ok); }
+    .msg { margin-top: 10px; white-space: pre-wrap; font-size: 0.85rem; color: var(--muted); }
+    .msg.err { color: var(--danger); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Content CMS</h1>
+    <p class="muted">Multilingual marketing pages · API-backed · publish to official-web</p>
+
+    <section id="authPanel" class="panel">
+      <h2 style="margin:0 0 8px;font-size:1rem">Login (staff)</h2>
+      <div class="row">
+        <div><label>Email</label><input id="email" type="email" /></div>
+        <div><label>Password</label><input id="password" type="password" /></div>
+      </div>
+      <button id="btnLogin">Login</button>
+      <button class="secondary" id="btnLogout">Logout</button>
+      <div class="msg" id="authMsg"></div>
+    </section>
+
+    <section id="cmsPanel" class="panel hidden">
+      <h2 style="margin:0 0 8px;font-size:1rem">Runtime integrations</h2>
+      <p class="muted">Stripe and Gmail values are encrypted at rest. Secrets are never returned; leave a secret blank to keep it unchanged.</p>
+      <div class="row">
+        <div><label>Stripe secret key</label><input id="stripeSecret" type="password" autocomplete="new-password" /></div>
+        <div><label>Stripe webhook secret</label><input id="stripeWebhook" type="password" autocomplete="new-password" /></div>
+        <div><label>Stripe price ID</label><input id="stripePrice" placeholder="price_..." /></div>
+        <div><label>Annual USD</label><input id="stripeAnnual" type="number" min="1" step="1" /></div>
+        <div><label>Stripe success URL</label><input id="stripeSuccess" type="url" /></div>
+        <div><label>Stripe cancel URL</label><input id="stripeCancel" type="url" /></div>
+        <div><label>Gmail user</label><input id="gmailUser" type="email" /></div>
+        <div><label>Gmail app password</label><input id="gmailPassword" type="password" autocomplete="new-password" /></div>
+        <div><label>Gmail from</label><input id="gmailFrom" type="email" /></div>
+        <div><label>SMTP host</label><input id="gmailHost" /></div>
+        <div><label>SMTP port</label><input id="gmailPort" type="number" min="1" max="65535" /></div>
+      </div>
+      <button class="ok" id="btnSaveIntegrations">Save integrations</button>
+      <div class="msg" id="integrationMsg"></div>
+
+      <div class="row">
+        <div>
+          <label>Page key</label>
+          <select id="pageKey"></select>
+        </div>
+        <div>
+          <label>Locale</label>
+          <select id="locale"></select>
+        </div>
+      </div>
+      <button class="secondary" id="btnReload">Reload</button>
+      <button class="secondary" id="btnNewPage">New page key</button>
+
+      <div class="row" style="margin-top:12px">
+        <div><label>Title</label><input id="title" /></div>
+        <div><label>URL slug (empty = home)</label><input id="slug" placeholder="pricing" /></div>
+      </div>
+      <div><label>Subtitle</label><input id="subtitle" /></div>
+      <div class="row">
+        <div><label>Meta title (SEO)</label><input id="metaTitle" /></div>
+        <div><label>Meta description</label><input id="metaDesc" /></div>
+      </div>
+      <div><label>Body JSON (blocks: hero, logo_strip, stats, section_header, features, steps, pricing, cta_banner, markdown, richtext, faq)</label><textarea id="bodyJson"></textarea></div>
+      <div style="margin-top:12px">
+        <label>Rich text editor (creates/updates <code>richtext</code> block)</label>
+        <div id="quillEditor" style="min-height:180px;background:#0c1117"></div>
+        <button type="button" class="secondary" id="btnMergeRichtext" style="margin-top:8px">Merge editor → JSON blocks</button>
+      </div>
+      <div>
+        <label>Status</label>
+        <select id="status"><option value="draft">draft</option><option value="published">published</option></select>
+      </div>
+      <button id="btnSave">Save locale</button>
+      <button class="ok" id="btnPublish">Publish</button>
+      <div class="msg" id="cmsMsg"></div>
+
+      <h3 style="margin-top:20px;font-size:1rem">All locales for this page</h3>
+      <table>
+        <thead><tr><th>Locale</th><th>Slug</th><th>Status</th><th>Updated</th></tr></thead>
+        <tbody id="localeRows"></tbody>
+      </table>
+    </section>
+  </div>
+  <script>
+    const API = "";
+    async function j(method, path, body) {
+      const opts = { method, credentials: "include", headers: { accept: "application/json" } };
+      if (body !== undefined) {
+        opts.headers["content-type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(API + path, opts);
+      const json = await res.json().catch(() => ({}));
+      return { status: res.status, json };
+    }
+    function showAuth(loggedIn, email) {
+      document.getElementById("cmsPanel").classList.toggle("hidden", !loggedIn);
+      document.getElementById("authMsg").textContent = loggedIn ? "Logged in: " + email : "";
+    }
+    let catalog = { pages: [], page_keys: [], locales: [] };
+    let quill = null;
+
+    function initQuill() {
+      if (quill) return;
+      quill = new Quill("#quillEditor", {
+        theme: "snow",
+        modules: {
+          toolbar: [
+            [{ header: [2, 3, false] }],
+            ["bold", "italic", "link"],
+            [{ list: "ordered" }, { list: "bullet" }],
+            ["clean"],
+          ],
+        },
+      });
+    }
+
+    function loadQuillFromBody(body) {
+      initQuill();
+      const blocks = body?.blocks || [];
+      const rt = blocks.find((b) => b.type === "richtext");
+      quill.root.innerHTML = rt?.html || "";
+    }
+
+    document.getElementById("btnMergeRichtext").onclick = () => {
+      initQuill();
+      let body;
+      try {
+        body = JSON.parse(document.getElementById("bodyJson").value);
+      } catch {
+        body = { blocks: [] };
+      }
+      if (!Array.isArray(body.blocks)) body.blocks = [];
+      const html = quill.root.innerHTML.trim();
+      const rest = body.blocks.filter((b) => b.type !== "richtext");
+      if (html && html !== "<p><br></p>") {
+        body.blocks = [{ type: "richtext", html }, ...rest];
+      } else {
+        body.blocks = rest;
+      }
+      document.getElementById("bodyJson").value = JSON.stringify(body, null, 2);
+      document.getElementById("cmsMsg").className = "msg";
+      document.getElementById("cmsMsg").textContent = "Rich text merged into JSON.";
+    };
+
+    async function refreshAuth() {
+      const r = await j("GET", "/v1/me");
+      showAuth(r.status === 200, r.json.user?.email || "");
+      if (r.status === 200) {
+        await loadCatalog();
+        await loadIntegrations();
+      }
+    }
+
+    document.getElementById("btnLogin").onclick = async () => {
+      const r = await j("POST", "/v1/auth/login", {
+        email: document.getElementById("email").value,
+        password: document.getElementById("password").value,
+      });
+      document.getElementById("authMsg").className = "msg" + (r.status !== 200 ? " err" : "");
+      document.getElementById("authMsg").textContent = r.status === 200 ? "OK" : JSON.stringify(r.json);
+      await refreshAuth();
+    };
+
+    async function loadIntegrations() {
+      const r = await j("GET", "/v1/admin/integrations");
+      if (r.status !== 200) {
+        document.getElementById("integrationMsg").className = "msg err";
+        document.getElementById("integrationMsg").textContent = JSON.stringify(r.json);
+        return;
+      }
+      const s = r.json.settings;
+      document.getElementById("stripeSecret").placeholder = s.stripe.secret_key || "not configured";
+      document.getElementById("stripeWebhook").placeholder = s.stripe.webhook_configured ? "configured" : "not configured";
+      document.getElementById("stripePrice").value = s.stripe.price_id || "";
+      document.getElementById("stripeAnnual").value = s.stripe.annual_usd || 99;
+      document.getElementById("stripeSuccess").value = s.stripe.success_url || "";
+      document.getElementById("stripeCancel").value = s.stripe.cancel_url || "";
+      document.getElementById("gmailUser").value = s.gmail.user || "";
+      document.getElementById("gmailPassword").placeholder = s.gmail.app_password || "not configured";
+      document.getElementById("gmailFrom").value = s.gmail.from || "";
+      document.getElementById("gmailHost").value = s.gmail.host || "smtp.gmail.com";
+      document.getElementById("gmailPort").value = s.gmail.port || 465;
+      document.getElementById("integrationMsg").className = "msg";
+      document.getElementById("integrationMsg").textContent =
+        `Stripe: ${s.stripe.configured ? "configured" : "mock/unconfigured"} · Gmail: ${s.gmail.configured ? "configured" : "lab fallback"}`;
+    }
+
+    document.getElementById("btnSaveIntegrations").onclick = async () => {
+      const value = (id) => document.getElementById(id).value.trim();
+      const body = {
+        stripe: {
+          price_id: value("stripePrice"),
+          annual_usd: Number(value("stripeAnnual") || 99),
+          success_url: value("stripeSuccess"),
+          cancel_url: value("stripeCancel"),
+        },
+        gmail: {
+          user: value("gmailUser"),
+          from: value("gmailFrom"),
+          host: value("gmailHost"),
+          port: Number(value("gmailPort") || 465),
+        },
+      };
+      if (value("stripeSecret")) body.stripe.secret_key = value("stripeSecret");
+      if (value("stripeWebhook")) body.stripe.webhook_secret = value("stripeWebhook");
+      if (value("gmailPassword")) body.gmail.app_password = value("gmailPassword");
+      const r = await j("PUT", "/v1/admin/integrations", body);
+      const el = document.getElementById("integrationMsg");
+      el.className = "msg" + (r.status !== 200 ? " err" : "");
+      el.textContent = r.status === 200 ? "Saved. Runtime adapters reloaded." : JSON.stringify(r.json);
+      if (r.status === 200) {
+        document.getElementById("stripeSecret").value = "";
+        document.getElementById("stripeWebhook").value = "";
+        document.getElementById("gmailPassword").value = "";
+        await loadIntegrations();
+      }
+    };
+    document.getElementById("btnLogout").onclick = async () => {
+      await j("POST", "/v1/auth/logout");
+      showAuth(false);
+    };
+
+    async function loadCatalog() {
+      const r = await j("GET", "/v1/admin/content/pages");
+      if (r.status !== 200) {
+        document.getElementById("cmsMsg").className = "msg err";
+        document.getElementById("cmsMsg").textContent = JSON.stringify(r.json);
+        return;
+      }
+      catalog = r.json;
+      const pk = document.getElementById("pageKey");
+      const loc = document.getElementById("locale");
+      const prevP = pk.value;
+      const prevL = loc.value;
+      pk.innerHTML = catalog.page_keys.map((p) => `<option value="${p.page_key}">${p.page_key} (${p.kind})</option>`).join("");
+      loc.innerHTML = catalog.locales.map((l) => `<option value="${l.code}">${l.label} (${l.code})</option>`).join("");
+      if (prevP) pk.value = prevP;
+      if (prevL) loc.value = prevL;
+      await loadEditor();
+    }
+
+    async function loadEditor() {
+      const pageKey = document.getElementById("pageKey").value;
+      const locale = document.getElementById("locale").value;
+      const rows = catalog.pages.filter((p) => p.page_key === pageKey);
+      document.getElementById("localeRows").innerHTML = rows
+        .map(
+          (p) =>
+            `<tr><td>${p.locale}</td><td>${p.slug || "(home)"}</td><td><span class="tag ${p.status === "published" ? "pub" : ""}">${p.status}</span></td><td>${new Date(p.updated_at).toISOString().slice(0, 19)}</td></tr>`
+        )
+        .join("");
+      const cur = rows.find((p) => p.locale === locale);
+      if (!cur) {
+        document.getElementById("title").value = "";
+        document.getElementById("slug").value = pageKey === "home" ? "" : pageKey;
+        document.getElementById("subtitle").value = "";
+        document.getElementById("metaTitle").value = "";
+        document.getElementById("metaDesc").value = "";
+        document.getElementById("bodyJson").value = JSON.stringify({ blocks: [{ type: "markdown", markdown: "" }] }, null, 2);
+        document.getElementById("status").value = "draft";
+        loadQuillFromBody({ blocks: [] });
+        return;
+      }
+      document.getElementById("title").value = cur.title || "";
+      document.getElementById("slug").value = cur.slug ?? "";
+      document.getElementById("subtitle").value = cur.subtitle || "";
+      document.getElementById("metaTitle").value = cur.meta_title || "";
+      document.getElementById("metaDesc").value = cur.meta_description || "";
+      document.getElementById("bodyJson").value = JSON.stringify(cur.body || { blocks: [] }, null, 2);
+      document.getElementById("status").value = cur.status || "draft";
+      loadQuillFromBody(cur.body);
+    }
+
+    document.getElementById("pageKey").onchange = loadEditor;
+    document.getElementById("locale").onchange = loadEditor;
+    document.getElementById("btnReload").onclick = loadCatalog;
+
+    document.getElementById("btnNewPage").onclick = async () => {
+      const key = prompt("New page_key (e.g. about, changelog-index):", "about");
+      if (!key) return;
+      await j("POST", "/v1/admin/content/pages", { page_key: key, kind: "marketing" });
+      await loadCatalog();
+      document.getElementById("pageKey").value = key;
+      await loadEditor();
+    };
+
+    document.getElementById("btnSave").onclick = async () => {
+      document.getElementById("btnMergeRichtext").click();
+      const pageKey = document.getElementById("pageKey").value;
+      const locale = document.getElementById("locale").value;
+      let body;
+      try {
+        body = JSON.parse(document.getElementById("bodyJson").value);
+      } catch (e) {
+        document.getElementById("cmsMsg").className = "msg err";
+        document.getElementById("cmsMsg").textContent = "Invalid JSON: " + e.message;
+        return;
+      }
+      const r = await j("PUT", `/v1/admin/content/pages/${encodeURIComponent(pageKey)}/locales/${encodeURIComponent(locale)}`, {
+        title: document.getElementById("title").value,
+        slug: document.getElementById("slug").value,
+        subtitle: document.getElementById("subtitle").value,
+        meta_title: document.getElementById("metaTitle").value,
+        meta_description: document.getElementById("metaDesc").value,
+        body,
+        status: document.getElementById("status").value,
+      });
+      document.getElementById("cmsMsg").className = "msg" + (r.status !== 200 ? " err" : "");
+      document.getElementById("cmsMsg").textContent = r.status === 200 ? "Saved." : JSON.stringify(r.json);
+      await loadCatalog();
+    };
+
+    document.getElementById("btnPublish").onclick = async () => {
+      const pageKey = document.getElementById("pageKey").value;
+      const locale = document.getElementById("locale").value;
+      const r = await j("POST", `/v1/admin/content/pages/${encodeURIComponent(pageKey)}/locales/${encodeURIComponent(locale)}/publish`);
+      document.getElementById("cmsMsg").className = "msg" + (r.status !== 200 ? " err" : "");
+      document.getElementById("cmsMsg").textContent = r.status === 200 ? "Published." : JSON.stringify(r.json);
+      await loadCatalog();
+    };
+
+    refreshAuth();
+  </script>
+</body>
+</html>

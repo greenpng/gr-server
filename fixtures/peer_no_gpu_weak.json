@@ -1,0 +1,10 @@
+{
+  "os_family": "windows",
+  "form_class": "desktop",
+  "screen_width": 1920,
+  "screen_height": 1080,
+  "timezone": null,
+  "hardware_concurrency": null,
+  "webgl_unmasked_renderer": null,
+  "platform": "Win32"
+}

@@ -1,0 +1,24 @@
+{
+  "version": "v5.0",
+  "description": "cursor RQ-3 / P0-1: canary must not mutate constitutional gates",
+  "denied_mutation_keys": [
+    "soft_promote",
+    "promote_soft_to_hard",
+    "d2_hard_material_whitelist",
+    "hard_material_whitelist",
+    "confirmed_real_gate",
+    "fe_only_to_confirmed",
+    "allow_fe_only_confirmed",
+    "skip_xsrc_for_confirmed"
+  ],
+  "allowed_mutation_keys": [
+    "pack_order",
+    "pack_priorities",
+    "bot_soft_weights",
+    "locale_weight",
+    "swiftshader_soft_weight",
+    "canary_percent",
+    "strategy_id"
+  ],
+  "stable_strategy_id": "strategy_stable"
+}

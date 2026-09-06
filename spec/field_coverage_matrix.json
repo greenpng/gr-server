@@ -1,0 +1,805 @@
+{
+  "version": "v5.2-pingora-coverage",
+  "date": "2026-07-29",
+  "baseline": "v11.3 commercial surface (feasibility-v9 layers + v57 L1/L2 race packs)",
+  "product_outputs": [
+    "device_id (session)",
+    "os (session safety score)",
+    "br (session safety score)",
+    "rpa (page safety score)"
+  ],
+  "diagnostics_outputs": [
+    "real_band / authenticity",
+    "bot (balanced)",
+    "link (sparse_safe)",
+    "soft_v2 (never promote)"
+  ],
+  "field_product_matrix": "spec/field_product_matrix.json",
+  "task_gap_map": "spec/task_gap_map.json",
+  "product_contract_note": "Public contract = norm/10 four fields; diagnostics do not replace os/br/rpa. Field sharing = norm/11.",
+  "session_policy": {
+    "inactivity_window_ms": 1800000,
+    "hard_max_session_ms": 3600000,
+    "ga4_class": "session ends after ~30m inactivity; 60m hard ceiling for retention of live session state",
+    "upload_dedupe_key": "session_id|batch_id|source",
+    "analysis_on_ingest": false,
+    "analysis_on_demand": true,
+    "continuous_rev": "each analyze merges all retained batches and writes analysis_results.rev++"
+  },
+  "static_packs": {
+    "schedule": "static",
+    "kick_without_analyze": true,
+    "packs": [
+      {
+        "pack_id": "B8_gateway_early",
+        "batch_id": "B8_gateway",
+        "layer": "b8",
+        "source": "gateway",
+        "commercial_fields": [
+          "user_agent",
+          "early_kick",
+          "kicked_ms",
+          "inject_path",
+          "ja4",
+          "h2_fingerprint",
+          "proxy_protocol_present",
+          "quic_tls_ja4",
+          "quic_listen_present",
+          "tcp_syn_present",
+          "webrtc_side_present",
+          "dtls_ja4",
+          "protocol_engine",
+          "server_client_ip"
+        ],
+        "unlocks": [
+          "PKG_XSRC",
+          "session_arrival"
+        ]
+      },
+      {
+        "pack_id": "B0_bootstrap",
+        "batch_id": "B0_bootstrap",
+        "layer": "lite5",
+        "source": "main",
+        "commercial_fields": [
+          "user_agent",
+          "language",
+          "languages",
+          "platform",
+          "hardware_concurrency",
+          "device_memory",
+          "screen_width",
+          "screen_height",
+          "timezone",
+          "cookie_enabled",
+          "form_class"
+        ],
+        "unlocks": [
+          "PKG_UA",
+          "PKG_GEOCPU"
+        ]
+      },
+      {
+        "pack_id": "B12_anti_camouflage",
+        "batch_id": "B12_anti_camouflage",
+        "layer": "lite5",
+        "source": "main",
+        "commercial_fields": [
+          "webdriver",
+          "chrome_runtime",
+          "plugins_length",
+          "outer_zero",
+          "user_agent"
+        ],
+        "unlocks": [
+          "anti_cam_soft"
+        ]
+      },
+      {
+        "pack_id": "B1_conflict",
+        "batch_id": "B1_conflict",
+        "layer": "lite5",
+        "source": "main",
+        "commercial_fields": [
+          "webdriver",
+          "languages",
+          "platform",
+          "user_agent",
+          "automation.webdriver",
+          "automation.playwright",
+          "automation.selenium",
+          "automation.cdc"
+        ],
+        "unlocks": [
+          "PKG_AUTO"
+        ]
+      },
+      {
+        "pack_id": "B2_hardware",
+        "batch_id": "B2_hardware",
+        "env_stack_fields_static": [
+          "residual_mean",
+          "residual_available",
+          "residual_soft_like",
+          "stack_class",
+          "spoof_score",
+          "vm_score",
+          "renderer_class",
+          "env_reasons",
+          "authenticity_hint",
+          "claims_host_silicon_recovery",
+          "software_renderer_heuristic"
+        ],
+        "layer": "lite5",
+        "source": "main",
+        "commercial_fields": [
+          "hardware_concurrency",
+          "device_memory",
+          "screen_width",
+          "screen_height",
+          "webgl_unmasked_renderer",
+          "webgl_unmasked_vendor"
+        ],
+        "unlocks": [
+          "PKG_GPU",
+          "device_hard_anchor"
+        ]
+      },
+      {
+        "pack_id": "B10_hw_curves",
+        "batch_id": "B10_hw_curves",
+        "layer": "hard",
+        "source": "main",
+        "schedule": "static",
+        "commercial_fields": [
+          "mid_tag",
+          "hardware_concurrency",
+          "device_memory",
+          "timezone",
+          "perf_now",
+          "time_origin",
+          "collected_at",
+          "hw_curve_audio",
+          "hw_curve_webgl",
+          "hw_curve_canvas",
+          "hw_curve_cpu",
+          "residual_mean",
+          "stack_class",
+          "spoof_score",
+          "renderer_class"
+        ],
+        "unlocks": [
+          "mid_hw",
+          "device_hard_anchor"
+        ],
+        "note": "Static high-priority (catalog + FE); residual/env fusion re-emitted with curves. Not soft-gated mid."
+      },
+      {
+        "pack_id": "B3_system",
+        "batch_id": "B3_system",
+        "layer": "lite5",
+        "source": "main",
+        "commercial_fields": [
+          "timezone",
+          "language",
+          "languages",
+          "platform",
+          "hardware_concurrency",
+          "device_memory",
+          "screen_width",
+          "screen_height"
+        ],
+        "unlocks": [
+          "PKG_GEOCPU"
+        ]
+      },
+      {
+        "pack_id": "B11_interaction",
+        "batch_id": "B11_interaction",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "behavior_early_bound",
+          "behavior_events",
+          "behavior_count"
+        ],
+        "unlocks": [
+          "behavior_early"
+        ],
+        "note": "static early-bind; short-visit critical"
+      },
+      {
+        "pack_id": "B7_sandbox",
+        "batch_id": "B7_sandbox",
+        "layer": "deep",
+        "source": "main|iframe|worker",
+        "commercial_fields": [
+          "user_agent",
+          "hardware_concurrency",
+          "sandbox_kind"
+        ],
+        "unlocks": [
+          "multi_source_xsrc"
+        ],
+        "note": "multi-source tree; fields thinner than v57 full leaf count"
+      }
+    ]
+  },
+  "dynamic_packs": {
+    "schedule": "dynamic",
+    "requires": "route_plan after gaps; mid requires soft_v2_ready for B13/B15/B16; residual deep B4/B5/B9/B14/B17/B6 schedule without soft gate",
+    "packs": [
+      {
+        "pack_id": "B16_fast_signals",
+        "batch_id": "B16_fast_signals",
+        "layer": "mid4",
+        "commercial_fields": [
+          "mid_tag",
+          "connection",
+          "downlink",
+          "collected_at"
+        ],
+        "unlocks": [
+          "mid_fast"
+        ]
+      },
+      {
+        "pack_id": "B13_authorized",
+        "batch_id": "B13_authorized",
+        "layer": "mid4",
+        "commercial_fields": [
+          "authorized_surface",
+          "cookie_enabled",
+          "local_storage"
+        ],
+        "unlocks": [
+          "mid_auth"
+        ]
+      },
+      {
+        "pack_id": "B15_cross_curves",
+        "batch_id": "B15_cross_curves",
+        "layer": "mid4",
+        "commercial_fields": [
+          "mid_tag",
+          "main_residual_mean",
+          "cross_residual_delta",
+          "session_residual_cv",
+          "collected_at"
+        ],
+        "unlocks": [
+          "mid_cross"
+        ]
+      },
+      {
+        "pack_id": "B6_risk",
+        "batch_id": "B6_risk",
+        "layer": "deep",
+        "commercial_fields": [
+          "webdriver",
+          "max_touch",
+          "hardware_concurrency",
+          "permission_notification",
+          "media_devices_enumerate"
+        ],
+        "unlocks": [
+          "deep_risk"
+        ]
+      },
+      {
+        "pack_id": "B4_mobile",
+        "batch_id": "B4_mobile",
+        "layer": "deep",
+        "commercial_fields": [
+          "max_touch_points",
+          "orientation",
+          "device_pixel_ratio",
+          "ua_ch_platform",
+          "ua_ch_architecture",
+          "form_class"
+        ],
+        "unlocks": [
+          "mobile_surface",
+          "os",
+          "br"
+        ]
+      },
+      {
+        "pack_id": "B5_census",
+        "batch_id": "B5_census",
+        "layer": "deep",
+        "commercial_fields": [
+          "intl_locale",
+          "speech_voices_count",
+          "storage_quota",
+          "api_flags",
+          "css_supports"
+        ],
+        "unlocks": [
+          "census_lite",
+          "os",
+          "br"
+        ]
+      },
+      {
+        "pack_id": "B9_network",
+        "batch_id": "B9_network",
+        "layer": "deep",
+        "commercial_fields": [
+          "net_rtt",
+          "net_downlink",
+          "webrtc_host_ip_hash",
+          "dns_lookup_ms"
+        ],
+        "unlocks": [
+          "net_soft_sep",
+          "device"
+        ]
+      },
+      {
+        "pack_id": "B14_css_protocol",
+        "batch_id": "B14_css_protocol",
+        "layer": "deep",
+        "commercial_fields": [
+          "css_color_gamut",
+          "css_prefers_color_scheme",
+          "css_pointer_coarse",
+          "css_hover_hover"
+        ],
+        "unlocks": [
+          "css_br"
+        ]
+      },
+      {
+        "pack_id": "B17_hw_physical",
+        "batch_id": "B17_hw_physical",
+        "layer": "hard",
+        "commercial_fields": [
+          "gl_precision_matrix",
+          "gl_max_texture_size",
+          "cpu_timing_curve",
+          "timer_query_available",
+          "gl_bandwidth_lite"
+        ],
+        "unlocks": [
+          "device_dh",
+          "os",
+          "br"
+        ]
+      },
+      {
+        "pack_id": "B18_webgpu",
+        "batch_id": "B18_webgpu",
+        "layer": "hard",
+        "commercial_fields": [
+          "webgpu_adapter",
+          "webgpu_limits",
+          "webgpu_features"
+        ],
+        "unlocks": [
+          "device_dh",
+          "os"
+        ]
+      },
+      {
+        "pack_id": "B19_eme_media",
+        "batch_id": "B19_eme_media",
+        "layer": "deep",
+        "commercial_fields": [
+          "eme_systems",
+          "canplay_mp4",
+          "media_capabilities",
+          "codec_matrix",
+          "canplay_matrix",
+          "codec_support_score",
+          "codec_probably_n",
+          "eme_supported_n",
+          "eme_widevine",
+          "codec_virt_hint"
+        ],
+        "unlocks": [
+          "os",
+          "br"
+        ]
+      },
+      {
+        "pack_id": "B20_challenge_seed",
+        "batch_id": "B20_challenge_seed",
+        "layer": "hard",
+        "commercial_fields": [
+          "challenge_residual_mean",
+          "challenge_seed_digest",
+          "has_challenge_seed"
+        ],
+        "unlocks": [
+          "device_dh",
+          "br"
+        ]
+      },
+      {
+        "pack_id": "B21_census_volume",
+        "batch_id": "B21_census_volume",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "font_bitmap_hash",
+          "api_flags_hash",
+          "css_supports_hash",
+          "media_query_hash",
+          "font_token_hit_count",
+          "api_flags_ok_count",
+          "api_flags_total"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B22_gpu_timer",
+        "batch_id": "B22_gpu_timer",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "gpu_wall_staircase",
+          "gpu_ns_staircase",
+          "gpu_ns_points",
+          "gpu_r2_ns",
+          "gpu_ns_depth_score",
+          "gpu_ns_monotonic_ratio",
+          "gpu_ns_cv",
+          "gpu_ns_wall_ratio_median",
+          "timer_query_available"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B23_native_canvas_hedge",
+        "batch_id": "B23_native_canvas_hedge",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "native_integrity_ratio",
+          "canvas_geometry_hash",
+          "canvas_geometry_stable",
+          "non_native_count"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B24_material_crosscheck",
+        "batch_id": "B24_material_crosscheck",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "material_vote_digest",
+          "material_cross_conflict",
+          "cross_residual_delta"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B25_clock_raf",
+        "batch_id": "B25_clock_raf",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "perf_now_resolution_ms",
+          "raf_jitter_cv",
+          "raf_mean_ms",
+          "date_now_skew_ms"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B26_agent_parity",
+        "batch_id": "B26_agent_parity",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "agent_parity_hash",
+          "agent_parity_hit_n",
+          "agent_parity_keys_n",
+          "agent_automation_globals_n"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B27_storage_privacy",
+        "batch_id": "B27_storage_privacy",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "privacy_storage_score",
+          "storage_quota",
+          "storage_persisted",
+          "caches_api"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B28_permissions_media",
+        "batch_id": "B28_permissions_media",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "permissions_matrix",
+          "permissions_hash",
+          "media_devices_count",
+          "media_devices_kinds"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B29_sensors_battery",
+        "batch_id": "B29_sensors_battery",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "battery_level",
+          "battery_charging",
+          "sensor_accel_present",
+          "sensor_gyro_present"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B30_gpu_bandwidth",
+        "batch_id": "B30_gpu_bandwidth",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "gpu_bandwidth_ladder",
+          "gpu_readback_ladder",
+          "gpu_roundtrip_ladder"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B31_shader_numeric",
+        "batch_id": "B31_shader_numeric",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "shader_ulp_max",
+          "gl_precision_matrix",
+          "highp_mean",
+          "mediump_mean"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B33_caps_pressure",
+        "batch_id": "B33_caps_pressure",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "actual_max_tex",
+          "caps_claim_vs_actual_gap",
+          "caps_probe_results",
+          "caps_internal_inconsistent"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B34_cpu_cache_ladder",
+        "batch_id": "B34_cpu_cache_ladder",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "cpu_cache_ladder",
+          "cpu_cache_knee_bytes"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B35_dom_perf",
+        "batch_id": "B35_dom_perf",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "dom_rect_hash",
+          "perf_timeline_hash",
+          "dom_rect_subpixel",
+          "perf_ttfb_ms"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B36_raster_msaa",
+        "batch_id": "B36_raster_msaa",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "raster_edge_hash",
+          "raster_edge_curve"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B37_thermal_drift_lite",
+        "batch_id": "B37_thermal_drift_lite",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "thermal_cpu_slope",
+          "thermal_bursts"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B38_neg_dict",
+        "batch_id": "B38_neg_dict",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "neg_dict_hits",
+          "neg_dict_hit_n"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B39_mem_pressure",
+        "batch_id": "B39_mem_pressure",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "mem_alloc_ladder",
+          "mem_alloc_max_mb",
+          "js_heap_size_limit"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B40_websocket_fp",
+        "batch_id": "B40_websocket_fp",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "ws_handshake_ms",
+          "websocket_present"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B41_hid_gamepad",
+        "batch_id": "B41_hid_gamepad",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "hid_surface_score",
+          "gamepad_count"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B42_thermal_drift_full",
+        "batch_id": "B42_thermal_drift_full",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "thermal_cpu_slope_full",
+          "thermal_gpu_slope_full",
+          "thermal_bursts_full"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B43_errors_engine",
+        "batch_id": "B43_errors_engine",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "errors_engine_hash",
+          "errors_engine_chrome_like"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B44_speech_deep",
+        "batch_id": "B44_speech_deep",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "speech_voices_hash",
+          "speech_voices_count",
+          "speech_langs"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B45_display_hdr",
+        "batch_id": "B45_display_hdr",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "display_mq_hash",
+          "css_color_gamut",
+          "display_mq"
+        ],
+        "unlocks": []
+      },
+      {
+        "pack_id": "B46_audio_deep",
+        "batch_id": "B46_audio_deep",
+        "layer": "deep",
+        "source": "main",
+        "commercial_fields": [
+          "audio_deep_hash",
+          "audio_deep_moments",
+          "audio_deep_peak_bins"
+        ],
+        "unlocks": []
+      }
+    ]
+  },
+  "v11_3_baseline_batches": {
+    "lite5": [
+      "B0_bootstrap",
+      "B12_anti_camouflage",
+      "B1_conflict",
+      "B2_hardware",
+      "B3_system"
+    ],
+    "b8": [
+      "B8_gateway"
+    ],
+    "hard_static": [
+      "B10_hw_curves"
+    ],
+    "mid4": [
+      "B13_authorized",
+      "B15_cross_curves",
+      "B16_fast_signals"
+    ],
+    "deep_key": [
+      "B7_sandbox",
+      "B11_interaction",
+      "B6_risk"
+    ],
+    "deep_residual_executable": [
+      "B4_mobile",
+      "B5_census",
+      "B9_network",
+      "B14_css_protocol",
+      "B17_hw_physical",
+      "B18_webgpu",
+      "B19_eme_media",
+      "B20_challenge_seed"
+    ]
+  },
+  "parity": {
+    "batch_union_vs_baseline_core": "lite5+b8+mid4+B7+B11+B6+residual deep all executable in-tree",
+    "residual_deep_batches": [
+      "B4_mobile",
+      "B5_census",
+      "B9_network",
+      "B14_css_protocol",
+      "B17_hw_physical"
+    ],
+    "residual_note": "Residual deep packs now executable (analysis-critical lite). Full v57 leaf volume (15k+) still not mirrored; commercial axes use denser subset. B15 cross_context real residual compare shipped.",
+    "hard_device_materials_whitelist": [
+      "form_class",
+      "hw_webgl_stable",
+      "hw_audio_stable",
+      "cores_class",
+      "architecture",
+      "screen_w_class",
+      "screen_h_class",
+      "timezone"
+    ],
+    "hard_device_materials_ssot": "field_product_matrix.commercial_device_id",
+    "hard_device_materials_note": "Mirror of commercial_device_id.digest_order (F-11). NOT spoofable UA/renderer labels. Derived: hw_*_stable from curves; screen_*_class from screen dims; timezone is soft commercial class (not free-form spoof label).",
+    "never_digest": [
+      "user_agent",
+      "webgl_unmasked_renderer",
+      "webgl_unmasked_vendor",
+      "server_client_ip",
+      "server_asn",
+      "screen_width",
+      "screen_height"
+    ]
+  },
+  "notes": [
+    "2026-07-29: Pingora side-channels + B21-B46 commercial_fields + H01/H10 depth digests",
+    "2026-07-29 F-11: hard_device_materials_whitelist aligned to commercial_device_id SSOT",
+    "2026-08-01 a2e: whitelist = full digest_order; raw screen_width/height stay never_digest (classes digest)"
+  ]
+}

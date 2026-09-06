@@ -1,0 +1,5734 @@
+{
+  "note": "Field-utilization policy: every FE-emitted field is assigned a consumption role/channel. Consistency checkers in analysis_quality consume by group; incomplete packs surface as brain gaps; utilization map lists all present fields with their channel. Never drops fields.",
+  "version": 1,
+  "generated": "2026-08-26T05:25:51Z",
+  "groups": {
+    "silicon_rt": {
+      "role": "material_confidence",
+      "axes": [
+        "device_id",
+        "os"
+      ],
+      "channel": "silicon_rt",
+      "note": "real-time silicon channels: webgpu/sab/raf/thermal/cpu-ladder/mem; cross-check mutual direction and stall marks"
+    },
+    "media_codec": {
+      "role": "consistency",
+      "axes": [
+        "os"
+      ],
+      "channel": "media_codec",
+      "note": "codec/canplay/eme/media capability coherence"
+    },
+    "env_fingerprint": {
+      "role": "consistency",
+      "axes": [
+        "os",
+        "br"
+      ],
+      "channel": "env_fingerprint",
+      "note": "environment fingerprint multi-source coherence: css/mq/intl/nav/window/viewport/ua_ch/net"
+    },
+    "proto_surface": {
+      "role": "consistency",
+      "axes": [
+        "br"
+      ],
+      "channel": "proto_surface",
+      "note": "transport surface coherence: ws/rtc/ice/protocol flags"
+    },
+    "canvas_typography": {
+      "role": "consistency",
+      "axes": [
+        "device_id"
+      ],
+      "channel": "canvas_typography",
+      "note": "canvas text/emoji geometry + fonts coherence"
+    },
+    "automation_deep": {
+      "role": "veto_like",
+      "axes": [
+        "br",
+        "rpa"
+      ],
+      "channel": "automation_deep",
+      "note": "deep automation hit aggregates feed br/rpa"
+    },
+    "math_wasm": {
+      "role": "consistency",
+      "axes": [
+        "os"
+      ],
+      "channel": "math_wasm",
+      "note": "JS engine fingerprint coherence: math/wasm/jit/crypto/object census"
+    },
+    "residual_lane": {
+      "role": "material_confidence",
+      "axes": [
+        "device_id"
+      ],
+      "channel": "residual_lane",
+      "note": "residual multi-lane/seed coherence feeds residual class confidence"
+    },
+    "fe_integrity": {
+      "role": "integrity",
+      "axes": [
+        "br",
+        "os"
+      ],
+      "channel": "fe_integrity",
+      "note": "FE impl/loader/cohort stamp coherence (A5 extension)"
+    },
+    "sandbox_deep": {
+      "role": "consistency",
+      "axes": [
+        "device_id",
+        "os"
+      ],
+      "channel": "sandbox_deep",
+      "note": "sandbox/iframe realm coherence (A3 extension)"
+    },
+    "verify_deep": {
+      "role": "consistency",
+      "axes": [
+        "br"
+      ],
+      "channel": "verify_deep",
+      "note": "random spotcheck verify aggregates detail"
+    },
+    "rpa_behavior_deep": {
+      "role": "material_confidence",
+      "axes": [
+        "rpa"
+      ],
+      "channel": "rpa_behavior_deep",
+      "note": "RPA kinematic detail coherence"
+    },
+    "pack_health": {
+      "role": "integrity",
+      "axes": [
+        "xsrc"
+      ],
+      "channel": "pack_health",
+      "note": "probe pack completeness (ok/error/skip/n) — incomplete packs surface as gaps"
+    },
+    "diag_other": {
+      "role": "diag",
+      "axes": [],
+      "channel": "diag",
+      "note": "diagnostic-only markers; tracked for utilization visibility"
+    },
+    "fork_matrix": {
+      "role": "material_confidence",
+      "axes": [
+        "br",
+        "device_id"
+      ],
+      "channel": "fork_matrix",
+      "note": "iss/74 R3 blink fork matrix: UA-CH brands vs UA order/version/GREASE + CSS var static surface -> fork guess/claim-obs"
+    }
+  },
+  "group_order": [
+    "silicon_rt",
+    "media_codec",
+    "env_fingerprint",
+    "proto_surface",
+    "canvas_typography",
+    "automation_deep",
+    "math_wasm",
+    "residual_lane",
+    "fe_integrity",
+    "sandbox_deep",
+    "verify_deep",
+    "rpa_behavior_deep",
+    "pack_health",
+    "diag_other"
+  ],
+  "fields": {
+    "action": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "agent_parity_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "alpha_bits": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "app_version": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "audio_convolver_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "audio_convolver_ok": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "audio_deep_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "audio_deep_phase": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "audio_max_channel_count": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "b8_path_kind": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "battery_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "bw_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "bw_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "cache": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "canvas_hedge_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "caps_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "census_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "channels": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "collected_at": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "compute": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "crosscheck_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "curveBins": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "data_ok": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "dc_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "debug_info_ext": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "deep_machine_probes": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "delta": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "depth_bits": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "description": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "device_orientation_api": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "dirty": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "display_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "display_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "dom_perf_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "entries": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "env_fusion_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "errors_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "experimental_webgl": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "extW2": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "frames": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "fuzzy_echo_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "getExtension_native": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "getSupportedExtensions_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "get_battery_api": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "gl_api": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "gl_ext_full_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "gl_governor_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "gl_version": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "gpu_bandwidth_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "gpu_timer_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "gpu_timer_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "hedge_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "hedge_material_count": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "hid_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "hid_api": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "hit_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "host_count": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "hw_inventory_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "hw_noise_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "i": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "incs": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "install_trigger_present": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "iter": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "iters": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "keyboard_layout_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "keys_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "kind": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "kurtosis": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "layer_divergence_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "layer_divergence_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "layer_divergence_sample": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "layout": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "local": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "lose_context_ext": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "max": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "mean": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "mean_delta": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "mean_fine": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "median": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "message": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "method": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "min": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "modes": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "n_events": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "n_wg": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "names": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "native_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "neg_dict_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "neg_dict_hit_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "neg_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "offscreen_available": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "ok": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "pack_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "params_native": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "peri_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "phase": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "platform_version": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "probe_density_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "probe_field_count": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "probe_specific_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "product": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "q": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "query_available": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "query_started": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "r100_promote_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "r100_promote_ok": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "raster_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "raster_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "readPixels_native": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "rms": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "sample": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "samples": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "scheduler_posttask_ok": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "sensors_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "serial_api": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "shader_draw_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "shader_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "shader_mode": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "shader_numeric_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "size": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "size_means": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "skew": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "skip": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "slots": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "speech_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "speech_local_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "sr": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "stack_head": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "staging": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "std": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "std_fine": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "stencil_bits": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "storage_algo": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "storage_estimate_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "sw_ready": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "sw_reg_n": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "t": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "t0": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "threw": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "timed_out": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "transferSize": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "type": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "unit_surface_error": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "unmask_blocked": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "usb_api": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "variance": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "via": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "webgl2_available": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "webgl_err": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "webgl_ext_count": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "webgl_missing": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "webgl_shading_language_version": {
+      "group": "pack_health",
+      "role": "integrity",
+      "channel": "pack_health"
+    },
+    "alt_changed": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10_phase": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_capability": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_err": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_inline": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_meta": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_ok": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_pack": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_phase": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_profile": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "b10x_timeout": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "consistency_ok": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "cross_context_algo": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "cross_error": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "cross_origin_isolated": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "entropy_ok": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "hw_curve_webgl_lane_s": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "identical_draw_unique": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "magrank_eq": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "magrank_key": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "multi_seed_n": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "multipath_profile": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "nest_engine_family": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "nest_main_residual": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "nest_residual_algo": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "nest_residual_mean": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "nest_vs_main_agree_0p001": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "nest_vs_main_comparable": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "nest_vs_main_note": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "residual_algo_lane_s": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "residual_error": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "residual_mean_lane_s": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "residual_path_means": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "residual_path_modes": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "residual_path_stds": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "residual_std_lane_s": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "seed_digest": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "seed_k": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "seed_replay_agree_0p001": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "seed_replay_err": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "seed_residual_digest": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "seed_residual_means": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "unique_n": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "weak": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "weak_device": {
+      "group": "residual_lane",
+      "role": "material_confidence",
+      "channel": "residual_lane"
+    },
+    "angle": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "antidetect_vendor_hint": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_a6_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_convolver_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_convolver_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_convolver_moments": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_convolver_peak_bins": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_convolver_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_deep_curve_b": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_deep_phase_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_deep_seeds": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_err": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_fft_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_fft_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_noise_delta": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_probe_path": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_seed_delta_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_src_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "audio_waveshaper_oversample": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "available": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "b0_caps_coland": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "b2_caps_coland": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "b8_bases": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "b8_dual": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "b8_enrich": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "battery_level_bucket": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "battery_unavailable": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "best_lag": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "best_lag_agree": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "bot_verdict": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "bw_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "canvas_probe_path": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "census_leaf_estimate": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "cf_edge": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "client_tags": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "cool_local": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "cpu_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "cpu_timing_raw_rounds": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "cpu_timing_rounds": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "ct": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "custom_link": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "date_now_skew_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "device": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "dither_enabled": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "dns_lookup_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "doc": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "dom_complete_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "elapsed_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "emulator_hint": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "engine": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "engine_claim": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "engine_obs": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "entry_counts": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "entry_types": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "errors_engine": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "errors_engine_chrome_like": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "errors_engine_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "eventloop_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "expected": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "expected_legacy": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "fingerprint_vendor_lie": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "form_hint": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "frame_element": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "get_user_media": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_bandwidth_lite": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_ext_full_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_governor_active": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_governor_live": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_governor_shared_pool": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_max_combined_texture_image_units": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_max_cube_map_texture_size": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_max_fragment_uniform_vectors": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_max_vertex_uniform_vectors": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_max_viewport_dims": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_renderer": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_stack_class": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gl_vendor": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "governed_webgl_vendor": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gpu_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "gpu_ns": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_atomics": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_challenge_seed": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_deriv": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_host": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_local_storage": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_offscreen": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_os_instance": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_relay": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_shared_array_buffer": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_srflx": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_webgl": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_webgl_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "has_webrtc": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "hedge_direction": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "hid_surface_score": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "highp": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "hover_none": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "hw_curve_audio_delta": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "hw_curve_cpu_rounds": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "hw_curve_webgpu_f16": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "kicked_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "l1_batch": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "l2": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "layer_divergence_compared": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "layer_divergence_match": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "layer_divergence_score": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "load_event_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mali": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "maxConcurrent": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "max_vertex_attribs": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "max_viewport_dims": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "median_mean": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mediump": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mib_s": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "n": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "n_paths": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "nav": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "navigation_ua": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "neg_dict_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "neg_dict_hits": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "net_effective_type": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "new_number": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "no_permission_request": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "noise_suspect": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "null_prop": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "object_call": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "offscreen": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "offscreen_mat": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "onsuccess_guard": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "origin": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "os_instance_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "os_instance_source": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "paths": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "pointer_none": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "pointer_type": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "post_converge": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "precision_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "probe_depth_class": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "probe_family": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "probe_min_met": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "probe_profiles": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "protocol": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "prototype_chain_tamper": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "quality": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "raster_edge_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "raster_edge_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "raster_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "readback_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "real_band": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "safari_push_notification": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "scheduler_timing_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "score": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "sensors_listen_skipped": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "sensors_motion": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "sensors_orient": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "shader_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "shading_language": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "shared_worker": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "shared_worker_ctor": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "short_visit": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "sign_agree": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "sign_xor": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "softpipe": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "speech_default_voice": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "speech_voices_async_tag": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "storage": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "storage_quota_bytes": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "storage_usage_bytes": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "storage_usage_details": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "storage_usage_ratio": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "struct_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "supported": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "surface_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "sw_ctrl": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "swiftshader": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "t_rel_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "tz_dst": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "tz_offset_min": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "undef_call": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "v": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "video": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "wall_median_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "wall_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webdriverio": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl2": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl2_mat": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_alpha_bits": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_blue_bits": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_depth_bits": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_green_bits": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_mat": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_probe_path": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_red_bits": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_renderer_governed": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_samples": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_stencil_bits": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgl_unmask_blocked": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "webgpu": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "win": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "worker": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "worker_ctor": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "wow64": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "x": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "y": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "animation_frame": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "coalesced_total": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "composition_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "count_not_safety": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "drag_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "duration_bucket": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "events_with_coalesced": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "focus_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "idle_callback": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "input_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "input_jerk_cv": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "input_modality": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "key_flight_cv": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "key_hold_mean_ms": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "keyboard_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "mouse_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "no_coalesced_observed": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "non_biometric_execution": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "overshoot_n": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "page_path": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "page_scope": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "path_cap": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "path_curvature_mean": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "path_id": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "pointer_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "privacy": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "privacy_policy": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "raw_events_uploaded": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "raw_keys_uploaded": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_acked_seq": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_coalesced_stats": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_feature_day": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_features_v2": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_force_flush": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_rule_metronomic": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_rule_teleport": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_rule_zero_jerk": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_seq_start": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "rpa_signal": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "sample_quality": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "segment": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "tab_window_id": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "touch_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "type_diversity_n": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "wheel_event": {
+      "group": "rpa_behavior_deep",
+      "role": "material_confidence",
+      "channel": "rpa_behavior_deep"
+    },
+    "bluetooth": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "cohort_color_gamut": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "cohort_dpr_bucket": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "cohort_intl_calendar": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "cohort_intl_locale": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "cohort_intl_numbering": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "cohort_pointer": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "cohort_speech_voices_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_any_pointer_coarse": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_display_mode_standalone": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_forced_colors": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_hover_none": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_pointer_fine": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_prefers_contrast": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_props_probe_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_props_resolved_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_reduced_motion": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_supports_ok_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_supports_probe_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "css_supports_sample": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "device_pixel_ratio_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "do_not_track": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "gamepad_api": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "gamepad_error": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "hardwareAcceleration": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "hid": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "idle_detector": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "inner_height": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "inner_height_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "inner_width_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_calendar": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_collator": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_display": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_hour_cycle": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_list": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_locale": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_locale_base": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_locale_language": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_locale_max": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_locale_region": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_locale_script": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_numbering": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_plural": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_relative": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_segmenter": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "intl_tz": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "is_secure": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "is_secure_context": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "is_top": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "keyboard": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "lang": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "locks_cap": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "max_touch_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_color_gamut_p3": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_color_gamut_srgb": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_display_mode_standalone": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_dynamic_range_high": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_hover_hover": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_hover_none": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_orientation_landscape": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_orientation_portrait": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_pointer_coarse": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_pointer_fine": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_prefers_color_scheme_dark": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_prefers_reduced_motion": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_probe_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "mq_true_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_app_code_name": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_app_name": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_bluetooth": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_connection": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_credentials": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_decoded_body_size": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_do_not_track": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_encoded_body_size": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_global_privacy": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_gpu": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_hid": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_java": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_keyboard": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_locks": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_media_devices": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_mimes_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_next_hop_protocol": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_permissions": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_platform": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_plugins_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_serial": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_storage": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_transfer_size": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_usb": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_user_agent_data": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_user_agent_len": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_vendor_sub": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_wake_lock": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "nav_xr": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "net_conn_api": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "net_conn_downlink": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "net_conn_downlink_max": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "net_conn_effective": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "net_conn_rtt": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "net_conn_save_data": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "net_conn_type": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "onLine": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "opener": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "orientation": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "outer_height": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "outer_height_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "outer_width_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "payment_request": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "pdfViewerEnabled": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "pdf_viewer": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "perf_now_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "platform_version_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "public_key_cred": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen_avail_delta_h": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen_avail_delta_w": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen_fp_protection_suspect": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen_is_extended": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen_w": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen_x": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "screen_y": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "serial": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "u2f": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_brands_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_form_factors": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_full_version_hash": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_full_version_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_high_entropy_error": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_high_entropy_skip": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_mobile": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_present": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "ua_ch_ua_full_version": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "usb": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "virtual_keyboard": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "visibility_state": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_height": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_missing": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_offset_left": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_offset_top": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_page_left": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_page_top": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_scale": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "vv_width": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "wake_lock": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "webdriver_rpa": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_chrome": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_keys_hash": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_keys_sample": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_opera": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_own_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_proto_n": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_safari": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_screen_delta_h": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "window_screen_delta_w": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint"
+    },
+    "brain_bypass": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "bypass_at_ms": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "bypass_reason": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "compute_pressure_state": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fallback_batch_id": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fallback_matrix_algo": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fe_asset_version": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fe_build_impl": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fe_code_version": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fe_hard_impl": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fe_lite_impl": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fe_loader_impl": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "fe_packs_version": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "lite": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "product_version_fe": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "race": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "server_product_version": {
+      "group": "fe_integrity",
+      "role": "integrity",
+      "channel": "fe_integrity"
+    },
+    "camera": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "connection": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "connection_api": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "cookie_store": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "downlink": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "first_party": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "geolocation_permission": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "iceServers": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "iceTransportPolicy": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_cand_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_cand_sample": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_cand_types": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_candidatePoolSize": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_error": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_hash": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_host_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_relay_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ice_srflx_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "microphone": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "net_downlink": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "net_rtt": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "net_save_data": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "net_type": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "notification_permission": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "notifications": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "permission_notification": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "permission_shape_digest": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "permissions_camera": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "permissions_clipboard": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "permissions_denied_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "permissions_geolocation": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "permissions_microphone": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "protocol_beacon": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "protocol_fetch": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "protocol_https": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_add_transceiver": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_api": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_can_trickle": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_connection_state": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_data_channel": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_error": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_ice_candidate": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_ice_gathering": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_peer": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_receiver_caps": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_receiver_caps_err": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_receiver_caps_hash": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_receiver_caps_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_receiver_caps_skip": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "rtc_session_desc": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "transport": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_audio_packets": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_bytes_recv": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_bytes_sent": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_cand_types": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_codec_clock": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_codec_mime": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_fallback_tried": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_method": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_offer_error": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_relay_count": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_rtt": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_algo": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_error": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_hash": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_ok": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_sample": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_skip": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stats_types": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_stun_allowed": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_transport_dtls": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_transport_ice": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webrtc_video_packets": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "webtransport": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ws_connect_skipped": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ws_constructor_native": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ws_fma_delta_curve": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ws_probe_mode": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ws_proto_keys_n": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ws_relaxed_simd_digest": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "ws_simd_timing_curve": {
+      "group": "proto_surface",
+      "role": "consistency",
+      "channel": "proto_surface"
+    },
+    "canvas_2d_ctor": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "canvas_noise_algo": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "canvas_noise_patterns": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "canvas_toDataURL": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "canvas_w_arabic": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "canvas_w_base": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "canvas_w_cjk": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "canvas_w_emoji": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "dom_rect": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "dom_rect_error": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "dom_rect_hash": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "dom_rect_skip": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "dom_rect_subpixel": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "fitts_residual_mean": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "font": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "font_error": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "font_hit_n": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "font_hit_sample": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "font_present_count": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "font_probe_n": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "fuzzy_helper_au": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "fuzzy_helper_v": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "fuzzy_helper_wg": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "height": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "lineWidth": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "local_fonts_api_present": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "local_fonts_n": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "local_fonts_nav_fonts_present": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "local_fonts_query_ok": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "local_fonts_skipped": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "local_fonts_surface": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "path2d_ok": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "text_actual_bbox": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "text_width": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "width": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography"
+    },
+    "catalog_n_apis": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "catalog_n_css": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "catalog_n_css_props": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "catalog_n_font_tokens": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "catalog_n_fonts": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "catalog_n_mq": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "crypto_rand_len": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "crypto_subtle": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "jit_lowbits_algo": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "jit_lowbits_curve": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "jit_lowbits_err": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "jit_lowbits_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "jit_lowbits_silicon": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "leaf_budget_catalog": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "leaf_est": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_acc": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_acosh": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_asinh": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_atanh": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_cbrt": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_clz32": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_cos": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_digest": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_expm1": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_fround": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_hash": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_hypot": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_imul": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_log": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_sin": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "math_tan": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "n_own": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "n_proto": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "object_census": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "object_census_leaf_est": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_entries_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_entry_types": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_err": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_error": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_mark_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_memory": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_nav_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_now_sample": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_obs_entry_types_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_paint_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_resource_entries_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_resource_n": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "perf_uss": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "precision_matrix": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "proto": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_acc": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_compile": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_err": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_feature_matrix": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_instantiate": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_present": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_probe_algo": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_probe_err": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_probe_path": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_probe_role": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_relaxed_simd_digest": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_simd": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_simd_sig": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_timing_ms": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_validate": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "wasm_validate_empty": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm"
+    },
+    "cdc": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "chrome_extension_hit": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "chromedriver_evaluate": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "chromedriver_script": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "cypress": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "cypress_hit": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "dom_automation": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "dom_automation_controller": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "eval": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "fxdriver": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "headless_ua": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "nightmare": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "phantom": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "phantom_hit": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "phantomjs": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "puppeteer": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "puppeteer_eval": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "puppeteer_global": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "pw_init": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "pw_manual": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "selenium": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "selenium_doc": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "selenium_hit": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "selenium_unwrapped": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "selenium_win": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "testcafe": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "webdriver_evaluate": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "webdriver_get": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "webdriver_hit": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "webdriver_script_fn": {
+      "group": "automation_deep",
+      "role": "veto_like",
+      "channel": "automation_deep"
+    },
+    "challenge_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "challenge_seed_used": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "clock_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "clock_error": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "cpu_cache_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "cpu_cache_error": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "cpu_kind_count": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "cpu_kind_medians_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "cpu_loop_algo_build": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "cpu_loop_rounds": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "cpu_loop_warmup_dropped": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "eu_timing_mean_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "gpu_readback_ladder": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "gpu_wall_median_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "gpu_wall_staircase_slope": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "js_heap_limit": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "js_heap_total": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "js_heap_used": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "mem_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "mem_alloc_ladder": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "mem_alloc_max_mb": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "offline_audio_ctor": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "offline_ch": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "offline_len": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "offline_sr": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "pohw_direction": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "raf_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "raf_hz_max_est": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "raf_interval_curve": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "raf_interval_rounds": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "raf_probe_failed": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "raf_rounds": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "raf_spacing_curve": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_calibrate_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_clock_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_clock_error": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_clock_res_ns": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_clock_skip": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_eventloop_mean_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_sample_n": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_tick_delta_curve": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "sab_timer_hash": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "seed_ulp_agree": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "seed_ulp_err": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "seed_ulp_eu_timing_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "seed_ulp_means": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "thermal_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "thermal_cpu_cv_full": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "thermal_mode": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "thermal_progressive": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "thermal_stopped": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "timing_jitter_curve": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "timing_jitter_rounds": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "timing_samples": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_architecture": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_description": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_device": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_error": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_high": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_low": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_null": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_skip": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_adapter_surface": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_challenge_seed_skip": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_challenge_seed_src": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_challenge_seed_used": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_compute_entropy_hint": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_compute_error": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_compute_n": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_compute_skip": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_compute_timing_curve": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_compute_wall_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_dispatch_timings_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_cv": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_iqr": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_median": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_n_workgroups": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_ok": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_seed_k": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_skip": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_timing_curve": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_eu_workgroup_incs": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_f16_algo": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_f16_error": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_f16_head8": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_f16_seed_injected": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_f16_seed_k": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_f16_skip": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_features_hash": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_features_n": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_features_sample": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_limits": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_limits_sample": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_seed_injected": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_seed_k": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_shader_f16_feature": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_timing_cv": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_timing_iqr_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_timing_median_ms": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_timing_n": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_timing_quality": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "webgpu_timing_skip": {
+      "group": "silicon_rt",
+      "role": "material_confidence",
+      "channel": "silicon_rt"
+    },
+    "clockRate": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "eme_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "idb_ok": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "idb_probe_algo": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "idb_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "idb_write_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "idb_write_timing_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "initDataTypes": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_canplay": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_canplay_mp4": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_capabilities_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_capabilities_ok": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_capabilities_sample": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_device_id_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_devices": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "media_labels_collected": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mimeType": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mimeTypes_len": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mime_types_length": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mimes_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "mimes_n": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "plugins_hash": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "plugins_list_n": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "plugins_sample": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "request_media_key_system": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "sdpFmtpLine": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "vc_chunk_n": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "vc_encode_timing_curve": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "vc_encoder_bitstream_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "vc_err": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "vc_ok": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "vc_probe_algo": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "vc_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "videoCapabilities": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec"
+    },
+    "iframe_platform_mismatch": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "kinds": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "results": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "sandbox_blocked_count": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "sandbox_hw_mismatch": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "sandbox_partial_count": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "sandbox_plan": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "sandbox_platform_mismatch": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "sandbox_tostring_diverged": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "schema": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "schema_version": {
+      "group": "sandbox_deep",
+      "role": "consistency",
+      "channel": "sandbox_deep"
+    },
+    "pack_id": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "score_weight": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_b_overlap_n": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_b_overlap_ratio": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_dim_fail": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_dim_n": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_dim_stats": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_empty_ops": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_sample": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_sample_hash": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "verify_seed": {
+      "group": "verify_deep",
+      "role": "consistency",
+      "channel": "verify_deep"
+    },
+    "build_id_raw": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "gecko_moz_innerscreen_x_delta": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "linux_metric_font_arimo": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "linux_metric_font_cousine": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "linux_metric_font_tinos": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "os_kernel_hint": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "os_version_hint_raw": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "oscpu_raw": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "productsub_raw": {
+      "group": "env_fingerprint",
+      "role": "consistency",
+      "channel": "env_fingerprint",
+      "level": "L2",
+      "recipe": "os_engine_gecko_surface"
+    },
+    "engine_canvas_farbling_delta": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "engine_error_9set_digest": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "engine_math_roundoff_digest": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "engine_math_roundoff_profile": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "engine_realm_grease_present": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "engine_realm_ua_align_ok": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "engine_stack_first_line": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "engine_stack_trace_limit": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L2",
+      "recipe": "engine_behavior_diff"
+    },
+    "wasm_bi_f32_div_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_bi_f32_mul_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_bi_f64_mul_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_bi_i32_mul_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_bi_i64_div_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_bi_partial": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_bi_simd_skip": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_compile_ms": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_instantiate_ms": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_scalar_vs_simd_ratio": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_simd_f32x4_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_simd_f64x2_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_throughput_digest": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "wasm_trunc_ftoi_ns": {
+      "group": "math_wasm",
+      "role": "consistency",
+      "channel": "math_wasm",
+      "level": "L4",
+      "recipe": "wasm_throughput_kernel"
+    },
+    "audio_channel_vs_copy_delta": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "audio_float_freq_sum": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "audio_float_time_sum": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "audio_known_lock_digest": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "audio_known_lock_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "audio_known_lock_sum": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "audio_render_ms": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "audio_silent_osc_unique_bins": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "audio_known_lock"
+    },
+    "emoji_raster_hash": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography",
+      "level": "L2",
+      "recipe": "emoji_raster"
+    },
+    "emoji_skip": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography",
+      "level": "L2",
+      "recipe": "emoji_raster"
+    },
+    "emoji_tofu_count": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography",
+      "level": "L2",
+      "recipe": "emoji_raster"
+    },
+    "font_fallback_chain_digest": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography",
+      "level": "L2",
+      "recipe": "emoji_raster"
+    },
+    "mac_dot_font_measurable": {
+      "group": "canvas_typography",
+      "role": "consistency",
+      "channel": "canvas_typography",
+      "level": "L2",
+      "recipe": "emoji_raster"
+    },
+    "storage_quota_grid_class": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "storage_quota"
+    },
+    "storage_quota_prev_match": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "storage_quota"
+    },
+    "storage_quota_prev_seen": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "storage_quota"
+    },
+    "storage_quota_round_suspect": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "storage_quota"
+    },
+    "storage_quota_skip": {
+      "group": "media_codec",
+      "role": "consistency",
+      "channel": "media_codec",
+      "level": "L3",
+      "recipe": "storage_quota"
+    },
+    "hw_curve_webgl": {
+      "group": "silicon_rt",
+      "role": "material",
+      "channel": "silicon_rt",
+      "level": "L3",
+      "recipe": "curve_morph_webgl"
+    },
+    "hw_curve_audio": {
+      "group": "silicon_rt",
+      "role": "material",
+      "channel": "silicon_rt",
+      "level": "L3",
+      "recipe": "curve_morph_audio"
+    },
+    "hw_curve_cpu": {
+      "group": "silicon_rt",
+      "role": "consistency",
+      "channel": "silicon_rt",
+      "level": "L3",
+      "recipe": "curve_morph_cpu"
+    },
+    "audio_deep_curve": {
+      "group": "silicon_rt",
+      "role": "material",
+      "channel": "silicon_rt",
+      "level": "L4",
+      "recipe": "curve_morph_audio"
+    },
+    "residual_mean": {
+      "group": "residual_lane",
+      "role": "material",
+      "channel": "residual_lane",
+      "level": "L3",
+      "recipe": "residual_stats"
+    },
+    "residual_hist": {
+      "group": "residual_lane",
+      "role": "consistency",
+      "channel": "residual_lane",
+      "level": "L3",
+      "recipe": "residual_stats"
+    },
+    "atomic_contention_algo": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_digest": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_entropy": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_hist16": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_median_ms": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_ok": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_presets_n": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_quality": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_rounds_n": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_seed_k": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_skip": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "atomic_contention_wall_ms": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_algo": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_anchor": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_date_quant_ms": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_digest": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_ok": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_perf_quant_us": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_raf_quant_ms": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "sab_dual_clock_skip": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_algo": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_accum_done_n": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_curve": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_digest": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_engine_gate": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_ok": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_partial": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_round_ms": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_skip": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_subset_i": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_subset_n": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "gpu_eu_wall_ms": {
+      "group": "silicon_rt",
+      "role": "research_material",
+      "channel": "silicon_rt"
+    },
+    "blink_fork_guess": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_claim_vs_obs": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_algo": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_brand_n": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_brand_order": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_brand_ua_major_match": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_css_vars": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_edge_brand": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_grease_n": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_grease_positions": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_ua_has_edg": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    },
+    "fork_matrix_ua_has_opr": {
+      "group": "fork_matrix",
+      "role": "material_confidence",
+      "channel": "fork_matrix"
+    }
+  }
+}

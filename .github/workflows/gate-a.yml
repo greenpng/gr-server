@@ -1,0 +1,126 @@
+# Gate A — 打包前的发行仓源码门 (docs/workstreams/gr-server/10-public-runner-gates.md)。
+# 触发: push 到 main / release/*、PR、手动。双架构原生 (公开仓 runner 免费)。
+# 通过 = 这份源码能编、契约过、预打包树合法; 仅允许进入正式打包 (release.yml),
+# 不产生任何 Release 资产。A4 预打包用 GR_ALLOW_KEYGEN=1 实验室钥, 产物即弃。
+name: gate-a
+
+on:
+  push:
+    branches: [main, "release/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate-a:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.88.0"
+
+      # A6 — 版本 SSOT 四处一致
+      - name: A6 version SSOT
+        run: |
+          set -euo pipefail
+          ROOT_V=$(tr -d '[:space:]' < VERSION)
+          FE_V=$(tr -d '[:space:]' < probe/fe/VERSION)
+          CARGO_V=$(sed -n 's/^version = "\(.*\)"/\1/p' <(sed -n '/\[workspace.package\]/,/^\[/p' Cargo.toml) | head -1)
+          PROBE_V=$(tr -d '[:space:]' < VERSION.probe)
+          echo "VERSION=$ROOT_V probe/fe/VERSION=$FE_V cargo=$CARGO_V VERSION.probe=$PROBE_V"
+          [[ "$ROOT_V" == "$FE_V" && "$ROOT_V" == "$CARGO_V" && "$ROOT_V" == "$PROBE_V" ]] || {
+            echo "version drift — all four version sources must match" >&2; exit 1; }
+
+      # A5 — 密钥/敏感面扫描 (同步脚本同款规则; 公开仓零容忍)
+      # 注: 模式串排除 .github/(本文件自身含扫描模式); sk_live_ 要求真实长度,
+      # 官网 env.production.example 的 sk_live_CHANGE_ME 是占位示例。
+      - name: A5 secret scan
+        run: |
+          set -euo pipefail
+          hits=$(grep -rInE 'BEGIN (RSA |EC |OPENSSH |ED25519 )?PRIVATE KEY|sk_live_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}' \
+            --exclude-dir=.git --exclude-dir=.github --exclude='*.lock' . 2>/dev/null || true)
+          if [[ -n "$hits" ]]; then
+            echo "secret material detected in tree:"; echo "$hits"; exit 1
+          fi
+          bad=$(find . -path ./.git -prune -o -name '*.sk' -print -o -name '.env' -print -o -name 'secrets.env' -print 2>/dev/null || true)
+          if [[ -n "$bad" ]]; then
+            echo "private key / env files detected:"; echo "$bad"; exit 1
+          fi
+          echo "secret scan clean"
+
+      # A1 — 契约: 单测 + check + 官网 billing + 面板构建
+      - name: A1 contract suite
+        run: bash tests/runners/run_v7_acceptance.sh contract
+
+      # A2 — FE 静态契约 (无浏览器矩阵)
+      - name: A2 frontend suite
+        run: bash tests/runners/run_v7_acceptance.sh frontend
+
+      # A3 — 安装器静态: 语法 + 默认仓指向 + 用法可解析
+      - name: A3 installer static
+        run: |
+          set -euo pipefail
+          bash -n install/install.sh
+          bash -n install/release/update_runtime_from_github.sh
+          bash -n install/release/update_module_from_github.sh
+          bash install/install.sh --help | head -20
+          grep -q 'greenpng/gr-server' install/install.sh || {
+            echo "install.sh default RELEASE_REPO must point at greenpng/gr-server" >&2; exit 1; }
+          echo "installer static checks OK"
+
+      # A4 — 预打包 (实验室钥; 产物丢弃, 不上传不发布)
+      - name: A4 prepackage (lab keys, discard)
+        env:
+          GR_ALLOW_KEYGEN: "1"
+          SKIP_PUBLISH: "1"
+          HOST_ONLY: "1"
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          set -euo pipefail
+          npm install --prefix scripts/fe --no-audit --no-fund
+          npm ci --prefix panel/admin-ui --no-audit --no-fund
+          npm run build --prefix panel/admin-ui
+          TARGETS="${{ matrix.arch }}" bash release/build_multiarch.sh
+
+      - name: A4 verify release tree + architecture
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          tree="dist/release-${version}"
+          [[ -d "$tree" ]] || tree="dist/release-${version}-${{ matrix.arch }}"
+          test -f "$tree/manifest.json"
+          test -f "$tree/ota_ed25519.pk"
+          runtime="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime"]["asset"])' "$tree/manifest.json")"
+          file "$tree/$runtime"
+          case "${{ matrix.arch }}" in
+            x86_64) file "$tree/$runtime" | grep -Eqi 'x86-64|x86_64' ;;
+            aarch64) file "$tree/$runtime" | grep -Eqi 'aarch64|arm aarch64' ;;
+          esac
+          GR_RT_MANIFEST="$tree/manifest.json" \
+          GR_RT_PUBKEY="$tree/ota_ed25519.pk" \
+          GR_RT_DIR="$tree" \
+          cargo test -p gr-ota --test release_tree_verify -- --nocapture
+          rm -rf "$tree/keys-release" dist/keys-release-*
+          # 预打包产物即弃 — 仅保留日志证据
+          find "$tree" -maxdepth 1 -type f -exec sha256sum {} \; | sort > prepackage-sha256.txt || true
+
+      - name: upload gate-a evidence
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: gate-a-${{ matrix.arch }}
+          path: |
+            prepackage-sha256.txt
+          if-no-files-found: ignore
