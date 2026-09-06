@@ -239,9 +239,10 @@ jobs:
           set -euo pipefail
           VERSION=${{ needs.prepare.outputs.version }}
           MERGE="dist/release-$VERSION"
-          GR_RT_MANIFEST="$MERGE/manifest-x86_64.json" \
-          GR_RT_PUBKEY="$MERGE/ota_ed25519.pk" \
-          GR_RT_DIR="$MERGE" \
+          # release_tree_verify 测试进程 CWD 在 crate 目录 — GR_RT_* 必须绝对路径
+          GR_RT_MANIFEST="$PWD/$MERGE/manifest-x86_64.json" \
+          GR_RT_PUBKEY="$PWD/$MERGE/ota_ed25519.pk" \
+          GR_RT_DIR="$PWD/$MERGE" \
           cargo test -p gr-ota --test release_tree_verify -- --nocapture
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
