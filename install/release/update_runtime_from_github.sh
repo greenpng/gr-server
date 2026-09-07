@@ -356,17 +356,47 @@ else
   PIDFILE="$INSTALL_ROOT/log/gr-service.pid"
   if [[ -f "$PIDFILE" && -f "$ENVF" ]]; then
     OLD_PID="$(cat "$PIDFILE" 2>/dev/null || true)"
-    if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
-      kill "$OLD_PID" 2>/dev/null || true
-      sleep 1
-    fi
+    # 竞态实测 (v1.0.0→v1.0.1 gate-b B3): 旧 all-in-one 实例 TERM 后 >1s
+    # 才退出; 旧实现仅 sleep 1 即启新实例 → 新实例绑 28766/28765 后在
+    # 28680 EADDRINUSE 死亡, 健康门 curl 命中未死透的旧实例 → 假阳性
+    # HEALTH_OK, 随后旧实例退出 → 全端口无人监听。
+    stop_bg_instance() { # TERM → 等退出 (≤10s) → KILL 兜底
+      local pid="${1:-}"
+      [[ -n "$pid" && -d "/proc/$pid" ]] || return 0
+      kill "$pid" 2>/dev/null || true
+      local i
+      for i in $(seq 1 20); do
+        [[ -d "/proc/$pid" ]] || return 0
+        sleep 0.5
+      done
+      kill -9 "$pid" 2>/dev/null || true
+      sleep 0.5
+    }
+    wait_health_port_free() { # 健康口无人应答才算释放 (兜底非本pid持有者)
+      local i
+      for i in $(seq 1 20); do
+        curl -fsS --max-time 2 "$HEALTH_URL" >/dev/null 2>&1 || return 0
+        sleep 0.5
+      done
+      return 1
+    }
+    stop_bg_instance "$OLD_PID"
+    wait_health_port_free || echo "[runtime-ota] WARN: health port still answering after stop — proceeding" >&2
+    pkill -9 -f "^$INSTALL_ROOT/bin/gr-service" 2>/dev/null || true
+    sleep 0.5
     ( set -a; # shellcheck disable=SC1091
       source "$ENVF"; set +a
       nohup "$INSTALL_ROOT/bin/gr-service" >>"$INSTALL_ROOT/log/gr-service.log" 2>&1 &
       echo $! > "$PIDFILE" )
+    NEW_PID="$(cat "$PIDFILE" 2>/dev/null || echo '')"
     ok=0
     for i in 1 2 3 4 5 6 7 8; do
       sleep 2
+      # 新实例必须活着: 死了立即判失败 (不再被旧实例残留响应骗过)
+      if [[ -n "$NEW_PID" ]] && ! [[ -d "/proc/$NEW_PID" ]]; then
+        echo "[runtime-ota] new instance pid=$NEW_PID exited early" >&2
+        break
+      fi
       if curl -fsS "$HEALTH_URL" >/tmp/gr-runtime-ota-health.json 2>/dev/null; then
         ok=1; break
       fi
@@ -375,6 +405,9 @@ else
       echo "[runtime-ota] HEALTH_FAIL — rolling back binary" >&2
       if [[ -n "$BAK" && -x "$BAK" ]]; then
         install -m 0755 "$BAK" "$INSTALL_ROOT/bin/gr-service"
+        stop_bg_instance "$NEW_PID"
+        wait_health_port_free || true
+        pkill -9 -f "^$INSTALL_ROOT/bin/gr-service" 2>/dev/null || true
         ( set -a; source "$ENVF"; set +a
           nohup "$INSTALL_ROOT/bin/gr-service" >>"$INSTALL_ROOT/log/gr-service.log" 2>&1 &
           echo $! > "$PIDFILE" )
