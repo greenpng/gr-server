@@ -1,26 +1,49 @@
-//! Product stamp SSOT: root `VERSION` (semver 8.x.y), then fe/VERSION if identical-line missing.
-//! Cool tickets + FE cache-bust + analyze JSON all share this string.
+//! Product stamp SSOT: workspace-root `VERSION`. Keep aligned with gr-probe-plane.
+//! 布局可移植: 从 crate manifest 向上找「同时含 Cargo.toml + VERSION」的工作区根
+//! (greenpng 编号布局 02-probe-analysis/... 与扁平发行仓 gr-server 两用)。
+//! 旧实现固定 manifest/../../.. — 仅编号布局命中; 扁平发行仓会落到仓库上一级
+//! → CI 发版二进制全部错戳 "dev" (178 v1.0.0 实测 product_version=dev)。
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest.join("../../..");
-    // Prefer product VERSION (GR 8.0 SSOT). fe/VERSION must be kept in sync by release scripts.
-    let candidates = [
-        root.join("VERSION"),
-        root.join("fe/VERSION"),
-        manifest.join("../../../VERSION"),
-    ];
+    // 向上找工作区根 (含 Cargo.toml + VERSION), 最多 6 层
+    let mut root: Option<PathBuf> = None;
+    {
+        let mut dir = manifest.clone();
+        for _ in 0..6 {
+            if dir.join("Cargo.toml").is_file() && dir.join("VERSION").is_file() {
+                root = Some(dir.clone());
+                break;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
     let mut ver = "dev".to_string();
-    for p in &candidates {
+    let mut stamp_path: Option<PathBuf> = None;
+    if let Some(r) = root.as_ref() {
+        let p = r.join("VERSION");
         println!("cargo:rerun-if-changed={}", p.display());
-        if let Ok(s) = fs::read_to_string(p) {
+        if let Ok(s) = fs::read_to_string(&p) {
             let t = s.trim().to_string();
             if !t.is_empty() {
                 ver = t;
-                break;
+                stamp_path = Some(p);
+            }
+        }
+    }
+    if stamp_path.is_none() {
+        // 兜底: fe/VERSION (保持旧行为; 正常不应走到)
+        let p = manifest.join("../fe/VERSION");
+        println!("cargo:rerun-if-changed={}", p.display());
+        if let Ok(s) = fs::read_to_string(&p) {
+            let t = s.trim().to_string();
+            if !t.is_empty() {
+                ver = t;
             }
         }
     }

@@ -338,7 +338,9 @@ body = {
 if m.get("cli") is not None:
     body["cli"] = {k: m["cli"].get(k) for k in ("version", "abi", "asset", "sha256")}
 # Whole-bundle (greenpng 1.0.0+): fe_tree/admin_tree signed when present.
-for k in ("fe_tree", "admin_tree"):
+# spec_tree (1.0.1+): analyze 运行时依赖随包分发并签名; v1.0.0 包无此项 →
+# 安装侧走 $PREFIX/spec 既有目录或告警 (向后兼容)。
+for k in ("fe_tree", "admin_tree", "spec_tree"):
     if m.get(k) is not None:
         t = m[k] or {}
         entry = {"files": t.get("files") or {}}
@@ -372,8 +374,9 @@ install -m 0644 "$TMP/ota_ed25519.pk" "$PREFIX/ota_ed25519.pk"
 echo "$VERSION" > "$PREFIX/VERSION"
 cp -f "$TMP/manifest.json" "$PREFIX/dist/release-$VERSION/manifest.json"
 
-# FE + admin-spa 安全解包 (R-05: 拒路径逃逸/符号链接)
+# FE + admin-spa + spec 安全解包 (R-05: 拒路径逃逸/符号链接)
 # FE / admin: 直接落自整包 (fe_tree/admin_tree 逐文件 sha 校验)
+# spec: 1.0.1+ 整包带 spec_tree (analyze 运行时数据); v1.0.0 无 → 兼容分支
 python3 - "$BUNDLE" "$TMP/manifest.json" <<'PY'
 import hashlib, json, pathlib, sys
 bundle = pathlib.Path(sys.argv[1])
@@ -394,12 +397,33 @@ for key, sub in (("fe_tree", "fe"), ("admin_tree", "admin")):
     if bad:
         raise SystemExit(f"{key} sha mismatch: {bad[:3]} … ({len(bad)} files)")
     print(f"{key}: {len(files)} files verified")
+spec_tree = man.get("spec_tree") or {}
+spec_files = spec_tree.get("files") or {}
+if spec_files:
+    bad = []
+    for rel, want in spec_files.items():
+        p = bundle / "spec" / rel
+        if not p.is_file() or sha(p) != want:
+            bad.append(rel)
+    if bad:
+        raise SystemExit(f"spec_tree sha mismatch: {bad[:3]} … ({len(bad)} files)")
+    print(f"spec_tree: {len(spec_files)} files verified")
 PY
 [[ $? -eq 0 ]] || die "bundle fe/admin tree verification failed"
 rm -rf "$PREFIX/fe" "$PREFIX/admin-spa"
 cp -a "$BUNDLE/fe" "$PREFIX/fe"
 cp -a "$BUNDLE/admin" "$PREFIX/admin-spa"
 echo "$VERSION" > "$PREFIX/fe/VERSION"
+# spec: 整包带则装; 否则沿用既有 $PREFIX/spec (v1.0.0 手工补给场景) 或告警
+if python3 -c "import json,sys; sys.exit(0 if (json.load(open('$TMP/manifest.json')).get('spec_tree') or {}).get('files') else 1)"; then
+  rm -rf "$PREFIX/spec"
+  cp -a "$BUNDLE/spec" "$PREFIX/spec"
+  say "spec tree installed from bundle"
+elif [[ -d "$PREFIX/spec" ]]; then
+  say "spec_tree not in bundle (v1.0.0) — reusing existing $PREFIX/spec"
+else
+  say "WARN: bundle has no spec_tree and $PREFIX/spec missing — analyze will fail (spec/sources.json); provision spec/ and set GR_SPEC_DIR"
+fi
 
 # .env (chmod 600)
 cat > "$PREFIX/.env" <<EOF
@@ -428,6 +452,7 @@ GR_DATA_DIR=${PREFIX}/data
 GR_MODULES_DIR=${PREFIX}/modules
 GR_ADMIN_SPA=${PREFIX}/admin-spa
 GR_STATIC_DIR=${PREFIX}/fe
+GR_SPEC_DIR=${PREFIX}/spec
 EOF
 # Cookie transport flags are optional: only persist when explicitly supplied so
 # production installs keep the 8.0 Secure-by-default behavior.
