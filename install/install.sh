@@ -509,6 +509,8 @@ if [[ "$NO_SYSTEMD" != "1" ]] && have_sudo; then
   # systemd 单元来源: 仓库树文件优先 (install/systemd/greenpng.service);
   # 单文件安装 (curl 独立下发, 无树) → 内嵌模板兜底, 保持 install.sh 自包含。
   # 内嵌内容必须与 install/systemd/greenpng.service 保持一致。
+  # ReadWritePaths 必须含 {PREFIX}/fe: probe plane 启动时向 fe/OPAQUE_MAP.json
+  # 写哈希→逻辑文件反查表 (ProtectSystem=strict 下不可写 = opaque 资产全 404)。
   if [[ -f "$SCRIPT_DIR/systemd/greenpng.service" ]]; then
     cp "$SCRIPT_DIR/systemd/greenpng.service" "$TMP/greenpng.service"
   else
@@ -527,7 +529,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist
+ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist {PREFIX}/fe
 ExecStart={PREFIX}/bin/gr-service
 Restart=always
 RestartSec=3
