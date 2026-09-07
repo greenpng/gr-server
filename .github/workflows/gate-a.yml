@@ -60,13 +60,24 @@ jobs:
           fi
           echo "secret scan clean"
 
-      # A1 — 契约: 单测 + check + 官网 billing + 面板构建
+      # A1 — 契约: 单测 + check + 面板构建(发行仓范围: 无官网/无测试树, 契约内联)
       - name: A1 contract suite
-        run: bash tests/runners/run_v7_acceptance.sh contract
+        run: |
+          set -euo pipefail
+          cargo test -p gr-probe-store --lib
+          cargo test -p gr-probe-plane --lib
+          cargo check -p gr-service -p gr-admin
+          npm ci --prefix panel/admin-ui --no-audit --no-fund
+          npm run build --prefix panel/admin-ui
 
-      # A2 — FE 静态契约 (无浏览器矩阵)
+      # A2 — FE 静态契约 (无浏览器矩阵; 检查随 scripts/fe/checks/ 下发)
       - name: A2 frontend suite
-        run: bash tests/runners/run_v7_acceptance.sh frontend
+        run: |
+          set -euo pipefail
+          for f in scripts/fe/checks/*.js; do
+            echo "--- $f"
+            node "$f"
+          done
 
       # A3 — 安装器静态: 语法 + 默认仓指向 + 用法可解析
       - name: A3 installer static
