@@ -159,7 +159,9 @@ body = {
 if m.get("cli") is not None:
     body["cli"] = {k: m["cli"].get(k) for k in ("version", "abi", "asset", "sha256")}
 # Whole-bundle (greenpng 1.0.0+): fe_tree/admin_tree signed when present.
-for k in ("fe_tree", "admin_tree"):
+# spec_tree joins in 1.0.2+ (must mirror the Rust canonical body exactly or
+# verification of new manifests fails; old manifests without it are unaffected).
+for k in ("fe_tree", "admin_tree", "spec_tree"):
     if m.get(k) is not None:
         t = m[k] or {}
         entry = {"files": t.get("files") or {}}
@@ -309,6 +311,32 @@ elif [[ -z "$BUNDLE" ]]; then
   fi
 fi
 [[ -d "$INSTALL_ROOT/fe" ]] && echo "$VERSION" > "$INSTALL_ROOT/fe/VERSION"
+
+# spec: 1.0.2+ 整包带 spec_tree (analyze 运行时数据); 验树→备份→换树 (与 fe 同型)。
+# 1.0.0/1.0.1 包无 spec_tree → 沿用现有 spec/ 不动 (老包物理带 spec 但未签名, 不盲信)。
+if [[ -n "$BUNDLE" && -d "$BUNDLE/spec" ]] && python3 -c "import json,sys; sys.exit(0 if (json.load(open('$TMP/manifest.json')).get('spec_tree') or {}).get('files') else 1)"; then
+  python3 - "$BUNDLE" "$TMP/manifest.json" <<'PY'
+import hashlib, json, pathlib, sys
+bundle = pathlib.Path(sys.argv[1])
+man = json.load(open(sys.argv[2]))
+tree = (man.get("spec_tree") or {}).get("files") or {}
+root = bundle / "spec"
+bad = [rel for rel, want in tree.items()
+       if not (root / rel).is_file() or hashlib.sha256((root / rel).read_bytes()).hexdigest() != want]
+if bad:
+    raise SystemExit(f"spec_tree sha mismatch: {bad[:3]}")
+print(f"spec_tree: {len(tree)} files verified")
+PY
+  [[ $? -eq 0 ]] || { echo "bundle spec_tree verification failed" >&2; exit 1; }
+  if [[ -d "$INSTALL_ROOT/spec" ]]; then
+    SPEC_BAK="$INSTALL_ROOT/spec.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    mv "$INSTALL_ROOT/spec" "$SPEC_BAK" || true
+  fi
+  cp -a "$BUNDLE/spec" "$INSTALL_ROOT/spec"
+  echo "[runtime-ota] spec tree installed from bundle"
+else
+  echo "[runtime-ota] spec_tree not in bundle (pre-1.0.2) — keeping existing $INSTALL_ROOT/spec"
+fi
 
 # Point OTA module channel at this tag (panel still installs so separately)
 ENVF="$INSTALL_ROOT/.env"

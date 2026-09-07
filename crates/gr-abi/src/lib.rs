@@ -166,6 +166,13 @@ pub struct ReleaseManifest {
     /// Expanded admin SPA tree inside a whole-bundle release: per-file sha256.
     #[serde(default)]
     pub admin_tree: Option<TreeManifest>,
+    /// Expanded spec tree inside a whole-bundle release: per-file sha256
+    /// (analyze runtime data, greenpng 1.0.2+). Absent on 1.0.0/1.0.1
+    /// bundles — build_and_publish.sh emitted it but `sign-manifest`
+    /// round-tripped the JSON through this struct without the field and
+    /// silently dropped it, so those bundles ship spec/ unsigned.
+    #[serde(default)]
+    pub spec_tree: Option<TreeManifest>,
     /// CLI binary integrity (P1-4). The `gr-cli` helper is downloaded by
     /// installers and performs module verification + staging, so a tampered
     /// CLI could bypass every downstream check. Releases built for the
