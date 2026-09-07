@@ -40,6 +40,91 @@ pub enum OtaError {
 /// Rollback = `ota activate <name> <old-version>` (instant, no re-download).
 pub const KEEP_ROLLBACK_VERSIONS: usize = 3;
 
+/// sha256 of a file on disk (hex).
+pub fn sha256_file_hex(path: &Path) -> Result<String, OtaError> {
+    let bytes = fs::read(path)?;
+    Ok(gr_abi::sha256_hex(&bytes))
+}
+
+/// Whole-bundle archives contain a single top-level directory
+/// (`greenpng-<ver>-<arch>/`). Return it; fall back to the extract root when
+/// the layout is already flat.
+pub fn bundle_tree_root(extract_dir: &Path) -> PathBuf {
+    let mut dirs = Vec::new();
+    let mut files = 0;
+    if let Ok(rd) = fs::read_dir(extract_dir) {
+        for ent in rd.flatten() {
+            match ent.file_type() {
+                Ok(t) if t.is_dir() => dirs.push(ent.path()),
+                Ok(t) if t.is_file() => files += 1,
+                _ => {}
+            }
+        }
+    }
+    if files == 0 && dirs.len() == 1 {
+        return dirs.pop().expect("one dir");
+    }
+    extract_dir.to_path_buf()
+}
+
+/// Safe tar.gz extraction (R-05): reject absolute paths, `..` components and
+/// escaping symlinks before extracting. Shells out to the system `tar`.
+pub fn safe_extract_tar_gz(tgz: &Path, dest: &Path) -> Result<(), String> {
+    let list = std::process::Command::new("tar")
+        .args(["-tzf", tgz.to_str().unwrap_or("")])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !list.status.success() {
+        return Err(format!(
+            "tar -tzf failed: {}",
+            String::from_utf8_lossy(&list.stderr)
+        ));
+    }
+    for line in String::from_utf8_lossy(&list.stdout).lines() {
+        let path = line.trim();
+        if path.is_empty() {
+            continue;
+        }
+        // Reject absolute paths and real `..` components only.
+        // Do NOT use substring `..` — FE paths like `[[...path]]` are valid.
+        if path.starts_with('/') {
+            return Err(format!("tar entry rejected (absolute path): {path}"));
+        }
+        for comp in path.split(['/', '\\']) {
+            if comp == ".." {
+                return Err(format!("tar entry rejected (path escape): {path}"));
+            }
+        }
+    }
+    // Verbose list: allow only relative symlinks that do not escape dest.
+    // Absolute / `..` targets rejected. Hard links not accepted.
+    let vlist = std::process::Command::new("tar")
+        .args(["-tvzf", tgz.to_str().unwrap_or("")])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if vlist.status.success() {
+        for line in String::from_utf8_lossy(&vlist.stdout).lines() {
+            let t = line.trim_start();
+            if let Some(idx) = t.find(" -> ") {
+                let target = t[idx + 4..].trim();
+                if target.starts_with('/') || target.split(['/', '\\']).any(|c| c == "..") {
+                    return Err(format!("tar entry rejected (symlink escape): {line}"));
+                }
+            }
+        }
+    }
+    fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    let status = std::process::Command::new("tar")
+        .args(["-xzf", tgz.to_str().unwrap_or(""), "-C"])
+        .arg(dest)
+        .status()
+        .map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err(format!("tar extract failed: {status}"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OtaConfig {
     /// e.g. https://github.com/OWNER/gr-releases/releases/latest/download
@@ -51,6 +136,11 @@ pub struct OtaConfig {
     /// verification. `None` for legacy (root-only) manifests.
     #[serde(default)]
     pub release_key: Option<Vec<u8>>,
+    /// Cache directory for whole-bundle archives (greenpng-<ver>-<arch>.tar.gz).
+    /// Set by embedders (gr-runtime: data_dir/ota_staging/bundle); defaults to
+    /// the system temp dir. Holds the downloaded archive + extracted tree.
+    #[serde(default)]
+    pub bundle_cache: Option<PathBuf>,
 }
 
 pub fn generate_signing_keypair() -> (SigningKey, VerifyingKey) {
@@ -218,6 +308,21 @@ pub fn manifest_sign_message(m: &ReleaseManifest) -> Result<Vec<u8>, OtaError> {
             "sha256": f.sha256.clone(),
         }))),
     );
+    // Whole-bundle releases (greenpng 1.0.0+): per-file trees are signed too.
+    // Included ONLY when present so legacy manifest bodies stay byte-identical.
+    for (key, tree) in [("fe_tree", &m.fe_tree), ("admin_tree", &m.admin_tree)] {
+        if let Some(t) = tree {
+            let mut obj = serde_json::Map::new();
+            if let Some(epoch) = &t.epoch {
+                obj.insert("epoch".into(), serde_json::json!(epoch));
+            }
+            obj.insert(
+                "files".into(),
+                serde_json::to_value(&t.files).expect("tree files serialize"),
+            );
+            map.insert(key.into(), serde_json::Value::Object(obj));
+        }
+    }
     if let Some(c) = &m.cli {
         map.insert(
             "cli".into(),
@@ -318,11 +423,19 @@ pub struct LocalModuleState {
 
 pub struct OtaEngine {
     pub cfg: OtaConfig,
+    /// Root of the extracted whole-bundle tree when the active manifest was
+    /// resolved from a bundle archive (contains `manifest.json`, `bin/`,
+    /// `modules/`, `fe/`, `admin/`). Asset lookups then prefer local files
+    /// over HTTP downloads.
+    pub bundle_dir: Option<PathBuf>,
 }
 
 impl OtaEngine {
     pub fn new(cfg: OtaConfig) -> Self {
-        Self { cfg }
+        Self {
+            cfg,
+            bundle_dir: None,
+        }
     }
 
     pub fn staging_dir(&self, name: &str, ver: &str) -> PathBuf {
@@ -387,6 +500,114 @@ impl OtaEngine {
             }
         }
         Ok(format!("{base}/manifest.json"))
+    }
+
+    /// Resolve the whole-bundle entry for this host from `manifest-index.json`.
+    /// Returns `(bundle_name, bundle_sha256)` when the index advertises a
+    /// bundle for this arch, `None` for flat (per-file) releases.
+    fn resolve_bundle_entry(&self) -> Result<Option<(String, String)>, OtaError> {
+        let base = self.cfg.release_base_url.trim_end_matches('/');
+        let arch = normalize_host_arch(std::env::consts::ARCH);
+        let index_url = format!("{base}/manifest-index.json");
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| OtaError::Http(e.to_string()))?;
+        let res = client
+            .get(&index_url)
+            .send()
+            .map_err(|e| OtaError::Http(e.to_string()))?;
+        if !res.status().is_success() {
+            return Ok(None);
+        }
+        let idx: serde_json::Value = res.json().map_err(|e| OtaError::Http(e.to_string()))?;
+        let entry: Option<&serde_json::Value> = idx
+            .pointer(&format!("/architectures/{arch}"))
+            .or_else(|| {
+                // alias scan (amd64 → x86_64 etc. already normalized)
+                idx.get("architectures").and_then(|v| v.as_object()).and_then(|obj| {
+                    obj.iter()
+                        .find(|(k, _)| normalize_host_arch(k) == arch)
+                        .map(|(_, v)| v)
+                })
+            });
+        let Some(entry) = entry else {
+            return Ok(None);
+        };
+        let Some(name) = entry.get("bundle").and_then(|v| v.as_str()) else {
+            return Ok(None);
+        };
+        if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
+            return Err(OtaError::Other(format!("manifest-index bad bundle name: {name}")));
+        }
+        let sha = entry
+            .get("bundle_sha256")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if sha.len() != 64 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(OtaError::Other(format!(
+                "manifest-index bundle_sha256 missing/invalid for {name}"
+            )));
+        }
+        Ok(Some((name.to_string(), sha)))
+    }
+
+    /// Download + verify + extract the whole-bundle archive for this host.
+    /// Idempotent: reuses a previously extracted tree in the cache dir.
+    /// Sets `self.bundle_dir` and returns it on success; `Ok(None)` when the
+    /// release is flat (no bundle in the index).
+    pub fn fetch_bundle_blocking(&mut self) -> Result<Option<PathBuf>, OtaError> {
+        let Some((name, expect_sha)) = self.resolve_bundle_entry()? else {
+            return Ok(None);
+        };
+        let cache = self
+            .cfg
+            .bundle_cache
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join("gr-ota-bundle"));
+        fs::create_dir_all(&cache)?;
+        let stem = name.trim_end_matches(".tar.gz");
+        let extracted = cache.join(format!("{stem}.d"));
+        // Reuse a complete extraction (manifest present = complete marker).
+        if extracted.join("manifest.json").is_file() {
+            let root = bundle_tree_root(&extracted);
+            self.bundle_dir = Some(root.clone());
+            return Ok(Some(root));
+        }
+        let tgz = cache.join(&name);
+        if !tgz.is_file() || sha256_file_hex(&tgz)? != expect_sha {
+            let base = self.cfg.release_base_url.trim_end_matches('/');
+            let url = format!("{base}/{name}");
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(600))
+                .build()
+                .map_err(|e| OtaError::Http(e.to_string()))?;
+            let bytes = client
+                .get(&url)
+                .send()
+                .map_err(|e| OtaError::Http(e.to_string()))?
+                .error_for_status()
+                .map_err(|e| OtaError::Http(e.to_string()))?
+                .bytes()
+                .map_err(|e| OtaError::Http(e.to_string()))?;
+            let got = gr_abi::sha256_hex(&bytes);
+            if got != expect_sha {
+                return Err(OtaError::Other(format!(
+                    "bundle sha256 mismatch: got {got} expect {expect_sha} ({name})"
+                )));
+            }
+            fs::write(&tgz, &bytes)?;
+        }
+        let stage = cache.join(format!("{stem}.extract-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&stage);
+        fs::create_dir_all(&stage)?;
+        safe_extract_tar_gz(&tgz, &stage).map_err(OtaError::Other)?;
+        let _ = fs::remove_dir_all(&extracted);
+        fs::rename(&stage, &extracted)?;
+        let root = bundle_tree_root(&extracted);
+        self.bundle_dir = Some(root.clone());
+        Ok(Some(root))
     }
 
     /// Download manifest JSON for this host arch.
@@ -506,22 +727,33 @@ impl OtaEngine {
     }
 
     pub fn fetch_manifest_blocking(&mut self) -> Result<ReleaseManifest, OtaError> {
-        let url = self.resolve_manifest_url()?;
-        let body = reqwest::blocking::Client::new()
-            .get(&url)
-            .send()
-            .map_err(|e| OtaError::Http(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| OtaError::Http(e.to_string()))?
-            .text()
-            .map_err(|e| OtaError::Http(e.to_string()))?;
+        // Whole-bundle releases: manifest.json lives inside the verified
+        // bundle archive (index pins the bundle sha256). Flat releases keep
+        // the per-file manifest URL flow.
+        let (body, source) = if let Some(root) = self.fetch_bundle_blocking()? {
+            (
+                fs::read_to_string(root.join("manifest.json"))?,
+                root.join("manifest.json").display().to_string(),
+            )
+        } else {
+            let url = self.resolve_manifest_url()?;
+            let text = reqwest::blocking::Client::new()
+                .get(&url)
+                .send()
+                .map_err(|e| OtaError::Http(e.to_string()))?
+                .error_for_status()
+                .map_err(|e| OtaError::Http(e.to_string()))?
+                .text()
+                .map_err(|e| OtaError::Http(e.to_string()))?;
+            (text, url)
+        };
         let man: ReleaseManifest = serde_json::from_str(&body)?;
         // Soft check: if manifest declares arch, it must match host.
         if let Some(ref declared) = man.arch {
             let host = normalize_host_arch(std::env::consts::ARCH);
             if normalize_host_arch(declared) != host {
                 return Err(OtaError::Incompatible(format!(
-                    "manifest arch {declared} != host {host} (url={url})"
+                    "manifest arch {declared} != host {host} (source={source})"
                 )));
             }
         }
@@ -707,6 +939,29 @@ impl OtaEngine {
     }
 
     pub fn download_asset_blocking(&self, art: &ModuleArtifact, dest: &Path) -> Result<(), OtaError> {
+        // Whole-bundle releases: the module .so ships inside the extracted
+        // bundle tree. The manifest `asset` is the SIGNED flat name; the
+        // physical path is modules/<asset> (legacy trees may also carry the
+        // flat file at the root — try both).
+        if let Some(bd) = &self.bundle_dir {
+            let p = bd.join("modules").join(&art.asset);
+            let p = if p.is_file() { p } else { bd.join(&art.asset) };
+            if p.is_file() {
+                let bytes = fs::read(&p)?;
+                let got = gr_abi::sha256_hex(&bytes);
+                if !got.eq_ignore_ascii_case(&art.sha256) {
+                    return Err(OtaError::BadHash(format!(
+                        "{} (bundle local copy: got {got} expect {})",
+                        art.asset, art.sha256
+                    )));
+                }
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(dest, &bytes)?;
+                return Ok(());
+            }
+        }
         let url = format!(
             "{}/{}",
             self.cfg.release_base_url.trim_end_matches('/'),
@@ -756,8 +1011,9 @@ mod tests {
             modules_dir: dir.path().join("modules"),
             pubkey_bytes: vec![0u8; 32],
             release_key: None,
+            bundle_cache: None,
         };
-        (dir, OtaEngine { cfg })
+        (dir, OtaEngine { cfg, bundle_dir: None })
     }
 
     #[test]
@@ -777,6 +1033,8 @@ mod tests {
                 sha256: None,
             },
             fe: None,
+            fe_tree: None,
+            admin_tree: None,
             cli: None,
             sig: None,
             modules: vec![
@@ -810,6 +1068,8 @@ mod tests {
                 sha256: None,
             },
             fe: None,
+            fe_tree: None,
+            admin_tree: None,
             cli: None,
             sig: None,
             modules: vec![art("identity", "7.0.1"), art("identity", "7.0.2")],
@@ -930,6 +1190,8 @@ mod tests {
                 sig: None,
             }),
             cli: None,
+            fe_tree: None,
+            admin_tree: None,
             sig: None,
             build_id: None,
             release_pubkey: None,
@@ -961,6 +1223,8 @@ mod tests {
             },
             modules: vec![],
             fe: None,
+            fe_tree: None,
+            admin_tree: None,
             cli: None,
             sig: None,
             build_id: None,
@@ -1010,6 +1274,8 @@ mod tests {
             },
             modules: vec![],
             fe: None,
+            fe_tree: None,
+            admin_tree: None,
             cli: None,
             sig: None,
             build_id: Some(build_id.into()),
@@ -1091,14 +1357,17 @@ mod tests {
             modules_dir: modules_dir.clone(),
             pubkey_bytes: root_vk.as_bytes().to_vec(),
             release_key: None,
+            bundle_cache: None,
         });
 
         // Stage a module artifact (double-signed) + fake .so, then activate.
+        // Historical-shape fixture: pairs with the 8.0.0 runtime below, so the
+        // major is pinned literally (PRODUCT_MAJOR is 1 on the greenpng line).
         let mut art = ModuleArtifact {
             name: "analyze".into(),
             version: "8.0.0".into(),
             abi: 1,
-            requires_major: gr_abi::PRODUCT_MAJOR,
+            requires_major: 8,
             min_runtime_minor: 0,
             max_runtime_minor: None,
             asset: "libgr_analyze.so".into(),
@@ -1128,6 +1397,8 @@ mod tests {
             },
             modules: vec![art.clone()],
             fe: None,
+            fe_tree: None,
+            admin_tree: None,
             cli: None,
             sig: Some(sign_bytes(&root_sk, &manifest_sign_message(&ReleaseManifest {
                 product: "green-v6".into(),
@@ -1142,6 +1413,8 @@ mod tests {
                 },
                 modules: vec![art.clone()],
                 fe: None,
+                fe_tree: None,
+                admin_tree: None,
                 cli: None,
                 sig: None,
                 build_id: Some(build_id.into()),
@@ -1166,6 +1439,7 @@ mod tests {
             modules_dir: modules_dir.clone(),
             pubkey_bytes: root_vk.as_bytes().to_vec(),
             release_key: None,
+            bundle_cache: None,
         });
         eng.write_release_binding(&man).unwrap();
         eng2.load_release_binding().unwrap();

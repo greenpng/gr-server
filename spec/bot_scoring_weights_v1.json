@@ -1,7 +1,7 @@
 {
   "weights_algo": "bot_scoring_weights_v1",
   "version": "1.0.0",
-  "note": "iss/opus5 03-P2-6: bot verdict thresholds, per-flag rule weights and stack_auth spoof/vm increments are externalized here. Signed override: base64 ed25519 signature over the canonical JSON (this object without the 'sig' key) in 'sig', verified against GV6_BOT_WEIGHTS_PUBKEY (hex or base64 32B). Shadow A/B: set GV6_BOT_WEIGHTS_SHADOW=1 to compute candidate weights record-only (verdict still uses builtin defaults).",
+  "note": "iss/opus5 03-P2-6: bot verdict thresholds, per-flag rule weights and stack_auth spoof/vm increments are externalized here. Signed override: base64 ed25519 signature over the canonical JSON (this object without the 'sig' key) in 'sig', verified against GR_BOT_WEIGHTS_PUBKEY (hex or base64 32B). Shadow A/B: set GR_BOT_WEIGHTS_SHADOW=1 to compute candidate weights record-only (verdict still uses builtin defaults).",
   "thresholds": {
     "crawler_floor": 40,
     "bot": 65,

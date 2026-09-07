@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Green V7 results SDK (Python) — backend only.
+"""greenpng results SDK (Python) — backend only.
 
 Thin client: get_result / wait_for_result / query. No probe relay; the SDK
 only reads analysis results for sessions that were probed by browser/edge.

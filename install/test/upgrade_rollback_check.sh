@@ -8,7 +8,7 @@
 #  4) tampered FE sha → rejected before install, nothing mutates
 #
 # Layout: this file lives at test/upgrade_rollback_check.sh, so the repo
-# root is one level up (NOT ../.. like the green-v7 tests/runners copy).
+# root is one level up (NOT ../.. like the legacy tests/runners copy).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

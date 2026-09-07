@@ -12,7 +12,7 @@ const assert = require("assert");
 // 仓库根解析: 向上找 Cargo.toml (编号布局 / 扁平发行布局两用)
 let ROOT = __dirname;
 while (ROOT !== path.parse(ROOT).root && !fs.existsSync(path.join(ROOT, "Cargo.toml"))) ROOT = path.dirname(ROOT);
-// v7: FE 源文件位于 02-probe-analysis/probe/fe/（green-v6 时代的 fe/ 已不存在）
+// FE 源文件位于 02-probe-analysis/probe/fe/（旧线的 fe/ 已不存在）
 // 布局可移植: greenpng 工作区(02-probe-analysis/...) 或扁平发行仓 gr-server(probe/ crates/ 在根)
 const FE = fs.existsSync(path.join(ROOT, "02-probe-analysis/probe/fe"))
   ? path.join(ROOT, "02-probe-analysis", "probe", "fe")

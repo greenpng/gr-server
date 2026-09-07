@@ -22,9 +22,9 @@ pub struct AppState {
     pub rt: Arc<Runtime>,
     pub spa_dir: PathBuf,
     pub probe_base: String,
-    /// FE static root (e.g. /opt/green-v7/fe) for panel OTA install-fe.
+    /// FE static root (e.g. /opt/greenpng/fe) for panel OTA install-fe.
     pub static_dir: PathBuf,
-    /// Install root (e.g. /opt/green-v7) for panel OTA install-runtime.
+    /// Install root (e.g. /opt/greenpng) for panel OTA install-runtime.
     pub install_root: PathBuf,
     /// Shared multi-node LB pool (docs/guides/08-LB-MODULE.md).
     pub lb_pool: Arc<gr_lb::LbPool>,
@@ -328,7 +328,7 @@ async fn control_health(State(st): State<AppState>) -> Json<Value> {
     // Control-plane public health: no module paths / mint internals for unauth callers.
     Json(json!({
         "ok": true,
-        "product": "green-v7",
+        "product": "greenpng",
         "role": st.rt.cfg.role,
     }))
 }
@@ -2909,7 +2909,7 @@ async fn admin_me(State(st): State<AppState>, headers: HeaderMap) -> Response {
             "ok": true,
             "username": u,
             "console_path": format!("/{}/", st.rt.admin.auth.console_path),
-            "product": "green-v7",
+            "product": "greenpng",
             "version": env!("CARGO_PKG_VERSION"),
         }))
         .into_response(),
@@ -3218,11 +3218,23 @@ async fn ota_mirror_asset(
     if ver.is_empty() || asset.contains("..") || asset.contains('/') || asset.contains('\\') {
         return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "bad_asset"}))).into_response();
     }
-    let candidates = [
+    let mut candidates: Vec<PathBuf> = vec![
         st.rt.cfg.data_dir.join("ota_mirror").join(ver).join(&asset),
         st.install_root.join("dist").join(format!("release-{ver}")).join(&asset),
         PathBuf::from("dist").join(format!("release-{ver}")).join(&asset),
     ];
+    // 整包安装过的节点: bundle 缓存树里直接取模块 (集群 OTA 无需手工预镜像 .so)
+    if asset.ends_with(".so") {
+        if let Ok(rd) = std::fs::read_dir(st.rt.cfg.data_dir.join("ota_staging").join("bundle")) {
+            for entry in rd.flatten() {
+                let cand = entry.path().join("modules").join(&asset);
+                if cand.is_file() {
+                    candidates.push(cand);
+                    break;
+                }
+            }
+        }
+    }
     for p in candidates {
         if p.is_file() {
             match std::fs::read(&p) {
@@ -3384,7 +3396,7 @@ async fn ota_install_fe(
 
 #[derive(Deserialize)]
 struct OtaInstallRuntimeBody {
-    /// When true, attempt `systemctl restart green-v7` (legacy green-v6 fallback) after binary swap.
+    /// When true, attempt `systemctl restart greenpng` after binary swap.
     #[serde(default = "default_true_bool")]
     restart: bool,
 }
@@ -3633,7 +3645,7 @@ async fn fallback_console_html(State(st): State<AppState>) -> Response {
     let html = format!(
         r#"<!doctype html><html><head><meta charset=utf-8><title>gr</title></head>
 <body style="font-family:system-ui;background:#0b1220;color:#e7eefc;padding:2rem">
-<h1>green-v7</h1>
+<h1>greenpng</h1>
 <p>Console <code>/{path}/</code> — build admin-spa for full UI.</p>
 <p>Probe plane: <code>{}</code></p>
 </body></html>"#,

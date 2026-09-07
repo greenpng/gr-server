@@ -42,7 +42,7 @@ impl AdminHub {
     pub fn health_json(&self) -> Value {
         json!({
             "ok": true,
-            "product": "green-v7",
+            "product": "greenpng",
             "console_path_set": !self.auth.console_path.is_empty(),
         })
     }

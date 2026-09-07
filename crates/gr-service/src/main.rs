@@ -1,4 +1,4 @@
-//! gr-service — independent Green V7 process.
+//! gr-service — greenpng server process.
 //!
 //! - Control plane: random-path admin SPA, OTA, cluster, worker hot-config
 //! - Probe plane: **in-tree** `gr-probe-plane` (source copied from v5, maintained only here)
@@ -25,7 +25,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(
     name = "gr-service",
-    about = "green-v7 independent full service (in-tree probe + control plane)"
+    about = "greenpng server (in-tree probe + control plane)"
 )]
 struct Args {
     /// GR admin / control plane listen
@@ -702,11 +702,8 @@ fn resolve_install_root(data_dir: &std::path::Path) -> PathBuf {
             }
         }
     }
-    if PathBuf::from("/opt/green-v7").is_dir() {
-        return PathBuf::from("/opt/green-v7");
-    }
-    if PathBuf::from("/opt/green-v6").is_dir() {
-        return PathBuf::from("/opt/green-v6");
+    if PathBuf::from("/opt/greenpng").is_dir() {
+        return PathBuf::from("/opt/greenpng");
     }
     if PathBuf::from("/app/bin/gr-service").is_file() {
         return PathBuf::from("/app");

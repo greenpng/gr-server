@@ -5,7 +5,7 @@ edition = "2021"
 description = "Green V7 results SDK (Rust) — backend-only, read-only result client"
 license = "UNLICENSED"
 
-# Standalone crate: excluded from the green-v7 workspace on purpose
+# Standalone crate: excluded from the workspace on purpose
 # (kept out of the main build; consumers depend on it by path).
 [workspace]
 

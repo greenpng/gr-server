@@ -1,7 +1,7 @@
 {
   "algo": "silicon_fusion_weights_v1",
   "version": 1,
-  "note": "Hand defaults (iss/54 F5). Replace via offline fit when labeled pairs exist; load with GV5_SILICON_FUSION_WEIGHTS_PATH or place at this path.",
+  "note": "Hand defaults (iss/54 F5). Replace via offline fit when labeled pairs exist; load with GR_SILICON_FUSION_WEIGHTS_PATH or place at this path.",
   "learned": false,
   "channels": {
     "lane_c_healthy": 1.0,

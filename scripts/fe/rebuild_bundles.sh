@@ -114,7 +114,7 @@ minify_stamp() {
 }
 
 {
-  echo "/* green-v6 race pack | $V */"
+  echo " /* greenpng race pack | $V */"
   echo
   for part in gr.fe_impl.js gr.privacy_guard.js probe_lifecycle.js session_scheduler.js \
               origin_coordinator.js probe_method_matrix.js probe_self_heal.js gr.seal.js upload_queue.js \
@@ -127,7 +127,7 @@ minify_stamp() {
 minify_stamp "$FE/gr.race.concat.js" "$FE/gr.race.min.js"
 
 {
-  echo "/* green-v6 entry | $V */"
+  echo " /* greenpng entry | $V */"
   echo
   # probe_self_heal + origin_coordinator + method matrix MUST ship in entry (pin loads entry not race).
   for part in gr.fe_impl.js storage.js probe_lifecycle.js session_scheduler.js \

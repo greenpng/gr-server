@@ -10,7 +10,7 @@ use gr_abi::{sha256_hex, ModuleArtifact, ReleaseManifest};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "gr-cli", about = "Green V7 ops CLI")]
+#[command(name = "gr-cli", about = "greenpng ops CLI")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -271,6 +271,7 @@ fn main() -> anyhow::Result<()> {
                 release_base_url: String::new(),
                 modules_dir,
                 pubkey_bytes: pk,
+                bundle_cache: None,
                 release_key: None,
             });
             let dest = eng
@@ -288,6 +289,7 @@ fn main() -> anyhow::Result<()> {
                 release_base_url: String::new(),
                 modules_dir,
                 pubkey_bytes: vec![0u8; 32],
+                bundle_cache: None,
                 release_key: None,
             });
             let p = eng
@@ -334,6 +336,7 @@ fn main() -> anyhow::Result<()> {
                 release_base_url: base.clone(),
                 modules_dir: modules_dir.clone(),
                 pubkey_bytes: pk,
+                bundle_cache: None,
                 release_key: None,
             });
             let man = eng
@@ -392,6 +395,7 @@ fn main() -> anyhow::Result<()> {
                     release_base_url: String::new(),
                     modules_dir: dir,
                     pubkey_bytes: pk,
+                    bundle_cache: None,
                     release_key: release.map(|k| k.to_bytes().to_vec()),
                 });
                 eng.write_release_binding(&man)

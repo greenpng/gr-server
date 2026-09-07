@@ -67,15 +67,16 @@ jobs:
         run: echo "build_id=$(openssl rand -hex 12)" >> "$GITHUB_OUTPUT"
 
   fe:
-    # FE/admin 包必须出自单 job: 混淆输出跨 job 不确定, 而每个 arch manifest 必须
-    # 哈希同一份 tgz (v6.0.29 事故)。确定性 tar 头 (mtime/uid/order) + gzip -n。
+    # FE 包必须出自单 job: 混淆输出跨 job 不确定, 而每个 arch manifest 必须
+    # 哈希同一份 tgz。确定性 tar 头 (mtime/uid/order) + gzip -n。
+    # (admin SPA 不再单独打包: 整包 bundle 内的 admin/ 直接取自仓内已构建树)
     needs: prepare
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install FE obfuscator
         run: npm install --prefix scripts/fe --no-audit --no-fund
-      - name: Build shared FE + admin-spa bundles
+      - name: Build shared FE bundle
         env:
           GR_BUILD_ID: ${{ needs.prepare.outputs.build_id }}
         run: |
@@ -85,10 +86,6 @@ jobs:
           mkdir -p dist/fe-bundle
           tar -C "$GITHUB_WORKSPACE" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
               -cf - probe/fe | gzip -n -9 > "dist/fe-bundle/fe-${VERSION}.tgz"
-          if [[ -d panel/admin-spa ]]; then
-            tar -C "$GITHUB_WORKSPACE" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-                -cf - panel/admin-spa | gzip -n -9 > "dist/fe-bundle/admin-spa.tgz"
-          fi
           ls -l dist/fe-bundle/
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
@@ -156,15 +153,17 @@ jobs:
           got=$(sha256sum keys/ota_ed25519.pk | awk '{print $1}')
           [[ "$got" == "$pin" ]] || { echo "root pk fingerprint drift: install.sh pins $pin, repo pk is $got" >&2; exit 1; }
           export GR_FE_MASTER_TGZ="dist/fe-bundle/fe-${VERSION}.tgz"
-          export GR_ADMIN_MASTER_TGZ="dist/fe-bundle/admin-spa.tgz"
           [[ -f "$GR_FE_MASTER_TGZ" ]] || { echo "missing shared FE bundle" >&2; exit 1; }
           TARGETS="${{ matrix.arch }}" SKIP_PUBLISH=1 bash release/build_multiarch.sh
           mkdir -p dist/ci-${{ matrix.arch }}
           SRC="dist/release-${VERSION}"
           [[ -d "$SRC" ]] || SRC="dist/release-${VERSION}-${{ matrix.arch }}"
           [[ -d "$SRC" ]] || { echo "no dist tree under dist/release-${VERSION}*" >&2; find dist -maxdepth 2 -type d; exit 1; }
-          cp -a "$SRC/." "dist/ci-${{ matrix.arch }}/"
-          rm -rf "dist/ci-${{ matrix.arch }}/keys-release" dist/keys-release-*
+          # 只收发行资产文件 (排除 bundle/ 暂存树与签名私钥目录)
+          find "$SRC" -maxdepth 1 -type f \
+            \( -name 'greenpng-*.tar.gz' -o -name 'fe-*.tgz' -o -name 'manifest-index.json' \
+               -o -name 'manifest.json' -o -name 'ota_ed25519.pk' -o -name 'build_id' \) \
+            -exec cp -a {} "dist/ci-${{ matrix.arch }}/" \;
           python3 release/cargo_cyclonedx.py > "dist/ci-${{ matrix.arch }}/sbom.cdx.json"
           test -s "dist/ci-${{ matrix.arch }}/sbom.cdx.json"
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
@@ -188,67 +187,85 @@ jobs:
           VERSION=${{ needs.prepare.outputs.version }}
           MERGE="dist/release-$VERSION"
           mkdir -p "$MERGE"
-          cp -a dist/artifacts/release-x86_64/. "$MERGE/" || true
-          cp -a dist/artifacts/release-aarch64/. "$MERGE/" || true
           python3 - <<'PY'
-          import json, pathlib, re
+          import hashlib, json, pathlib
           version = open("VERSION").read().strip()
           merge = pathlib.Path(f"dist/release-{version}")
-          index = {"product": "green-v7", "version": version, "architectures": {}}
-          for arch_dir in sorted(pathlib.Path("dist/artifacts").glob("release-*")):
+          merge.mkdir(parents=True, exist_ok=True)
+          triples = {"x86_64": "x86_64-linux-gnu", "aarch64": "aarch64-linux-gnu"}
+          index = {"product": "greenpng", "version": version, "architectures": {}, "fe": {}}
+          manifests = {}
+          for arch in ("x86_64", "aarch64"):
+              arch_dir = pathlib.Path(f"dist/artifacts/release-{arch}")
+              if not arch_dir.is_dir():
+                  print(f"WARN: no release-{arch} artifact dir")
+                  continue
               man_path = arch_dir / "manifest.json"
               if not man_path.is_file():
                   print(f"WARN: no manifest.json in {arch_dir}")
                   continue
               man = json.loads(man_path.read_text())
-              arch = man.get("arch") or re.sub(r"^release-", "", arch_dir.name)
-              triples = {"x86_64": "x86_64-unknown-linux-gnu", "aarch64": "aarch64-unknown-linux-gnu"}
-              triple = man.get("triple") or triples.get(arch)
-              (merge / f"manifest-{arch}.json").write_text(json.dumps(man, indent=2) + "\n")
-              index["architectures"][arch] = {"manifest": f"manifest-{arch}.json", "triple": triple}
+              assert man.get("product") == "greenpng", f"{arch} manifest product != greenpng"
+              assert man.get("arch") == arch, f"{arch} manifest arch mismatch"
+              bundle = arch_dir / f"greenpng-{version}-{arch}.tar.gz"
+              assert bundle.is_file(), f"missing bundle for {arch}"
+              # 双架构 manifest 的 fe.sha256 必须一致 (同一份共享 FE 包)
+              manifests[arch] = man
+              (merge / bundle.name).write_bytes(bundle.read_bytes())
+              index["architectures"][arch] = {
+                  "triple": triples[arch],
+                  "bundle": bundle.name,
+                  "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+                  "manifest": "manifest.json",
+              }
+          fe = pathlib.Path("dist/artifacts/release-x86_64") / f"fe-{version}.tgz"
+          if not fe.is_file():
+              fe = pathlib.Path("dist/artifacts/release-aarch64") / f"fe-{version}.tgz"
+          assert fe.is_file(), "shared fe tgz missing from arch artifacts"
+          (merge / fe.name).write_bytes(fe.read_bytes())
+          index["fe"] = {"asset": fe.name, "sha256": hashlib.sha256(fe.read_bytes()).hexdigest()}
           (merge / "manifest-index.json").write_text(json.dumps(index, indent=2) + "\n")
-          for p in merge.glob("manifest.json"):
-              p.unlink()
-          # 模块 sidecar 跨架构同名歧义: 消费方一律用签名 manifest 的 modules[]
-          for p in merge.glob("*.artifact.json"):
-              p.unlink()
-          print(json.dumps(index, indent=2))
-          assert len(index["architectures"]) == 2, "both architectures must be present"
-          PY
-          # 同一份 FE 包必须匹配每个 arch manifest (不发货部分安装器会拒绝的版本)
-          python3 - <<'PY'
-          import hashlib, json, pathlib
-          version = open("VERSION").read().strip()
-          merge = pathlib.Path(f"dist/release-{version}")
-          fe = merge / f"fe-{version}.tgz"
-          errors = []
-          for man_path in sorted(merge.glob("manifest-*.json")):
-              man = json.loads(man_path.read_text())
+          # 守卫 1: 双架构齐备
+          assert set(index["architectures"]) == {"x86_64", "aarch64"}, "both architectures must be present"
+          # 守卫 2: 每架构 manifest 的 fe.sha256 == 实际共享包 sha
+          fe_sha = index["fe"]["sha256"]
+          for arch, man in manifests.items():
               want = (man.get("fe") or {}).get("sha256")
-              if want and fe.is_file():
-                  got = hashlib.sha256(fe.read_bytes()).hexdigest()
-                  if got != want:
-                      errors.append(f"{man_path.name}: fe sha {got} != manifest {want}")
-          if errors:
-              print("MERGE INTEGRITY FAIL:")
-              for e in errors:
-                  print(" -", e)
-              raise SystemExit(1)
-          print("merge integrity: FE bundle matches all per-arch manifests")
+              assert want == fe_sha, f"{arch} manifest fe sha {want} != shared {fe_sha}"
+          # 守卫 3: 根公钥与 install.sh 钉值一致
+          import re
+          pin = re.search(r"4a2296d3[0-9a-f]{56}|6dffd7d3[0-9a-f]{56}", open("install/install.sh").read()).group(0)
+          import subprocess
+          for arch in index["architectures"]:
+              src_pk = pathlib.Path(f"dist/artifacts/release-{arch}/ota_ed25519.pk")
+              got = hashlib.sha256(src_pk.read_bytes()).hexdigest()
+              assert got == pin, f"{arch} pk drift: {got}"
+          pk = pathlib.Path("dist/artifacts/release-x86_64/ota_ed25519.pk")
+          (merge / "ota_ed25519.pk").write_bytes(pk.read_bytes())
+          # sbom (任一架构副本, 内容同源)
+          for arch in ("x86_64", "aarch64"):
+              sbom = pathlib.Path(f"dist/artifacts/release-{arch}/sbom.cdx.json")
+              if sbom.is_file():
+                  (merge / "sbom.cdx.json").write_bytes(sbom.read_bytes())
+                  break
+          print(json.dumps(index, indent=2))
           PY
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: "1.88.0"
-      - name: release_tree_verify on merged dir (B5a)
+      - name: release_tree_verify on both bundles (B5a)
         run: |
           set -euo pipefail
           VERSION=${{ needs.prepare.outputs.version }}
           MERGE="dist/release-$VERSION"
           # release_tree_verify 测试进程 CWD 在 crate 目录 — GR_RT_* 必须绝对路径
-          GR_RT_MANIFEST="$PWD/$MERGE/manifest-x86_64.json" \
-          GR_RT_PUBKEY="$PWD/$MERGE/ota_ed25519.pk" \
-          GR_RT_DIR="$PWD/$MERGE" \
-          cargo test -p gr-ota --test release_tree_verify -- --nocapture
+          for arch in x86_64 aarch64; do
+            BUNDLE="$PWD/$MERGE/greenpng-${VERSION}-${arch}.tar.gz"
+            [[ -f "$BUNDLE" ]] || { echo "missing bundle: $BUNDLE" >&2; exit 1; }
+            GR_RT_BUNDLE="$BUNDLE" \
+            GR_RT_PUBKEY="$PWD/$MERGE/ota_ed25519.pk" \
+            cargo test -p gr-ota --test release_tree_verify -- --nocapture
+          done
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: release-dist
@@ -305,8 +322,8 @@ jobs:
           for db in gr_biz gr_admin gr_assoc; do
             ok=0
             for i in $(seq 1 90); do
-              docker compose exec -T postgres psql -U gv6 -d postgres -c "CREATE DATABASE $db" >/dev/null 2>&1 || true
-              if docker compose exec -T postgres psql -U gv6 -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" 2>/dev/null | grep -q 1; then
+              docker compose exec -T postgres psql -U greenpng -d postgres -c "CREATE DATABASE $db" >/dev/null 2>&1 || true
+              if docker compose exec -T postgres psql -U greenpng -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" 2>/dev/null | grep -q 1; then
                 ok=1; break
               fi
               sleep 1
@@ -316,10 +333,10 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           set -a; source install/docker/.env; set +a
           cat > "$RUNNER_TEMP/gr.env" <<EOF
-          GR_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/greenv6
-          GR_BIZ_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_biz
-          GR_ASSOCIATION_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_assoc
-          GR_ADMIN_DATABASE_URL=postgres://gv6:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_admin
+          GR_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/greenpng
+          GR_BIZ_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_biz
+          GR_ASSOCIATION_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_assoc
+          GR_ADMIN_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_admin
           GR_REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/0
           GR_OFFICIAL_URL=https://example.com
           GR_OAUTH_ADMIN_EMAILS=admin@example.com
@@ -405,13 +422,17 @@ jobs:
           [[ "$(tr -d '[:space:]' < "$RUNNER_TEMP/gr-old/VERSION")" == "$VERSION" ]] || {
             echo "upgrade did not land VERSION=$VERSION" >&2; exit 1; }
           ls "$RUNNER_TEMP/gr-old/bin/releases/" | head -5
-      - name: B5 release_tree_verify on artifact dir
+      - name: B5 release_tree_verify on both bundles
         run: |
           set -euo pipefail
-          GR_RT_MANIFEST="$DIST/manifest-x86_64.json" \
-          GR_RT_PUBKEY="$DIST/ota_ed25519.pk" \
-          GR_RT_DIR="$DIST" \
-          cargo test -p gr-ota --test release_tree_verify -- --nocapture
+          VERSION=${{ needs.prepare.outputs.version }}
+          for arch in x86_64 aarch64; do
+            BUNDLE="$DIST/greenpng-${VERSION}-${arch}.tar.gz"
+            [[ -f "$BUNDLE" ]] || { echo "missing bundle: $BUNDLE" >&2; exit 1; }
+            GR_RT_BUNDLE="$BUNDLE" \
+            GR_RT_PUBKEY="$DIST/ota_ed25519.pk" \
+            cargo test -p gr-ota --test release_tree_verify -- --nocapture
+          done
       - name: upload gate-b logs
         if: always()
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
@@ -455,7 +476,7 @@ jobs:
           mapfile -t ASSETS < <(find "$MERGE" -maxdepth 1 -type f | sort)
           gh release create "$TAG" "${ASSETS[@]}" --repo "${{ github.repository }}" \
             --target "$sha" \
-            --title "Green V7 / GR ${VERSION}" \
+            --title "greenpng ${VERSION}" \
             --notes "Multi-arch release (x86_64 + aarch64). VERSION=${VERSION} commit=${sha}.
 
           Install: \`curl -fsSL https://raw.githubusercontent.com/greenpng/gr-server/main/install/install.sh | bash\`
@@ -479,13 +500,8 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
-            dist/release/gr-service-*
-            dist/release/gr-cli-*
-            dist/release/libgr_*.so
-            dist/release/manifest-*.json
-            dist/release/manifest-index.json
+            dist/release/greenpng-*.tar.gz
             dist/release/fe-*.tgz
-            dist/release/admin-spa.tgz
-            dist/release/sbom.cdx.json
-            dist/release/build_id
+            dist/release/manifest-index.json
             dist/release/ota_ed25519.pk
+            dist/release/sbom.cdx.json

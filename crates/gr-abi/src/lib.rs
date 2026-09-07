@@ -16,7 +16,7 @@ use std::os::raw::{c_char, c_void};
 
 /// Bump only on breaking runtime↔module binary interface changes.
 pub const RUNTIME_ABI: u32 = 1;
-pub const PRODUCT_MAJOR: u64 = 8;
+pub const PRODUCT_MAJOR: u64 = 1;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AbiError {
@@ -159,6 +159,13 @@ pub struct ReleaseManifest {
     /// Optional FE asset integrity (required for signed FE install).
     #[serde(default)]
     pub fe: Option<FeManifest>,
+    /// Expanded FE tree inside a whole-bundle release: per-file sha256.
+    /// Signed as part of the canonical body when present (greenpng 1.0.0+).
+    #[serde(default)]
+    pub fe_tree: Option<TreeManifest>,
+    /// Expanded admin SPA tree inside a whole-bundle release: per-file sha256.
+    #[serde(default)]
+    pub admin_tree: Option<TreeManifest>,
     /// CLI binary integrity (P1-4). The `gr-cli` helper is downloaded by
     /// installers and performs module verification + staging, so a tampered
     /// CLI could bypass every downstream check. Releases built for the
@@ -204,6 +211,16 @@ pub struct FeManifest {
     /// Optional ed25519 signature over `fe|{asset}|{sha256}` (or reuse manifest sig only).
     #[serde(default)]
     pub sig: Option<String>,
+}
+
+/// Expanded directory tree inside a whole-bundle release (fe/ or admin/):
+/// per-file sha256 map, signed as part of the manifest canonical body.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TreeManifest {
+    /// Version epoch the tree was built for (fe/VERSION semantics). Optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epoch: Option<String>,
+    pub files: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,20 +287,24 @@ mod tests {
 
     #[test]
     fn compat_matrix() {
+        // greenpng line: PRODUCT_MAJOR=1, module/runtime majors must match.
         let meta = ModuleMeta {
             name: "analyze".into(),
-            version: "8.1.0".into(),
+            version: "1.1.0".into(),
             abi: 1,
             requires_major: PRODUCT_MAJOR,
             min_runtime_minor: 0,
             max_runtime_minor: Some(2),
             domain: "analyze".into(),
         };
-        let rt = Version::parse("8.0.0").unwrap();
+        let rt = Version::parse("1.0.0").unwrap();
         assert!(meta.is_compatible(&rt, 1).is_ok());
-        let rt2 = Version::parse("8.3.0").unwrap();
+        let rt2 = Version::parse("1.3.0").unwrap();
         assert!(meta.is_compatible(&rt2, 1).is_err());
-        let rt3 = Version::parse("7.9.0").unwrap();
+        let rt3 = Version::parse("2.9.0").unwrap();
         assert!(meta.is_compatible(&rt3, 1).is_err());
+        // legacy 8.x runtime against a greenpng-line module must be rejected
+        let rt4 = Version::parse("8.0.0").unwrap();
+        assert!(meta.is_compatible(&rt4, 1).is_err());
     }
 }

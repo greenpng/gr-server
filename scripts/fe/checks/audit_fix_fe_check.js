@@ -13,7 +13,7 @@ while (root !== path.parse(root).root && !fs.existsSync(path.join(root, "Cargo.t
 const feDir = fs.existsSync(path.join(root, "02-probe-analysis/probe/fe"))
   ? path.join(root, "02-probe-analysis/probe/fe")
   : path.join(root, "probe/fe");
-// v7: FE 源文件位于 02-probe-analysis/probe/fe/（green-v6 时代的 fe/ 已不存在）
+// FE 源文件位于 02-probe-analysis/probe/fe/（旧线的 fe/ 已不存在）
 const uq = fs.readFileSync(path.join(feDir, "upload_queue.js"), "utf8");
 const rpa = fs.readFileSync(path.join(feDir, "rpa_monitor.js"), "utf8");
 

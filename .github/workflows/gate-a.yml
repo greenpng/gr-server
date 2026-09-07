@@ -111,20 +111,27 @@ jobs:
           version="$(tr -d '[:space:]' < VERSION)"
           tree="dist/release-${version}"
           [[ -d "$tree" ]] || tree="dist/release-${version}-${{ matrix.arch }}"
-          test -f "$tree/manifest.json"
+          test -f "$tree/manifest-index.json"
           test -f "$tree/ota_ed25519.pk"
-          runtime="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime"]["asset"])' "$tree/manifest.json")"
-          file "$tree/$runtime"
+          bundle="$(python3 -c 'import json,sys; idx=json.load(open(sys.argv[1])); print((idx.get("architectures") or {}).get(sys.argv[2] or {}).get("bundle") or "")' "$tree/manifest-index.json" "${{ matrix.arch }}")"
+          [[ -n "$bundle" ]] || { echo "manifest-index has no bundle for ${{ matrix.arch }}" >&2; exit 1; }
+          test -f "$tree/$bundle"
+          sha_expect="$(python3 -c 'import json,sys; idx=json.load(open(sys.argv[1])); print((idx.get("architectures") or {}).get(sys.argv[2] or {}).get("bundle_sha256") or "")' "$tree/manifest-index.json" "${{ matrix.arch }}")"
+          sha_got="$(sha256sum "$tree/$bundle" | awk '{print $1}')"
+          [[ "$sha_got" == "$sha_expect" ]] || { echo "bundle sha256 mismatch" >&2; exit 1; }
+          tmp="$(mktemp -d)"
+          tar -xzf "$tree/$bundle" -C "$tmp"
+          runtime="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime"]["asset"])' "$tmp"/*/manifest.json)"
+          file "$tmp"/*/"$runtime"
           case "${{ matrix.arch }}" in
-            x86_64) file "$tree/$runtime" | grep -Eqi 'x86-64|x86_64' ;;
-            aarch64) file "$tree/$runtime" | grep -Eqi 'aarch64|arm aarch64' ;;
+            x86_64) file "$tmp"/*/"$runtime" | grep -Eqi 'x86-64|x86_64' ;;
+            aarch64) file "$tmp"/*/"$runtime" | grep -Eqi 'aarch64|arm aarch64' ;;
           esac
           # release_tree_verify 测试进程 CWD 在 crate 目录 — GR_RT_* 必须绝对路径
-          GR_RT_MANIFEST="$PWD/$tree/manifest.json" \
+          GR_RT_BUNDLE="$PWD/$tree/$bundle" \
           GR_RT_PUBKEY="$PWD/$tree/ota_ed25519.pk" \
-          GR_RT_DIR="$PWD/$tree" \
           cargo test -p gr-ota --test release_tree_verify -- --nocapture
-          rm -rf "$tree/keys-release" dist/keys-release-*
+          rm -rf "$tree/keys-release" dist/keys-release-* "$tmp"
           # 预打包产物即弃 — 仅保留日志证据
           find "$tree" -maxdepth 1 -type f -exec sha256sum {} \; | sort > prepackage-sha256.txt || true
 

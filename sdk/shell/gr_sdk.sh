@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Green V7 results SDK (shell) — backend only.
+# greenpng results SDK (shell) — backend only.
 #
 # Thin, read-only client: gr_get_result / gr_wait_for_result / gr_query.
 # Does NOT collect or relay browser probes.

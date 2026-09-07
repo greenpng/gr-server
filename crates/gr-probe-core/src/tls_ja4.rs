@@ -1,8 +1,8 @@
-//! TLS ClientHello → JA3 / JA4 (FoxIO-style) for green-v5 **native gateway**.
+//! TLS ClientHello → JA3 / JA4 (FoxIO-style) for the native gateway.
 //!
 //! Architecture note:
-//! - `green-v5` service today is axum HTTP; true JA4 requires TLS termination that sees ClientHello.
-//! - greenv4 `probe` / `green-v6` use **Pingora + OpenSSL ClientHello callback** for this.
+//! - the HTTP service today is axum; true JA4 requires TLS termination that sees ClientHello.
+//! - legacy probe planes used **Pingora + OpenSSL ClientHello callback** for this.
 //! - This module is the **in-tree pure compute + wire parser** so v5 gateway can own JA4 without
 //!   depending on CF headers. Pair with `gr-tls-edge` (TLS terminate → inject trusted headers)
 //!   or future in-process TLS accept.

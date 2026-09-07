@@ -1,7 +1,7 @@
 {
   "app": {
-    "name": "Green V7 管理控制台",
-    "brand": "Green V7",
+    "name": "greenpng 管理控制台",
+    "brand": "greenpng",
     "probe_ok": "探测在线",
     "probe_bad": "探测异常",
     "refresh": "刷新",
@@ -104,7 +104,7 @@
     }
   },
   "login": {
-    "title": "Green V7 管理控制台",
+    "title": "greenpng 管理控制台",
     "subtitle": "独立控制台 · 本地管理员账号",
     "username": "用户名",
     "password": "密码",

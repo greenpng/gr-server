@@ -4,8 +4,8 @@
   "notes": [
     "L4 business thresholds only (G-ARCH-13). Does not change Soft/IP/UA redlines.",
     "Display status cutoffs in product_scores remain separate from these OTP gates.",
-    "link_threshold: override via GV5_LINK_THRESHOLD env or this field (lab-calibrate).",
-    "confidence_adopt: NEVER silent — env GV5_CONF_ADOPT=1 or this flag + labeled pairs + ECE gate.",
+    "link_threshold: override via GR_LINK_THRESHOLD env or this field (lab-calibrate).",
+    "confidence_adopt: NEVER silent — env GR_CONF_ADOPT=1 or this flag + labeled pairs + ECE gate.",
     "sla_alerts: organic anchor rates for identity_sla daily + ops."
   ],
   "bot_block_verdicts": ["bot", "crawler", "automation"],
@@ -30,8 +30,8 @@
   "multi_source_conflict": {
     "notes": [
       "Lab-calibrate via scripts/calibrate_conflict_weights.py against greenv5_lab.",
-      "Env overrides: GV5_MSC_OS_BASE, GV5_MSC_OS_PER, GV5_MSC_BR_BASE, GV5_MSC_BR_PER,",
-      "GV5_MSC_RPA_BASE, GV5_MSC_RPA_MISMATCH (optional floats)."
+      "Env overrides: GR_MSC_OS_BASE, GR_MSC_OS_PER, GR_MSC_BR_BASE, GR_MSC_BR_PER,",
+      "GR_MSC_RPA_BASE, GR_MSC_RPA_MISMATCH (optional floats)."
     ],
     "os_base": 0.08,
     "os_per": 0.04,

@@ -1,5 +1,5 @@
 //! Structural + functional contract: gr embeds full in-tree probe/analyze stack.
-//! No dependency on green-v5 tree or external gr-service process.
+//! No dependency on legacy trees or external gr-service process.
 
 use gr_probe_core::evaluate::evaluate_session;
 use gr_probe_store::Store;
@@ -107,7 +107,7 @@ fn product_version_from_in_tree_fe() {
         String::new()
     };
     let fe_ver = fe_ver.trim().to_string();
-    // FE may still carry historical v5.* tag after copy; core is stamped from green-v6/VERSION
+    // FE may still carry historical v5.* tag after copy; core is stamped from VERSION.probe
     let core = gr_probe_core::GR_PRODUCT_VERSION;
     assert!(!core.is_empty(), "core product version empty");
     if !fe_ver.is_empty() {
