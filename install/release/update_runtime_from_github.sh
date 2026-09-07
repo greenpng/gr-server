@@ -350,6 +350,24 @@ open(p, "w").writelines(lines)
 PYENV
 fi
 
+# 属主修正: 本脚本常以 root 跑, cp -a 换入的 fe/spec 树会保持 root 属主,
+# 而服务进程跑在专用用户下 (User=greenpng) → 写不了 fe/OPAQUE_MAP.json →
+# /dist/<hash>.min.js 全部 404, 收集器包加载失败 (v1.0.2 178 实测回归)。
+# systemd 部署时把换入的树/文件归还服务用户。
+if [[ "$(id -u)" == "0" && -d "$INSTALL_ROOT" ]]; then
+  SVC_USER="$(systemctl show greenpng -p User --value 2>/dev/null || true)"
+  SVC_GROUP="$(systemctl show greenpng -p Group --value 2>/dev/null || true)"
+  if [[ -n "$SVC_USER" && "$SVC_USER" != "root" && "$SVC_USER" != "0" ]]; then
+    [[ -z "$SVC_GROUP" || "$SVC_GROUP" == "root" ]] && SVC_GROUP="$SVC_USER"
+    chown -R "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/fe" 2>/dev/null || true
+    [[ -d "$INSTALL_ROOT/spec" ]] && chown -R "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/spec" 2>/dev/null || true
+    chown "$SVC_USER:$SVC_GROUP" \
+      "$INSTALL_ROOT/bin/gr-service" "$INSTALL_ROOT/bin/gr-cli" \
+      "$INSTALL_ROOT/VERSION" 2>/dev/null || true
+    echo "[runtime-ota] installed trees chowned → $SVC_USER (fe/spec/bin)"
+  fi
+fi
+
 echo "[runtime-ota] restart greenpng + health gate"
 UNIT="greenpng"
 if systemctl is-enabled "$UNIT" >/dev/null 2>&1 || systemctl cat "$UNIT" >/dev/null 2>&1; then
