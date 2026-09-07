@@ -4518,8 +4518,9 @@ fn save_analysis_inner(
         match tx.execute(
             "INSERT INTO analysis_results(session_id, rev, result_json, created_ms,
                 real_band, device_id, bot_verdict, device_confidence, client_ip,
-                device_tier, collision_risk, product_version, digest_path, residual_entropy_ok)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+                device_tier, collision_risk, product_version, digest_path, residual_entropy_ok,
+                site_id, product_action)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
             &[
                 &session_id,
                 &next,
@@ -4535,6 +4536,10 @@ fn save_analysis_inner(
                 &sc.product_version,
                 &sc.digest_path,
                 &sc.residual_entropy_ok,
+                // 178 实测修复: site_id/product_action 在 scalars 已解析但旧 INSERT
+                // 漏列 → analysis_results.site_id 恒空 (站点归属只能绕 sessions.meta)。
+                &sc.site_id,
+                &sc.product_action,
             ],
         ) {
             Ok(_) => {
