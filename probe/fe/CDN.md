@@ -27,11 +27,26 @@ The probe program is the default-install JS loaded on the website. It supports
 | `data-inject-path` | Optional: `nginx` \| `cf_worker` \| `app` |
 | `data-autostart="0"` | Disable auto start; call `GR.Boot.start()` yourself |
 
-Version query for cache bust (matches product `VERSION`):
+## Cache policy (greenpng 1.0.3+)
+
+Do **not** use `?v=` query busting — queries are not a reliable cache key for
+browsers/CDNs. Version lives in the **real asset path**:
 
 ```text
-https://cdn.example.com/gr/gr.boot.min.js?v=5.x.y
+/dist/v/<fe_version>/g/<asset_gen>/<content-hash>.<ext>
 ```
+
+- Every release (new `fe_version`) and every FE rebuild (new `asset_gen`)
+  rotates the whole URL path → stale assets and stale 404s can never be
+  served from browser/CDN cache across releases.
+- The pin (`/gr.js`) is `no-store` (checked fresh every load).
+- Plane-side 404s are `no-store`; a missing asset must never become a
+  long-lived immutable cache entry at an edge (178 v1.0.2 Cloudflare
+  incident: a transient 404 was cached ~1y under a blanket immutable header).
+- Server strips the `v/<ver>/[g/<gen>/]` segment when resolving to the
+  logical file (`strip_version_route`); versioned paths are long-immutable
+  by `static_cache_control`.
+- Legacy embeds may still append `?v=5.x.y` — the FE strips it on sight.
 
 ## Business link fields (before or after load)
 

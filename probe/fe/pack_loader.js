@@ -111,25 +111,23 @@
   }
 
   /**
-   * Keep Standard-B content-hashed URLs intact.
-   * Relative logical names join asset_base + gen-injected filename.
+   * Keep Standard-B content-hashed URLs intact; keep `/dist/v/<ver>/g/<gen>/`
+   * path segments (1.0.3+: version-keyed paths rotate caches across releases).
+   * Relative logical names join asset_base (version-keyed from manifest) +
+   * gen-injected filename.
    */
   function withProductVer(src) {
     src = String(src || "");
     if (!src) return src;
-    // Standard C: already opaque/hashed basename — collapse legacy version path only.
+    // Standard C: already opaque/hashed basename — keep verbatim (version
+    // segments preserved: cache rotation lives in the real path, not queries).
     if (isHashedOrOpaqueLeaf(src)) {
-      return src.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-    }
-    // Collapse legacy /dist/v/<ver>/[g/<gen>/] → /dist/ (anti-leak).
-    if (/\/dist\/v\/[^/]+\//.test(src)) {
-      src = src.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
+      return src;
     }
     // Prefer absolute asset_base from manifest when src is relative.
     try {
       var base = assetBase();
       if (base && src.charAt(0) !== "/" && src.indexOf("://") < 0) {
-        base = String(base).replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
         return (
           String(base).replace(/\/$/, "") +
           "/" +
