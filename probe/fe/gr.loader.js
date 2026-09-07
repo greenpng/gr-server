@@ -117,8 +117,10 @@
       return V;
     }
 
-    /** Standard C: flat /g5/dist/ only (content-hash lives in basenames). */
+    /** 1.0.3+: version-keyed dist root — /dist/v/<V>/ (cache rotates per release). */
     function distV(_V) {
+      var v = String(_V || window.__GR_PRODUCT_VERSION__ || injectV || "");
+      if (v) return P + "/dist/v/" + v + "/";
       return P + "/dist/";
     }
 
@@ -296,10 +298,11 @@
         gen = String(window.__GR_ASSET_GEN__ || (b.asset_gen || "") || "");
       } catch (eG) {}
       var s = document.createElement("script");
-      // Standard C: no ?v= version query; gen in filename when known.
+      // 1.0.3+: version-keyed path (no ?v= query busting); gen in filename when known.
+      var fv = String(window.__GR_PRODUCT_VERSION__ || injectV || "");
       s.src =
         base +
-        "/dist/" +
+        (fv ? "/dist/v/" + fv + "/" : "/dist/") +
         (gen ? "gr.entry." + gen + ".min.js" : "gr.entry.min.js");
       s.async = true;
       (document.head || document.documentElement).appendChild(s);

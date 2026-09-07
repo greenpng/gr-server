@@ -186,13 +186,10 @@
     var feV = String((j && (j.fe_version || j.fe_impl_version)) || runtimeV || "") || "";
     var V = feV || runtimeV;
     var gen = String((j && j.asset_gen) || "") || "";
-    // Standard C: asset_base is flat /g5/dist (content-hash in filenames only).
+    // 1.0.3+: asset_base is version-keyed (/dist/v/<fe>/g/<gen>/) — keep the
+    // version/gen segments verbatim; they rotate caches across releases.
     var base = String((j && j.asset_base) || A + "/dist");
     base = resolveAssetUrl(base);
-    // Collapse accidental legacy /dist/v/<ver>/… from sticky bootstrap caches.
-    try {
-      base = String(base).replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-    } catch (eCollapse) {}
     // Ensure versioned packs stay under /g5 when bootstrap sent absolute gv paths incorrectly
     if (/^https?:\/\//i.test(base) === false && base.charAt(0) !== "/") {
       base = A + "/" + base.replace(/^\//, "");
@@ -473,8 +470,10 @@
               return null;
             }
           }
-          legacy = String(legacy).replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-          return loadScript(resolveAssetUrl(legacy), true).then(function () {
+          // 1.0.3+: keep /dist/v/<ver>/g/<gen>/ segments in the loader fallback
+          // URL (version-keyed paths rotate caches; strip_version_route on the
+          // plane resolves the logical file).
+          return loadScript(resolveAssetUrl(String(legacy)), true).then(function () {
             if (bootLive()) markPinReady();
             return null;
           });

@@ -9701,25 +9701,23 @@
   }
 
   /**
-   * Keep Standard-B content-hashed URLs intact.
-   * Relative logical names join asset_base + gen-injected filename.
+   * Keep Standard-B content-hashed URLs intact; keep `/dist/v/<ver>/g/<gen>/`
+   * path segments (1.0.3+: version-keyed paths rotate caches across releases).
+   * Relative logical names join asset_base (version-keyed from manifest) +
+   * gen-injected filename.
    */
   function withProductVer(src) {
     src = String(src || "");
     if (!src) return src;
-    // Standard C: already opaque/hashed basename — collapse legacy version path only.
+    // Standard C: already opaque/hashed basename — keep verbatim (version
+    // segments preserved: cache rotation lives in the real path, not queries).
     if (isHashedOrOpaqueLeaf(src)) {
-      return src.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-    }
-    // Collapse legacy /dist/v/<ver>/[g/<gen>/] → /dist/ (anti-leak).
-    if (/\/dist\/v\/[^/]+\//.test(src)) {
-      src = src.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
+      return src;
     }
     // Prefer absolute asset_base from manifest when src is relative.
     try {
       var base = assetBase();
       if (base && src.charAt(0) !== "/" && src.indexOf("://") < 0) {
-        base = String(base).replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
         return (
           String(base).replace(/\/$/, "") +
           "/" +
@@ -12424,8 +12422,8 @@
   }
 
   function scriptDir() {
-    // Standard C: always flat /g5/dist/ (+ content-hash in basename via withVer).
-    // Never inject /dist/v/<version>/ into the public load path.
+    // Version-keyed root when known (1.0.3+): keep `/dist/v/<ver>/g/<gen>/`
+    // segments — they rotate caches across releases.
     try {
       if (typeof distVersionRoot === "function") {
         var root = distVersionRoot();
@@ -12447,12 +12445,7 @@
         base = "./";
       }
     }
-    // Collapse legacy /dist/v/<ver>/[g/<gen>/] → /dist/ when present in script dir.
-    try {
-      if (/\/dist\/v\//.test(base)) {
-        base = base.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-      }
-    } catch (eRw) {}
+    // Version/gen path segments in the script dir are kept as-is (1.0.3+).
     return base;
   }
 
@@ -13256,7 +13249,9 @@
 
   /**
    * Asset base for loads: manifest.asset_base if set, else flat /g5/dist/.
-   * Never returns /dist/v/<version>/… (version must not appear in public URLs).
+   * Since 1.0.3 the manifest asset_base is version-keyed
+   * (`/dist/v/<fe_version>/g/<asset_gen>/`) — keep it verbatim so every
+   * release/FE rebuild fetches fresh URLs (stale cache impossible).
    */
   function distVersionRoot() {
     try {
@@ -13265,10 +13260,7 @@
         (global.__GR_MANIFEST__ && global.__GR_MANIFEST__.asset_base) ||
         "";
       if (ab) {
-        ab = String(ab).replace(/\/?$/, "/");
-        // Collapse accidental legacy version path to flat dist.
-        ab = ab.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-        return ab;
+        return String(ab).replace(/\/?$/, "/");
       }
     } catch (eAb) {}
     return distFlatRoot();
@@ -13351,31 +13343,18 @@
   }
 
   /**
-   * Standard C URL normalizer:
-   * - keep content-hash basenames
-   * - strip legacy /dist/v/<ver>/[g/<gen>/] → /dist/
+   * Version-keyed URL normalizer (1.0.3+):
+   * - keep content-hash basenames and `/dist/v/<ver>/g/<gen>/` path segments
+   *   (version in the real path → caches can never serve stale entries)
    * - inject opaque gen into fixed basenames
-   * - never emit product version in the path
+   * - never `?v=` query busting (stripped on sight)
    */
   function withVer(url) {
     if (!url) return url;
     var u = String(url);
-    // Already content-hashed / pure-opaque basename — keep (after collapsing legacy version path).
-    if (isHashedOrOpaqueLeaf(u)) {
-      return u.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-    }
-    // Relative logical name → asset_base + hashed basename.
-    if (u.indexOf("://") < 0 && u.charAt(0) !== "/" && u.indexOf("dist/") < 0) {
-      var leaf = injectGenBasename(u.replace(/^\.\//, ""));
-      // Opaque-only: empty leaf means do not invent a wire path.
-      if (!leaf) return "";
-      return distVersionRoot() + leaf;
-    }
-    // Collapse legacy version/gen path segments (anti-leak + unify).
-    if (/\/dist\/v\/[^/]+\//.test(u)) {
-      u = u.replace(/\/dist\/v\/[^/]+\/(?:g\/[^/]+\/)?/, "/dist/");
-    }
-    // Strip sticky ?v= product version query (never use version for cache bust).
+    // Never keep a ?v= product version query — version lives in the real
+    // path (1.0.3+), queries are not a reliable cache key (stripped first so
+    // the early opaque passthrough below cannot keep one either).
     if (/[?&]v=/.test(u)) {
       u = u
         .replace(/([?&])v=[^&]*/g, "$1")
@@ -13384,6 +13363,21 @@
         .replace(/&&/g, "&");
       if (u.charAt(u.length - 1) === "?") u = u.slice(0, -1);
     }
+    // Already content-hashed / pure-opaque basename — keep verbatim
+    // (version/gen path segments preserved — cache rotation lives in the path).
+    if (isHashedOrOpaqueLeaf(u)) {
+      return u;
+    }
+    // Relative logical name → asset_base + hashed basename.
+    if (u.indexOf("://") < 0 && u.charAt(0) !== "/" && u.indexOf("dist/") < 0) {
+      var leaf = injectGenBasename(u.replace(/^\.\//, ""));
+      // Opaque-only: empty leaf means do not invent a wire path.
+      if (!leaf) return "";
+      return distVersionRoot() + leaf;
+    }
+    // Collapse legacy version/gen path segments — REMOVED 1.0.3: version-keyed
+    // paths are the cache-rotation mechanism; keep them intact.
+    // (?v= stripping already applied at function top.)
     // Probe API routes use fixed logical ids (r100 pack id, etc.).
     // Content-hash injection turns R46_spotcheck.js → R46_spotcheck.<gen>.js and
     // the backend rejects with invalid_pack_id (JSON 404 → MIME not executable).

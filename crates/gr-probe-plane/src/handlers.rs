@@ -1490,11 +1490,15 @@ pub fn rebuild_opaque_map(static_dir: &std::path::Path) {
     }
 }
 
-/// Resolve FE content identity (diagnostics / pack_url_template token only).
+/// Resolve FE content identity (load-path version segments + diagnostics).
 ///
-/// - `fe_version`: `fe/VERSION` — **not** placed in public load paths (leak prevention)
-/// - `asset_gen`: opaque 12-hex from FE tarball/race — used only inside **filenames**
-///   for dynamic packs when per-file hash is unavailable
+/// - `fe_version`: `fe/VERSION` — **in the public load path** since 1.0.3
+///   (`/dist/v/<fe_version>/g/<asset_gen>/`): version-keyed URLs force fresh
+///   fetches across releases so stale assets/404s can never be served from
+///   browser/CDN cache (replaces the old flat anti-leak path).
+/// - `asset_gen`: opaque 12-hex from FE tarball/race — second path segment
+///   (`g/<gen>`) so FE-only rebuilds also rotate URLs; also used inside
+///   **filenames** for dynamic packs when per-file hash is unavailable
 pub fn resolve_fe_asset_identity(static_dir: &std::path::Path) -> (String, String) {
     let runtime_v = gr_probe_core::GR_PRODUCT_VERSION.to_string();
     let fe_version = std::fs::read_to_string(static_dir.join("VERSION"))
@@ -1535,11 +1539,14 @@ pub fn resolve_fe_asset_identity(static_dir: &std::path::Path) -> (String, Strin
     (fe_version, asset_gen)
 }
 
-/// FE bootstrap + full manifest (protocol 2) — **Standard C + opaque names**.
+/// FE bootstrap + full manifest (protocol 2) — **version-keyed opaque names**.
 ///
 /// - pin only: fixed `/g5/gr.js` (no-store)
-/// - all other assets: **opaque** `/g5/dist/<filehash12>.<ext>` (no `gr`/`race`/`registry` tokens)
-/// - **no** product/fe version in the public load path (anti-leak)
+/// - all other assets: `/g5/dist/v/<fe_version>/g/<asset_gen>/<filehash12>.<ext>`
+///   (version+gen path segments rotate URLs every release/FE rebuild so
+///   browser/CDN caches can never serve stale assets or stale 404s; opaque
+///   basenames stay for file identity — no `gr`/`race`/`registry` tokens,
+///   no `?v=` query busting)
 /// Physical files stay at logical paths under `fe/`; `OPAQUE_MAP.json` reverses public→logical.
 pub fn sdk_bootstrap(
     st: &AppState,
@@ -1554,9 +1561,20 @@ pub fn sdk_bootstrap(
     // prefix = /g5 (first_party/hybrid) or absolute pv origin (dual_domain).
     let edge_opt = resolve_bootstrap_edge(st, headers, query);
     let path_prefix = bootstrap_asset_prefix(edge_opt.as_ref(), headers);
-    // Standard C: flat dist root only (opaque filename carries content-hash).
-    let dist_root = format!("{}/dist", path_prefix.trim_end_matches('/'));
-    let flat_dist = dist_root.clone();
+    // Version-keyed dist root (greenpng 1.0.3+): `/dist/v/<fe_version>/g/<asset_gen>/…`.
+    // Every release / FE rebuild changes the URL PATH itself, so browser and CDN
+    // caches can never serve a stale asset (or a stale 404) across releases —
+    // the 178 v1.0.2 incident had a transient 404 cached ~1y at the CF edge under
+    // the old blanket-immutable header. No `?v=` query busting (unreliable);
+    // the plane strips the `v/<ver>/[g/<gen>/]` segment when resolving
+    // (strip_version_route) and versioned paths are long-immutable by policy.
+    let dist_root = format!(
+        "{}/dist/v/{}/g/{}",
+        path_prefix.trim_end_matches('/'),
+        fe_version,
+        asset_gen
+    );
+    let flat_dist = format!("{}/dist", path_prefix.trim_end_matches('/'));
     let v = runtime_v;
     let require_sealed = gr_abi::env::flag("REQUIRE_SEALED_INGEST")
         && !gr_abi::env::flag("ALLOW_PLAIN_INGEST");
