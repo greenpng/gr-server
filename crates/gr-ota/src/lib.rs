@@ -310,7 +310,13 @@ pub fn manifest_sign_message(m: &ReleaseManifest) -> Result<Vec<u8>, OtaError> {
     );
     // Whole-bundle releases (greenpng 1.0.0+): per-file trees are signed too.
     // Included ONLY when present so legacy manifest bodies stay byte-identical.
-    for (key, tree) in [("fe_tree", &m.fe_tree), ("admin_tree", &m.admin_tree)] {
+    // spec_tree joins in 1.0.2+ (install.sh / updater Python mirrors iterate
+    // the same key list and also include it only when present).
+    for (key, tree) in [
+        ("fe_tree", &m.fe_tree),
+        ("admin_tree", &m.admin_tree),
+        ("spec_tree", &m.spec_tree),
+    ] {
         if let Some(t) = tree {
             let mut obj = serde_json::Map::new();
             if let Some(epoch) = &t.epoch {
@@ -1035,6 +1041,7 @@ mod tests {
             fe: None,
             fe_tree: None,
             admin_tree: None,
+            spec_tree: None,
             cli: None,
             sig: None,
             modules: vec![
@@ -1070,6 +1077,7 @@ mod tests {
             fe: None,
             fe_tree: None,
             admin_tree: None,
+            spec_tree: None,
             cli: None,
             sig: None,
             modules: vec![art("identity", "7.0.1"), art("identity", "7.0.2")],
@@ -1192,6 +1200,7 @@ mod tests {
             cli: None,
             fe_tree: None,
             admin_tree: None,
+            spec_tree: None,
             sig: None,
             build_id: None,
             release_pubkey: None,
@@ -1225,6 +1234,7 @@ mod tests {
             fe: None,
             fe_tree: None,
             admin_tree: None,
+            spec_tree: None,
             cli: None,
             sig: None,
             build_id: None,
@@ -1254,6 +1264,80 @@ mod tests {
     }
 
     #[test]
+    fn manifest_body_spec_tree_conditional_and_roundtrip() {
+        // 1.0.2 hardening: `spec_tree` joins the canonical body ONLY when
+        // present (legacy bodies stay byte-identical), and — the actual
+        // 1.0.1 regression — the sign-manifest flow (gr-cli) parses the
+        // build-script JSON into ReleaseManifest and rewrites it; before the
+        // struct carried the field that round-trip silently dropped it, so
+        // bundles shipped spec/ physically present but unsigned/absent in
+        // manifest.json.
+        let man = ReleaseManifest {
+            product: "greenpng".into(),
+            channel: "stable".into(),
+            arch: Some("x86_64".into()),
+            triple: Some("x86_64-linux-gnu".into()),
+            runtime: gr_abi::RuntimeManifest {
+                version: "1.0.2".into(),
+                abi: 1,
+                asset: Some("bin/gr-service".into()),
+                sha256: Some("aa".into()),
+            },
+            modules: vec![],
+            fe: None,
+            fe_tree: None,
+            admin_tree: None,
+            spec_tree: None,
+            cli: None,
+            sig: None,
+            build_id: None,
+            release_pubkey: None,
+            release_cert: None,
+        };
+        let legacy = manifest_sign_message(&man).unwrap();
+        let legacy_json: serde_json::Value = serde_json::from_slice(&legacy).unwrap();
+        assert!(legacy_json.get("spec_tree").is_none(), "legacy body must not carry spec_tree");
+
+        let mut with_spec = man.clone();
+        with_spec.spec_tree = Some(gr_abi::TreeManifest {
+            epoch: None,
+            files: [
+                ("spec/sources.json".to_string(), "11".to_string()),
+                ("spec/weights.json".to_string(), "22".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        });
+        let body = manifest_sign_message(&with_spec).unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(j["spec_tree"]["files"]["spec/sources.json"], "11");
+        assert_eq!(j["spec_tree"]["files"]["spec/weights.json"], "22");
+        // dropping it back must reproduce legacy bytes exactly
+        let mut back = with_spec.clone();
+        back.spec_tree = None;
+        assert_eq!(manifest_sign_message(&back).unwrap(), legacy);
+
+        // sign-manifest round-trip: JSON → struct → pretty JSON → struct
+        // must keep spec_tree (this is what gr-cli does on every build).
+        let raw = serde_json::to_string(&with_spec).unwrap();
+        let reread: ReleaseManifest = serde_json::from_str(&raw).unwrap();
+        assert!(
+            reread.spec_tree.is_some(),
+            "spec_tree must survive the serde round-trip (1.0.1 regression)"
+        );
+        assert_eq!(
+            reread.spec_tree.as_ref().unwrap().files["spec/sources.json"],
+            "11"
+        );
+        let rewritten = serde_json::to_string_pretty(&reread).unwrap();
+        let final_man: ReleaseManifest = serde_json::from_str(&rewritten).unwrap();
+        assert_eq!(
+            serde_json::to_value(&final_man.spec_tree).unwrap(),
+            serde_json::to_value(&with_spec.spec_tree).unwrap()
+        );
+    }
+
+    #[test]
     fn release_cert_chain_roundtrip() {
         // root
         let (root_sk, root_vk) = generate_signing_keypair();
@@ -1276,6 +1360,7 @@ mod tests {
             fe: None,
             fe_tree: None,
             admin_tree: None,
+            spec_tree: None,
             cli: None,
             sig: None,
             build_id: Some(build_id.into()),
@@ -1399,6 +1484,7 @@ mod tests {
             fe: None,
             fe_tree: None,
             admin_tree: None,
+            spec_tree: None,
             cli: None,
             sig: Some(sign_bytes(&root_sk, &manifest_sign_message(&ReleaseManifest {
                 product: "green-v6".into(),
@@ -1415,6 +1501,7 @@ mod tests {
                 fe: None,
                 fe_tree: None,
                 admin_tree: None,
+                spec_tree: None,
                 cli: None,
                 sig: None,
                 build_id: Some(build_id.into()),

@@ -92,16 +92,20 @@ fn verify_tree(man: &ReleaseManifest, root: &Path, root_pk: &[u8]) {
         eprintln!("[release_tree_verify] module ok: {}@{} ({})", art.name, art.version, art.asset);
     }
 
-    // fe_tree + admin_tree: per-file sha of the expanded dirs (typed fields —
-    // part of the signed canonical body on whole-bundle releases)
+    // fe_tree + admin_tree + spec_tree: per-file sha of the expanded dirs
+    // (typed fields — part of the signed canonical body on whole-bundle
+    // releases; spec_tree joins in 1.0.2+, older bundles legitimately lack it)
     for (label, tree, sub) in [
         ("fe_tree", &man.fe_tree, "fe"),
         ("admin_tree", &man.admin_tree, "admin"),
+        ("spec_tree", &man.spec_tree, "spec"),
     ] {
         let Some(tree) = tree else {
             if label == "fe_tree" {
                 // flat fixtures may omit fe_tree; bundle manifests must have it
                 eprintln!("[release_tree_verify] note: manifest has no fe_tree (flat fixture?)");
+            } else {
+                eprintln!("[release_tree_verify] note: manifest has no {label} (pre-1.0.2 bundle?)");
             }
             continue;
         };

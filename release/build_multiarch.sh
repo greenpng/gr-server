@@ -6,9 +6,9 @@
 #   fe-<VER>.tgz                 (shared FE tarball, single source)
 #   manifest-index.json          (arch → bundle + bundle_sha256, fe entry)
 #   ota_ed25519.pk
-# Each bundle contains bin/ modules/ fe/ admin/ manifest.json ota_ed25519.pk;
-# the in-bundle manifest is root-signed and lists per-file sha256
-# (runtime/cli/fe_tree/admin_tree/modules with sig chain).
+# Each bundle contains bin/ modules/ fe/ admin/ spec/ manifest.json
+# ota_ed25519.pk; the in-bundle manifest is root-signed and lists per-file
+# sha256 (runtime/cli/fe_tree/admin_tree/spec_tree/modules with sig chain).
 #
 # Env:
 #   HOST_ONLY=1       — current arch only → build_and_publish.sh
@@ -172,6 +172,9 @@ PY
   cp -a "$AREA/probe/fe" "$bd/fe"
   rm -rf "$bd/admin"
   cp -a "$AREA/panel/admin-spa" "$bd/admin"
+  # spec (analyze 运行时数据, 1.0.2+ 进签名清单; 与 build_and_publish.sh 同型)
+  rm -rf "$bd/spec"
+  cp -a "$AREA/spec" "$bd/spec"
   if [[ -f "$ROOT/keys/ota_ed25519.pk" ]]; then
     cp -f "$ROOT/keys/ota_ed25519.pk" "$bd/ota_ed25519.pk"
   elif [[ -f "$ROOT/keys/ota_ed25519.pub" ]]; then
@@ -215,6 +218,7 @@ man = {
     "fe": {"asset": fe_tgz.name, "sha256": sha(fe_tgz)},
     "fe_tree": {"epoch": version, "files": tree_files(bd / "fe")},
     "admin_tree": {"files": tree_files(bd / "admin")},
+    "spec_tree": {"files": tree_files(bd / "spec")},
     "modules": mods,
 }
 man = {k: v for k, v in man.items() if v is not None}
