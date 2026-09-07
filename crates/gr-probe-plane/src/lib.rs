@@ -1,4 +1,4 @@
-//! green-v6 probe plane — Pingora gateway + HTTP API (in-tree, independent of green-v5).
+//! greenpng probe plane — Pingora gateway + HTTP API (in-tree).
 //!
 //! Architecture:
 //! - Cloudflare **Pingora** terminates HTTP/HTTPS

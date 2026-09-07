@@ -1,5 +1,5 @@
 /**
- * Green V7 results SDK — backend only (GR naming since 8.0; X-Gr-Sdk-Key).
+ * greenpng results SDK — backend only (X-Gr-Sdk-Key).
  * Never embed this with a site backend key in the browser.
  * Thin client: getResult / waitForResult / query. No probe relay.
  */

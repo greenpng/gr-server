@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Green V7 安装后冒烟测试 (sh / docker 安装共用)
+# greenpng 安装后冒烟测试 (sh / docker 安装共用)
 #
 # 断言:
 #   1. 控制面健康  /v1/health                          → 200
@@ -7,9 +7,9 @@
 #   3. 探测面健康  :probe/v1/health                    → 200
 #   4. 业务面会话  POST /v1/session/open (唯一 vt)     → ok/business_state
 #
-# 用法: bash test/smoke_install.sh [--prefix /opt/green-v7] [--admin-port 28680] [--probe-port 28765]
+# 用法: bash test/smoke_install.sh [--prefix /opt/greenpng] [--admin-port 28680] [--probe-port 28765]
 set -euo pipefail
-PREFIX="${1:-/opt/green-v7}"
+PREFIX="${1:-/opt/greenpng}"
 ADMIN_PORT=28680
 PROBE_PORT=28765
 while [[ $# -gt 0 ]]; do

@@ -560,7 +560,7 @@ pub fn unseal_probe_payload_auto_v2(
 /// Best-effort sha256 + byte length of the shipped seal wasm (for FE integrity checks).
 ///
 /// Path resolution must not depend on process cwd alone. Lab often starts from `$HOME`
-/// while prod systemd uses `WorkingDirectory=/opt/green-v6`. Prefer env/static-dir.
+/// while prod systemd uses `WorkingDirectory=/opt/greenpng`. Prefer env/static-dir.
 pub fn seal_wasm_file_integrity() -> (Option<u64>, Option<String>) {
     use sha2::{Digest, Sha256};
     let env_path = gr_abi::env::get("SEAL_WASM_PATH").unwrap_or_default();
@@ -579,7 +579,7 @@ pub fn seal_wasm_file_integrity() -> (Option<u64>, Option<String>) {
             "{base}/dist/v/{GR_PRODUCT_VERSION}/gr_seal_v2.wasm"
         ));
     }
-    // Relative to cwd (prod: WorkingDirectory=/opt/green-v6)
+    // Relative to cwd (prod: WorkingDirectory=/opt/greenpng)
     candidates.push("fe/gr_seal_v2.wasm".into());
     candidates.push("fe/dist/gr_seal_v2.wasm".into());
     candidates.push(format!("fe/dist/v/{GR_PRODUCT_VERSION}/gr_seal_v2.wasm"));
@@ -594,8 +594,8 @@ pub fn seal_wasm_file_integrity() -> (Option<u64>, Option<String>) {
             .to_string(),
     );
     // Common install roots.
-    candidates.push("/opt/green-v6/fe/gr_seal_v2.wasm".into());
-    candidates.push("/opt/green-v6/fe/dist/gr_seal_v2.wasm".into());
+    candidates.push("/opt/greenpng/fe/gr_seal_v2.wasm".into());
+    candidates.push("/opt/greenpng/fe/dist/gr_seal_v2.wasm".into());
     // next to current binary: ../fe/gr_seal_v2.wasm
     if let Ok(exe) = std::env::current_exe() {
         if let Some(bin_dir) = exe.parent() {

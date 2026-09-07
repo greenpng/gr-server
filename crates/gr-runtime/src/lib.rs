@@ -156,8 +156,7 @@ impl Runtime {
         // Also patch INSTALL .env if present (common deploy layout)
         for env_path in [
             self.cfg.data_dir.join("../.env"),
-            PathBuf::from("/opt/green-v7/.env"),
-            PathBuf::from("/opt/green-v6/.env"),
+            PathBuf::from("/opt/greenpng/.env"),
         ] {
             if env_path.is_file() {
                 if let Ok(txt) = std::fs::read_to_string(&env_path) {
@@ -231,7 +230,7 @@ impl Runtime {
         let modules = self.registry.list_status();
         let nodes = self.cluster.snapshot();
         serde_json::json!({
-            "product": "green-v7",
+            "product": "greenpng",
             "version": PRODUCT_VERSION,
             // P0-1: per-release build id — ops can confirm the running binary
             // matches the manifest's build_id (rotation evidence).
@@ -259,6 +258,7 @@ impl Runtime {
             modules_dir: self.cfg.modules_dir.clone(),
             pubkey_bytes: self.cfg.pubkey.clone(),
             release_key: None,
+            bundle_cache: Some(self.cfg.data_dir.join("ota_staging").join("bundle")),
         })
     }
 
@@ -387,7 +387,7 @@ impl Runtime {
         let stage_root = tmp_dir.join(format!("extract-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&stage_root);
         std::fs::create_dir_all(&stage_root).map_err(|e| e.to_string())?;
-        safe_extract_tar_gz(&tgz, &stage_root)?;
+        gr_ota::safe_extract_tar_gz(&tgz, &stage_root)?;
         // Prefer staged `fe/` subdir
         let staged_fe = if stage_root.join("fe").is_dir() {
             stage_root.join("fe")
@@ -492,8 +492,14 @@ impl Runtime {
         let triple = format!("{arch}-linux-gnu");
         let mut asset = format!("gr-service-{ver}-{triple}");
         let mut expect_sha: Option<String> = None;
-        match self.ota_fetch_manifest() {
+        // One engine for the whole flow: bundle releases resolve manifest +
+        // assets from the verified extracted bundle tree.
+        let mut eng = self.ota_engine();
+        match eng.fetch_manifest_blocking() {
             Ok(man) => {
+                if let Err(e) = eng.write_release_binding(&man) {
+                    tracing::warn!("release binding write failed: {e}");
+                }
                 if let Some(a) = man.runtime.asset.clone() {
                     asset = a;
                 }
@@ -514,24 +520,39 @@ impl Runtime {
                 }
             }
         }
-        let url = format!("{}/{}", base.trim_end_matches('/'), asset);
+        if asset.contains("..") || asset.starts_with('/') {
+            return Err(format!("runtime asset path invalid: {asset}"));
+        }
         let bin_dir = install_root.join("bin");
         let rel_dir = bin_dir.join("releases").join(&ver);
         std::fs::create_dir_all(&rel_dir).map_err(|e| e.to_string())?;
         let dest = bin_dir.join("gr-service");
         let staged = rel_dir.join("gr-service");
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(600))
-            .build()
-            .map_err(|e| e.to_string())?;
-        let bytes = client
-            .get(&url)
-            .send()
-            .map_err(|e| e.to_string())?
-            .error_for_status()
-            .map_err(|e| e.to_string())?
-            .bytes()
-            .map_err(|e| e.to_string())?;
+        // Whole-bundle releases: read the runtime binary straight from the
+        // extracted bundle tree (already sha-verified as a whole by the index).
+        let asset_source: String;
+        let bytes: Vec<u8> = if let Some(bd) = eng.bundle_dir.clone() {
+            asset_source = format!("bundle:{asset}");
+            std::fs::read(bd.join(&asset)).map_err(|e| {
+                format!("bundle local asset {asset} unreadable: {e}")
+            })?
+        } else {
+            let url = format!("{}/{}", base.trim_end_matches('/'), asset);
+            asset_source = url.clone();
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(600))
+                .build()
+                .map_err(|e| e.to_string())?;
+            client
+                .get(&url)
+                .send()
+                .map_err(|e| e.to_string())?
+                .error_for_status()
+                .map_err(|e| e.to_string())?
+                .bytes()
+                .map_err(|e| e.to_string())?
+                .to_vec()
+        };
         if bytes.len() < 4 || &bytes[0..4] != b"\x7fELF" {
             return Err("downloaded asset is not ELF".into());
         }
@@ -609,10 +630,7 @@ impl Runtime {
             let script = format!(
                 r#"set -e
 sleep 2
-UNIT=green-v7
-if ! /bin/systemctl is-enabled "$UNIT" >/dev/null 2>&1 && ! /bin/systemctl cat "$UNIT" >/dev/null 2>&1; then
-  UNIT=green-v6
-fi
+UNIT=greenpng
 /bin/systemctl restart "$UNIT" || (/bin/systemctl kill -s SIGTERM "$UNIT"; sleep 1; /bin/systemctl start "$UNIT")
 ok=0
 for i in 1 2 3 4 5 6; do
@@ -666,7 +684,7 @@ fi
         }
         Ok(serde_json::json!({
             "ok": true,
-            "url": url,
+            "url": asset_source,
             "path": dest,
             "release_slot": staged,
             "version": ver,
@@ -677,7 +695,7 @@ fi
             "restarted": restarted,
             "restart_required": restart && !restarted,
             "note": if !restart {
-                "binary staged+installed; set restart=true or systemctl restart green-v7 (legacy green-v6 fallback)".to_string()
+                "binary staged+installed; set restart=true or systemctl restart greenpng".to_string()
             } else if restart_note.is_empty() {
                 "binary installed".into()
             } else {
@@ -1065,7 +1083,7 @@ fi
             }
         }
         out["note"] = serde_json::json!(
-            "modules/FE: hot; runtime binary needs process restart (systemctl restart green-v7; legacy green-v6 fallback)"
+            "modules/FE: hot; runtime binary needs process restart (systemctl restart greenpng)"
         );
         Ok(out)
     }
@@ -1234,65 +1252,6 @@ fn shell_single_quote(s: &str) -> String {
 
 
 /// R-05: safe tar.gz extract — reject absolute paths and `..` members before extract.
-fn safe_extract_tar_gz(tgz: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
-    let list = std::process::Command::new("tar")
-        .args(["-tzf", tgz.to_str().unwrap_or("")])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !list.status.success() {
-        return Err(format!(
-            "tar -tzf failed: {}",
-            String::from_utf8_lossy(&list.stderr)
-        ));
-    }
-    let listing = String::from_utf8_lossy(&list.stdout);
-    for line in listing.lines() {
-        let path = line.trim();
-        if path.is_empty() {
-            continue;
-        }
-        // Reject absolute paths and real `..` components only.
-        // Do NOT use substring `..` — FE paths like `[[...path]]` are valid.
-        if path.starts_with('/') {
-            return Err(format!("tar entry rejected (absolute path): {path}"));
-        }
-        for comp in path.split(['/', '\\']) {
-            if comp == ".." {
-                return Err(format!("tar entry rejected (path escape): {path}"));
-            }
-        }
-    }
-    // Verbose list: allow only relative symlinks that do not escape dest.
-    // Absolute / `..` targets rejected. Hard links not accepted.
-    let vlist = std::process::Command::new("tar")
-        .args(["-tvzf", tgz.to_str().unwrap_or("")])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if vlist.status.success() {
-        for line in String::from_utf8_lossy(&vlist.stdout).lines() {
-            let t = line.trim_start();
-            if let Some(idx) = t.find(" -> ") {
-                let target = t[idx + 4..].trim();
-                if target.starts_with('/')
-                    || target.split(['/', '\\']).any(|c| c == "..")
-                {
-                    return Err(format!("tar entry rejected (symlink escape): {line}"));
-                }
-            }
-        }
-    }
-    std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
-    let status = std::process::Command::new("tar")
-        .args(["-xzf", tgz.to_str().unwrap_or(""), "-C"])
-        .arg(dest)
-        .status()
-        .map_err(|e| e.to_string())?;
-    if !status.success() {
-        return Err(format!("tar extract failed: {status}"));
-    }
-    Ok(())
-}
-
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
     for ent in std::fs::read_dir(src).map_err(|e| e.to_string())? {

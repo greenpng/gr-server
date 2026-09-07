@@ -1,4 +1,4 @@
-/* green-v6 entry | 8.0.3 */
+ /* greenpng entry | 1.0.0 */
 
 /* ---- gr.fe_impl.js ---- */
 /**
@@ -3147,7 +3147,7 @@
 
 /* ---- probe_self_heal.js ---- */
 /**
- * GR / green-v6 Probe Self-Heal — Gap Table + Supervisor + loops T/C/B + adaptive.
+ * greenpng Probe Self-Heal — Gap Table + Supervisor + loops T/C/B + adaptive.
  *
  * Authority:
  *   Server brain (route_plan / coverage / cool) decides desired + terminal.

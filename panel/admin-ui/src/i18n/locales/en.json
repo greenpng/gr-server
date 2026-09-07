@@ -1,7 +1,7 @@
 {
   "app": {
-    "name": "Green V7 Console",
-    "brand": "Green V7",
+    "name": "greenpng Console",
+    "brand": "greenpng",
     "probe_ok": "Probe online",
     "probe_bad": "Probe offline",
     "refresh": "Refresh",
@@ -104,7 +104,7 @@
     }
   },
   "login": {
-    "title": "Green V7 Admin",
+    "title": "greenpng Admin",
     "subtitle": "Standalone console · local admin account",
     "username": "Username",
     "password": "Password",

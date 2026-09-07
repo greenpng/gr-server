@@ -1,14 +1,13 @@
 [Unit]
-Description=Green V7 (control plane + in-tree probe plane)
+Description=greenpng (control plane + in-tree probe plane)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-# 全部运行配置 (.env: DSN/绑定/密钥/工作目录等) 经 EnvironmentFile 注入
 EnvironmentFile={PREFIX}/.env
-User=greenv7
-Group=greenv7
+User=greenpng
+Group=greenpng
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -17,8 +16,6 @@ ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist
 ExecStart={PREFIX}/bin/gr-service
 Restart=always
 RestartSec=3
-# 生产安全: 绑定默认 127.0.0.1(.env 中 GV6_BIND 等), 确认对外暴露需改 .env
-# 并按需增加 User=/ProtectSystem 等加固项
 KillSignal=SIGTERM
 TimeoutStopSec=15
 

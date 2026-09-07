@@ -16,7 +16,7 @@ use std::time::Duration;
 use crate::{admin, handlers, http_util, listen, r100_hub, sni_map, soft_backends, tls_fp, upstream};
 
 #[derive(Parser, Debug)]
-#[command(name = "gr-probe-plane", about = "Green V7 probe plane (Pingora gateway + API)")]
+#[command(name = "gr-probe-plane", about = "greenpng probe plane (Pingora gateway + API)")]
 pub struct Args {
     /// Plain HTTP listen (Pingora TCP), e.g. 0.0.0.0:28765
     #[arg(long, default_value = "0.0.0.0:28765")]

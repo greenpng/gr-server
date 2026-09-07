@@ -1,5 +1,5 @@
 /**
- * GR / green-v6 Probe Self-Heal — Gap Table + Supervisor + loops T/C/B + adaptive.
+ * greenpng Probe Self-Heal — Gap Table + Supervisor + loops T/C/B + adaptive.
  *
  * Authority:
  *   Server brain (route_plan / coverage / cool) decides desired + terminal.

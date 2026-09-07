@@ -1,4 +1,4 @@
-# GR Server (Green V7)
+# GR Server (greenpng)
 
 GR 服务端发行仓：安装 · 探测 · 分析 · 返回 · SDK · 签名模块 · 管理面板。
 本仓是 **02 探测分析产品线的整理发布打包仓**，也是**安装与版本更新的唯一公开入口**
@@ -18,7 +18,7 @@ bash install/install.sh --version 8.0.3 --arch x86_64 --yes
 bash install/install.sh --version 8.0.3 --with-docker --yes
 ```
 
-安装器会做 sha256 + ELF + ed25519 模块签名校验，落地 `/opt/green-v7`，
+安装器会做 sha256 + ELF + ed25519 模块签名校验，落地 `/opt/greenpng`，
 生成 `.env` 与 systemd 服务，并通过控制面/探测面 `/v1/health` 健康门。
 
 ## 更新（已装节点）

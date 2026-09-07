@@ -88,7 +88,7 @@ out = {
       ]
     },
     "runDetails": {
-      "builder": {"id": "https://github.com/green-v7/local-prodsim"},
+      "builder": {"id": "https://github.com/greenpng/local-prodsim"},
       "metadata": {
         "invocationId": "prodsim-$TS",
         "startedOn": "$TS",

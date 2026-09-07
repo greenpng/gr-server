@@ -11,17 +11,17 @@
 # Usage:
 #   bash 04-release-github-ci/release/build_lb_private.sh            # host arch, repo keys
 #   TARGETS=aarch64 bash 04-release-github-ci/release/build_lb_private.sh   # cross (docker) arch
-#   GV6_LB_PRIVATE_KEYS_DIR=/path bash 04-release-github-ci/release/build_lb_private.sh
+#   GR_LB_PRIVATE_KEYS_DIR=/path bash 04-release-github-ci/release/build_lb_private.sh
 #
 # Env:
 #   TARGETS                  x86_64 aarch64 (default: host)
-#   GV6_LB_PRIVATE_KEYS_DIR  dir with ota_ed25519.sk/.pk (default repo keys/)
+#   GR_LB_PRIVATE_KEYS_DIR  dir with ota_ed25519.sk/.pk (default repo keys/)
 #   USE_CROSS                1 for foreign arch via `cross`
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 VERSION="$(tr -d '[:space:]' < VERSION)"
-KEYS_DIR="${GV6_LB_PRIVATE_KEYS_DIR:-$ROOT/keys}"
+KEYS_DIR="${GR_LB_PRIVATE_KEYS_DIR:-$ROOT/keys}"
 OUT="$ROOT/dist/lb-private"
 mkdir -p "$OUT"
 
@@ -40,11 +40,11 @@ build_arch() {
   echo "[lb-private] building lb module $arch ($rust_target) version=$VERSION"
   local so=""
   if [[ "$arch" == "$HOST_ARCH" ]]; then
-    GV6_RELEASE_VERSION="$VERSION" cargo build -p gr-module-lb --release --features plugin
+    GR_RELEASE_VERSION="$VERSION" cargo build -p gr-module-lb --release --features plugin
     so="$ROOT/target/release/libgr_lb.so"
   else
     [[ "${USE_CROSS:-0}" == "1" ]] || { echo "[lb-private] foreign arch needs USE_CROSS=1" >&2; exit 1; }
-    GV6_RELEASE_VERSION="$VERSION" cross build -p gr-module-lb --release --features plugin --target "$rust_target"
+    GR_RELEASE_VERSION="$VERSION" cross build -p gr-module-lb --release --features plugin --target "$rust_target"
     so="$ROOT/target/$rust_target/release/libgr_lb.so"
   fi
   [[ -f "$so" ]] || { echo "[lb-private] missing $so" >&2; exit 1; }

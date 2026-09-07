@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Build signed release artifacts for x86_64 + aarch64 on ONE dev machine.
+# Build signed WHOLE-BUNDLE releases for x86_64 + aarch64 on one dev machine.
 #
-# Recommended local workflow (no GitHub Actions minutes):
-#   1. Install: Docker + `cargo install cross --locked`
-#   2. bash 04-release-github-ci/release/build_multiarch.sh SKIP_PUBLISH=1
-#   3. gh release upload …   # hosting only; build stays on your box
+# Output (dist/release-<VER>/, ≈5 release assets):
+#   greenpng-<VER>-x86_64.tar.gz / greenpng-<VER>-aarch64.tar.gz
+#   fe-<VER>.tgz                 (shared FE tarball, single source)
+#   manifest-index.json          (arch → bundle + bundle_sha256, fe entry)
+#   ota_ed25519.pk
+# Each bundle contains bin/ modules/ fe/ admin/ manifest.json ota_ed25519.pk;
+# the in-bundle manifest is root-signed and lists per-file sha256
+# (runtime/cli/fe_tree/admin_tree/modules with sig chain).
 #
 # Env:
 #   HOST_ONLY=1       — current arch only → build_and_publish.sh
@@ -19,12 +23,10 @@ while [[ "$ROOT" != "/" && ! -f "$ROOT/Cargo.toml" ]]; do ROOT="$(dirname "$ROOT
 cd "$ROOT"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 # P0-1/P0-4: one build_id + obf salt for the whole release (all arches share it).
-GR_BUILD_ID="${GR_BUILD_ID:-${GV6_BUILD_ID:-$(openssl rand -hex 12)}}"
+GR_BUILD_ID="${GR_BUILD_ID:-$(openssl rand -hex 12)}"
 export GR_BUILD_ID
-export GV6_BUILD_ID="$GR_BUILD_ID"   # legacy compile-time symbol name
-GR_OBF_SALT="${GR_OBF_SALT:-${GV6_OBF_SALT:-$(openssl rand -hex 16)}}"
+GR_OBF_SALT="${GR_OBF_SALT:-$(openssl rand -hex 16)}"
 export GR_OBF_SALT
-export GV6_OBF_SALT="$GR_OBF_SALT"   # legacy compile-time symbol name
 echo "[multiarch] build_id=$GR_BUILD_ID"
 TARGETS="${TARGETS:-x86_64 aarch64}"
 HOST_ARCH="$(uname -m)"
@@ -35,6 +37,15 @@ esac
 
 if [[ "${HOST_ONLY:-0}" == "1" ]]; then
   exec bash "$(cd "$(dirname "$0")" && pwd)/build_and_publish.sh"
+fi
+
+# 布局可移植: greenpng 工作区(02-probe-analysis/...) 或扁平发行仓 gr-server
+if [[ -d "$ROOT/02-probe-analysis/probe/fe" ]]; then
+  AREA="$ROOT/02-probe-analysis"
+elif [[ -d "$ROOT/probe/fe" ]]; then
+  AREA="$ROOT"
+else
+  echo "[multiarch] cannot locate probe/fe" >&2; exit 1
 fi
 
 need_cross=0
@@ -61,7 +72,6 @@ if [[ "$need_cross" == 1 ]] && ! command -v cross >/dev/null 2>&1; then
   cargo install cross --locked
 fi
 
-# Asset / manifest naming — matches build_and_publish.sh + panel OTA (`{arch}-linux-gnu`).
 triple_for() {
   case "$1" in
     x86_64) echo "x86_64-linux-gnu" ;;
@@ -70,7 +80,6 @@ triple_for() {
   esac
 }
 
-# rustc / cross target triple
 rust_target_for() {
   case "$1" in
     x86_64) echo "x86_64-unknown-linux-gnu" ;;
@@ -84,55 +93,53 @@ ensure_keys() {
   if [[ -f "$ROOT/keys/ota_ed25519.sk" ]]; then
     return 0
   fi
-  if [[ -n "${GR_OTA_SIGNING_KEY:-${GV6_OTA_SIGNING_KEY:-}}" ]]; then
-    printf '%s' "${GR_OTA_SIGNING_KEY:-${GV6_OTA_SIGNING_KEY:-}}" > "$ROOT/keys/ota_ed25519.sk"
+  if [[ -n "${GR_OTA_SIGNING_KEY:-}" ]]; then
+    printf '%s' "${GR_OTA_SIGNING_KEY:-}" > "$ROOT/keys/ota_ed25519.sk"
     chmod 600 "$ROOT/keys/ota_ed25519.sk"
     return 0
   fi
-  if [[ "${GR_ALLOW_KEYGEN:-${GV6_ALLOW_KEYGEN:-0}}" == "1" ]]; then
+  if [[ "${GR_ALLOW_KEYGEN:-0}" == "1" ]]; then
     cargo run -q -p gr-cli -- keygen --out-dir "$ROOT/keys"
     return 0
   fi
-  echo "[multiarch] missing keys/ota_ed25519.sk — set GR_OTA_SIGNING_KEY/GV6_OTA_SIGNING_KEY or GR_ALLOW_KEYGEN=1" >&2
+  echo "[multiarch] missing keys/ota_ed25519.sk — set GR_OTA_SIGNING_KEY or GR_ALLOW_KEYGEN=1" >&2
   exit 1
 }
 
 ensure_fe() {
-  # 布局可移植(同 build_and_publish.sh): greenpng 02-probe-analysis/... 或扁平 gr-server
-  local area="$ROOT"
-  if [[ -d "$ROOT/02-probe-analysis/probe/fe" ]]; then
-    area="$ROOT/02-probe-analysis"
-  fi
-  echo -n "$VERSION" > "$area/probe/fe/VERSION"
+  echo -n "$VERSION" > "$AREA/probe/fe/VERSION"
   echo -n "$VERSION" > "$ROOT/VERSION.probe"
-  if [[ -x "$area/scripts/fe/rebuild_bundles.sh" ]]; then
-    bash "$area/scripts/fe/rebuild_bundles.sh"
+  if [[ -x "$AREA/scripts/fe/rebuild_bundles.sh" ]]; then
+    bash "$AREA/scripts/fe/rebuild_bundles.sh"
+  fi
+  # 共享 FE tarball 单源: 所有 arch manifest 哈希同一份 (确定性 tar)。
+  mkdir -p "$ROOT/dist/fe-bundle"
+  if [[ -n "${GR_FE_MASTER_TGZ:-}" && -f "${GR_FE_MASTER_TGZ:-}" ]]; then
+    cp -f "${GR_FE_MASTER_TGZ:-}" "$ROOT/dist/fe-bundle/fe-${VERSION}.tgz"
+  elif [[ ! -f "$ROOT/dist/fe-bundle/fe-${VERSION}.tgz" ]]; then
+    tar -C "$AREA" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+        -cf - probe/fe | gzip -n -9 > "$ROOT/dist/fe-bundle/fe-${VERSION}.tgz"
   fi
 }
 
-stage_artifacts() {
-  local arch="$1"
-  local triple="$2"
-  local out="$3"
-  local target_dir="$4"
+stage_bundle() {
+  # stage_bundle <arch> <triple> <out> <target_dir>
+  local arch="$1" triple="$2" out="$3" target_dir="$4"
+  local bundle_name="greenpng-${VERSION}-${arch}"
+  local bd="$out/bundle/$bundle_name"
 
-  mkdir -p "$out"
-  # 公钥随产物分发 (install.sh 从 release 资产读取公钥验签)
-  if [[ -f "$ROOT/keys/ota_ed25519.pk" ]]; then
-    cp -f "$ROOT/keys/ota_ed25519.pk" "$out/ota_ed25519.pk"
-  elif [[ -f "$ROOT/keys/ota_ed25519.pub" ]]; then
-    cp -f "$ROOT/keys/ota_ed25519.pub" "$out/ota_ed25519.pk"
-  fi
-  cp -f "$target_dir/gr-service" "$out/gr-service-${VERSION}-${triple}"
-  cp -f "$target_dir/gr-cli" "$out/gr-cli-${VERSION}-${triple}" 2>/dev/null || true
-  chmod +x "$out/gr-service-${VERSION}-${triple}"
-  [[ -f "$out/gr-cli-${VERSION}-${triple}" ]] && chmod +x "$out/gr-cli-${VERSION}-${triple}"
+  rm -rf "$out/bundle"
+  mkdir -p "$bd/bin" "$bd/modules"
+
+  cp -f "$target_dir/gr-service" "$bd/bin/gr-service"
+  cp -f "$target_dir/gr-cli" "$bd/bin/gr-cli" 2>/dev/null || true
+  chmod +x "$bd/bin/gr-service"
+  [[ -f "$bd/bin/gr-cli" ]] && chmod +x "$bd/bin/gr-cli"
 
   local mods_json="[]"
+  local pair name crate so asset art
   for pair in identity:gr_module_identity brain:gr_module_brain analyze:gr_module_analyze ingest:gr_module_ingest edge:gr_module_edge probe_assets:gr_module_probe_assets; do
-    local name crate so asset art
-    name="${pair%%:*}"
-    crate="${pair##*:}"
+    name="${pair%%:*}"; crate="${pair##*:}"
     so="$(find "$target_dir" -maxdepth 1 -name "lib${crate//-/_}.so" | head -1 || true)"
     if [[ -z "$so" || ! -f "$so" ]]; then
       so="$(find "$target_dir" -maxdepth 1 -name "libgr_module_${name}*.so" | head -1 || true)"
@@ -144,13 +151,12 @@ stage_artifacts() {
       echo "[multiarch] WARN missing module so: $name ($arch)"
       continue
     fi
-    asset="libgr_${name}-${VERSION}-${triple}.so"
-    cp -f "$so" "$out/$asset"
+    asset="modules/libgr_${name}-${VERSION}-${triple}.so"
+    cp -f "$so" "$bd/$asset"
     art=$(cargo run -q -p gr-cli -- sign-module \
-      --name "$name" --version "$VERSION" --so "$out/$asset" \
+      --name "$name" --version "$VERSION" --so "$bd/$asset" \
       --secret-key "$ROOT/keys/ota_ed25519.sk" --domain "$name" \
       --release-key "$RELEASE_SK")
-    echo "$art" > "$out/${name}.artifact.json"
     mods_json=$(python3 - <<PY
 import json
 mods = json.loads('''$mods_json''')
@@ -160,71 +166,73 @@ PY
 )
   done
 
-  # FE/admin-spa 与架构无关: 若其他 arch 目录已打包同版本, 复制字节 (sha 一致),
-  # 否则本 arch 首次打包。gzip 含时间戳, 重复打包会产生不同 sha → 各 arch manifest 不一致。
-  # 布局可移植(同 ensure_fe): greenpng 02-probe-analysis/... 或扁平 gr-server
-  local area="$ROOT"
-  if [[ -d "$ROOT/02-probe-analysis/probe/fe" ]]; then
-    area="$ROOT/02-probe-analysis"
-  fi
-  fe_master="$(find "$ROOT/dist" -maxdepth 2 -name "fe-${VERSION}.tgz" ! -path "$out/*" | head -1 || true)"
-  if [[ -n "$fe_master" && "$fe_master" != "$out/fe-${VERSION}.tgz" ]]; then
-    cp -f "$fe_master" "$out/fe-${VERSION}.tgz"
-  elif [[ -n "${GR_FE_MASTER_TGZ:-${GV6_FE_MASTER_TGZ:-}}" && -f "${GR_FE_MASTER_TGZ:-${GV6_FE_MASTER_TGZ:-}}" ]]; then
-    cp -f "${GR_FE_MASTER_TGZ:-${GV6_FE_MASTER_TGZ:-}}" "$out/fe-${VERSION}.tgz"
-  elif [[ ! -f "$out/fe-${VERSION}.tgz" ]]; then
-    tar -C "$area" -czhf "$out/fe-${VERSION}.tgz" probe/fe
-  fi
-  admin_master="$(find "$ROOT/dist" -maxdepth 2 -name "admin-spa.tgz" ! -path "$out/*" | head -1 || true)"
-  if [[ -n "$admin_master" && "$admin_master" != "$out/admin-spa.tgz" ]]; then
-    cp -f "$admin_master" "$out/admin-spa.tgz"
-  elif [[ -n "${GR_ADMIN_MASTER_TGZ:-${GV6_ADMIN_MASTER_TGZ:-}}" && -f "${GR_ADMIN_MASTER_TGZ:-${GV6_ADMIN_MASTER_TGZ:-}}" ]]; then
-    cp -f "${GR_ADMIN_MASTER_TGZ:-${GV6_ADMIN_MASTER_TGZ:-}}" "$out/admin-spa.tgz"
-  elif [[ -d "$area/panel/admin-spa" && ! -f "$out/admin-spa.tgz" ]]; then
-    tar -C "$area" -czf "$out/admin-spa.tgz" panel/admin-spa
+  # FE 展开 + 共享 tgz (跨 arch 字节一致)
+  cp -f "$ROOT/dist/fe-bundle/fe-${VERSION}.tgz" "$out/fe-${VERSION}.tgz"
+  rm -rf "$bd/fe"
+  cp -a "$AREA/probe/fe" "$bd/fe"
+  rm -rf "$bd/admin"
+  cp -a "$AREA/panel/admin-spa" "$bd/admin"
+  if [[ -f "$ROOT/keys/ota_ed25519.pk" ]]; then
+    cp -f "$ROOT/keys/ota_ed25519.pk" "$bd/ota_ed25519.pk"
+  elif [[ -f "$ROOT/keys/ota_ed25519.pub" ]]; then
+    cp -f "$ROOT/keys/ota_ed25519.pub" "$bd/ota_ed25519.pk"
   fi
 
-  python3 - <<PY
-import hashlib, json, os, pathlib
-out = pathlib.Path(r"""$out""")
+  python3 - <<PY > "$bd/manifest.json"
+import hashlib, json, pathlib
 version = """$VERSION"""
 triple = """$triple"""
 arch = """$arch"""
+bd = pathlib.Path(r"""$bd""")
+out = pathlib.Path(r"""$out""")
 mods = json.loads(r'''$mods_json''')
-svc = out / f"gr-service-{version}-{triple}"
-fe = out / f"fe-{version}.tgz"
-cli = out / f"gr-cli-{version}-{triple}"
+for m in mods:
+    flat = m.get("asset", "")
+    if "/" not in flat:
+        m["asset"] = f"modules/{flat}"
+
+def sha(p):
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+def tree_files(root):
+    root = pathlib.Path(root)
+    files = {}
+    for p in sorted(root.rglob("*")):
+        if p.is_file() and not p.is_symlink():
+            files[str(p.relative_to(root))] = sha(p)
+    return files
+
+svc = bd / "bin" / "gr-service"
+cli = bd / "bin" / "gr-cli"
+fe_tgz = out / f"fe-{version}.tgz"
 man = {
-    "product": "green-v7",
+    "product": "greenpng",
     "channel": "stable",
-    "build_id": os.environ.get("GR_BUILD_ID") or os.environ.get("GV6_BUILD_ID", ""),
-    "release_pubkey": os.environ.get("RELEASE_PK_HEX", ""),
-    "release_cert": os.environ.get("RELEASE_CERT", ""),
     "arch": arch,
     "triple": triple,
-    "runtime": {
-        "version": version,
-        "abi": 1,
-        "asset": svc.name,
-        "sha256": hashlib.sha256(svc.read_bytes()).hexdigest(),
-    },
-    # P1-4: signed CLI coverage — the installer verifies the gr-cli helper
-    # against this entry before invoking verify/stage/activate.
-    "cli": {
-        "version": version,
-        "abi": 1,
-        "asset": cli.name,
-        "sha256": hashlib.sha256(cli.read_bytes()).hexdigest(),
-    } if cli.is_file() else None,
-    "fe": {
-        "asset": fe.name,
-        "sha256": hashlib.sha256(fe.read_bytes()).hexdigest(),
-    } if fe.is_file() else None,
+    "runtime": {"version": version, "abi": 1, "asset": "bin/gr-service", "sha256": sha(svc)},
+    "cli": {"version": version, "abi": 1, "asset": "bin/gr-cli", "sha256": sha(cli)} if cli.is_file() else None,
+    "fe": {"asset": fe_tgz.name, "sha256": sha(fe_tgz)},
+    "fe_tree": {"epoch": version, "files": tree_files(bd / "fe")},
+    "admin_tree": {"files": tree_files(bd / "admin")},
     "modules": mods,
 }
-(out / f"manifest-{triple}.json").write_text(json.dumps(man, indent=2) + "\n")
-print("[multiarch] manifest", out / f"manifest-{triple}.json", "modules", len(mods))
+man = {k: v for k, v in man.items() if v is not None}
+print(json.dumps(man, indent=2))
 PY
+
+  cargo run -q -p gr-cli -- sign-manifest --manifest "$bd/manifest.json" \
+    --secret-key "$ROOT/keys/ota_ed25519.sk" \
+    --build-id "$GR_BUILD_ID" \
+    --release-pubkey "$RELEASE_PK_HEX" \
+    --release-cert "$RELEASE_CERT"
+
+  tar -C "$out/bundle" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+      -cf - "$bundle_name" | gzip -n -9 > "$out/$bundle_name.tar.gz"
+  # 守卫/比对用副本 (合并时索引引用包内 manifest.json)
+  cp -f "$bd/manifest.json" "$out/manifest.json"
+  echo -n "$GR_BUILD_ID" > "$out/build_id"
+  echo "[multiarch] bundle $out/$bundle_name.tar.gz"
 }
 
 build_native() {
@@ -240,8 +248,7 @@ build_native() {
   for p in gr-module-identity gr-module-brain gr-module-analyze gr-module-ingest gr-module-edge gr-module-probe-assets; do
     cargo build --release -p "$p" --features plugin
   done
-  stage_artifacts "$arch" "$triple" "$out" "$target_dir"
-  file "$out/gr-service-${VERSION}-${triple}"
+  stage_bundle "$arch" "$triple" "$out" "$target_dir"
 }
 
 build_cross() {
@@ -266,8 +273,7 @@ build_cross() {
       -p "$p" --features plugin
   done
 
-  stage_artifacts "$arch" "$triple" "$out" "$target_dir"
-  file "$out/gr-service-${VERSION}-${triple}"
+  stage_bundle "$arch" "$triple" "$out" "$target_dir"
 }
 
 ensure_keys
@@ -307,83 +313,55 @@ for a in $TARGETS; do
   fi
 done
 
+# ---- merge: ≈5 release assets ----
 MERGE="$ROOT/dist/release-$VERSION"
-# Wipe any stale merge dir first: leftovers from a previous partial build
-# (old binaries / build_id / manifest.json) silently survive cp and then
-# mismatch the freshly signed manifest (v8.0.0 release incident, 2026-09-01).
 rm -rf "$MERGE"
 mkdir -p "$MERGE"
 for a in $TARGETS; do
   src="$ROOT/dist/release-$VERSION-$a"
   [[ -d "$src" ]] || continue
-  # -f: a stale merge dir (e.g. from a previous partial build) must never
-  # keep old binaries — the manifest signs the FRESH build (iss 8.0.0 lesson).
-  cp -af "$src"/* "$MERGE/" 2>/dev/null || cp -af "$src"/. "$MERGE/"
+  cp -f "$src/greenpng-${VERSION}-${a}.tar.gz" "$MERGE/"
 done
-# Generic module sidecars are ambiguous after a multi-arch merge. The signed
-# per-architecture manifest is the only consumer source of module assets.
-find "$MERGE" -maxdepth 1 -type f -name '*.artifact.json' -delete
+cp -f "$ROOT/dist/fe-bundle/fe-${VERSION}.tgz" "$MERGE/"
+cp -f "$ROOT/keys/ota_ed25519.pk" "$MERGE/ota_ed25519.pk"
 
 python3 - <<PY
-import json, pathlib
-merge = pathlib.Path(r"""$MERGE""")
+import hashlib, json, pathlib
 version = """$VERSION"""
+root = pathlib.Path(r"""$ROOT""")
+merge = root / f"dist/release-{version}"
 index = {
-  "product": "green-v7",
-  "version": version,
-  "architectures": {},
-  "build_host": "$(uname -m)",
-  "note": "Built locally; GitHub Releases is asset hosting only.",
+    "product": "greenpng",
+    "version": version,
+    "architectures": {},
+    "fe": {},
+    "build_host": """$(uname -m)""",
 }
-for p in sorted(merge.glob("manifest-*-linux-gnu.json")):
-    if p.name == "manifest-index.json":
-        continue
-    man = json.loads(p.read_text())
-    arch = man.get("arch") or "unknown"
-    index["architectures"][arch] = {"manifest": p.name, "triple": man.get("triple")}
+for arch in """$TARGETS""".split():
+    bundle = merge / f"greenpng-{version}-{arch}.tar.gz"
+    assert bundle.is_file(), f"missing bundle for {arch}"
+    triples = {"x86_64": "x86_64-linux-gnu", "aarch64": "aarch64-linux-gnu"}
+    index["architectures"][arch] = {
+        "triple": triples[arch],
+        "bundle": bundle.name,
+        "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+        "manifest": "manifest.json",
+    }
+fe = merge / f"fe-{version}.tgz"
+index["fe"] = {"asset": fe.name, "sha256": hashlib.sha256(fe.read_bytes()).hexdigest()}
 (merge / "manifest-index.json").write_text(json.dumps(index, indent=2) + "\n")
 print(json.dumps(index, indent=2))
 PY
 
-for mf in "$MERGE"/manifest-*-linux-gnu.json; do
-  [[ -f "$mf" ]] || continue
-  cargo run -q -p gr-cli -- sign-manifest --manifest "$mf" --secret-key "$ROOT/keys/ota_ed25519.sk" \
-    --build-id "$GR_BUILD_ID" \
-    --release-pubkey "$RELEASE_PK_HEX" \
-    --release-cert "$RELEASE_CERT"
-done
-
-# Back-compat: host arch also as manifest.json for single-arch OTA scripts
-host_triple="$(triple_for "$HOST_ARCH")"
-if [[ -f "$MERGE/manifest-${host_triple}.json" ]]; then
-  cp -f "$MERGE/manifest-${host_triple}.json" "$MERGE/manifest.json"
-fi
-
-# Release key material as convenience assets, derived from the SIGNED
-# manifest (single source of truth — never from build-time shell state,
-# which may diverge from what was actually signed; v8.0.0 incident).
-# The multiarch path (build_signed_modules.sh) does not write these, unlike
-# the HOST_ONLY path (build_and_publish.sh) — derive them here so both
-# paths ship the same asset set.
-python3 - <<PY
-import json, pathlib
-merge = pathlib.Path(r"""$MERGE""")
-man = json.loads((merge / "manifest.json").read_text())
-(merge / "build_id").write_text((man.get("build_id") or "") + "\\n")
-(merge / "release_pubkey.hex").write_text(man.get("release_pubkey") or "")
-(merge / "release_cert.sig").write_text(man.get("release_cert") or "")
-print("[multiarch] key material assets derived from signed manifest")
-PY
-
 echo "[multiarch] merged → $MERGE"
-ls -la "$MERGE" | head -30
+ls -la "$MERGE"
 
 if [[ "${SKIP_PUBLISH:-0}" == "1" ]]; then
   echo "[multiarch] SKIP_PUBLISH=1 done"
   exit 0
 fi
 
-REPO="${GR_RELEASE_REPO:-${GV6_RELEASE_REPO:-greenpng/install}}"
+REPO="${GR_RELEASE_REPO:-greenpng/gr-server}"
 if command -v gh >/dev/null 2>&1; then
   mapfile -t ASSETS < <(find "$MERGE" -maxdepth 1 -type f ! -name '*.sk' | sort)
   if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
@@ -391,8 +369,8 @@ if command -v gh >/dev/null 2>&1; then
     gh release upload "v${VERSION}" "${ASSETS[@]}" --repo "$REPO"
   else
     gh release create "v${VERSION}" "${ASSETS[@]}" --repo "$REPO" \
-      --title "Green V7 ${VERSION}" \
-      --notes "Local multi-arch build (x86_64 + aarch64). See manifest-index.json."
+      --title "greenpng ${VERSION}" \
+      --notes "Whole-bundle release (x86_64 + aarch64). See manifest-index.json."
   fi
 else
   echo "[multiarch] gh not installed — artifacts ready at $MERGE"

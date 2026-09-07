@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"os"
 
-	gr "github.com/greenpng/green-v7/sdk/go"
+	gr "github.com/greenpng/gr-server/sdk/go"
 )
 
 func main() {

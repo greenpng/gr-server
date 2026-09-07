@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Pull ONE Green V7 module (.so) from a signed GitHub release and (optionally)
+# Pull ONE greenpng module (.so) from the signed WHOLE BUNDLE and (optionally)
 # activate it on the hot path — the free-tier per-module updater.
+# (greenpng 1.0.0+: modules ship inside greenpng-<ver>-<arch>.tar.gz; gr-cli
+# module update downloads + verifies the bundle and extracts the .so.)
 #
 # Paid deployments can use the admin panel OTA instead (POST /api/ota/install
 # {name, version, activate}); this script is the equivalent for free nodes and
@@ -16,22 +18,22 @@
 # Env:
 #   MODULE           module name: identity brain analyze ingest edge probe_assets
 #   VERSION          target module version; empty = highest in manifest
-#   INSTALL_ROOT     default: /opt/green-v7
+#   INSTALL_ROOT     default: /opt/greenpng
 #   RELEASE_REPO     default: greenpng/gr-server (历史版本可用 ENV 覆盖回 greenpng/install)
 #   ARCH_TRIPLE      default: auto from uname -m → {arch}-linux-gnu
-#   GR_RELEASE_BASE / GV6_RELEASE_BASE override the full release URL prefix (for mirrors)
-#   GR_PUBKEY_PATH / GV6_PUBKEY_PATH  default: $INSTALL_ROOT/ota_ed25519.pk
+#   GR_RELEASE_BASE  override the full release URL prefix (for mirrors)
+#   GR_PUBKEY_PATH   default: $INSTALL_ROOT/ota_ed25519.pk
 #   ACTIVATE         default: 1 — flip the active marker after staging
-#   GR_CLI / GV6_CLI                  default: $INSTALL_ROOT/bin/gr-cli
+#   GR_CLI           default: $INSTALL_ROOT/bin/gr-cli
 set -euo pipefail
 
-INSTALL_ROOT="${INSTALL_ROOT:-/opt/green-v7}"
+INSTALL_ROOT="${INSTALL_ROOT:-/opt/greenpng}"
 RELEASE_REPO="${RELEASE_REPO:-greenpng/gr-server}"
 MODULE="${MODULE:-${1:-}}"
 VERSION="${VERSION:-}"
 ACTIVATE="${ACTIVATE:-1}"
-OTA_ROOT_PUBKEY_SHA256="${GR_OTA_ROOT_PUBKEY_SHA256:-${GV6_OTA_ROOT_PUBKEY_SHA256:-4a2296d33e66838d8a8cbd697a686bfb79c93a3d7da8a8f4cd60e949b297ea0d}}"
-GR_CLI="${GR_CLI:-${GV6_CLI:-$INSTALL_ROOT/bin/gr-cli}}"
+OTA_ROOT_PUBKEY_SHA256="${GR_OTA_ROOT_PUBKEY_SHA256:-4a2296d33e66838d8a8cbd697a686bfb79c93a3d7da8a8f4cd60e949b297ea0d}"
+GR_CLI="${GR_CLI:-$INSTALL_ROOT/bin/gr-cli}"
 
 if [[ -z "$MODULE" ]]; then
   echo "USAGE: MODULE=<name> $0   (modules: identity brain analyze ingest edge probe_assets)" >&2
@@ -52,8 +54,8 @@ esac
 ARCH_TRIPLE="${ARCH_TRIPLE:-${host_arch}-linux-gnu}"
 
 if [[ -z "$VERSION" ]]; then
-  if [[ -n "${GR_RELEASE_BASE:-${GV6_RELEASE_BASE:-}}" ]]; then
-    echo "[module-ota] MODULE=$MODULE target=highest-version-in-manifest (GR_RELEASE_BASE/GV6_RELEASE_BASE set, no VERSION)"
+  if [[ -n "${GR_RELEASE_BASE:-}" ]]; then
+    echo "[module-ota] MODULE=$MODULE target=highest-version-in-manifest (GR_RELEASE_BASE set, no VERSION)"
   else
     echo "[module-ota] MODULE=$MODULE target=release-tag-version" >&2
     echo "[module-ota] no $INSTALL_ROOT/VERSION and VERSION unset — set VERSION=x.y.z" >&2
@@ -63,40 +65,37 @@ else
   echo "[module-ota] MODULE=$MODULE target=VERSION=$VERSION"
 fi
 
-BASE="${GR_RELEASE_BASE:-${GV6_RELEASE_BASE:-https://github.com/${RELEASE_REPO}/releases/download/v${VERSION}}}"
+BASE="${GR_RELEASE_BASE:-https://github.com/${RELEASE_REPO}/releases/download/v${VERSION}}"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Prefer multi-arch index → per-arch manifest; fall back to per-arch/legacy names.
-MANIFEST_NAME=""
+# Whole-bundle releases: the manifest lives inside the bundle — gr-cli module
+# update fetches + verifies it end-to-end. Only flat/fixture trees need the
+# manifest preflight display here.
+BUNDLE_RELEASE=0
 if curl -fsSL -o "$TMP/manifest-index.json" "$BASE/manifest-index.json" 2>/dev/null; then
-  MANIFEST_NAME="$(python3 - <<PY
+  HAS_BUNDLE="$(python3 - <<PY
 import json
 idx = json.load(open("$TMP/manifest-index.json"))
 entry = (idx.get("architectures") or {}).get("$host_arch") or {}
-print(entry.get("manifest") or "")
+print("1" if entry.get("bundle") else "")
 PY
 )"
-  if [[ -n "$MANIFEST_NAME" && ( "$MANIFEST_NAME" == */* || "$MANIFEST_NAME" == *..* ) ]]; then
-    echo "[module-ota] manifest name rejected (path escape): $MANIFEST_NAME" >&2
-    MANIFEST_NAME=""
-  fi
+  [[ -n "$HAS_BUNDLE" ]] && BUNDLE_RELEASE=1
 fi
-if [[ -n "$MANIFEST_NAME" ]]; then
-  curl -fsSL -o "$TMP/manifest.json" "$BASE/$MANIFEST_NAME" 2>/dev/null \
-    || { echo "[module-ota] cannot fetch $BASE/$MANIFEST_NAME" >&2; exit 1; }
-  echo "[module-ota] manifest: $MANIFEST_NAME (arch=$host_arch)"
+if [[ "$BUNDLE_RELEASE" == "1" ]]; then
+  echo "[module-ota] whole-bundle release detected — gr-cli module update will fetch+verify the bundle"
 elif curl -fsSL -o "$TMP/manifest.json" "$BASE/manifest-${ARCH_TRIPLE}.json" 2>/dev/null; then
-  echo "[module-ota] manifest: manifest-${ARCH_TRIPLE}.json"
+  echo "[module-ota] manifest: manifest-${ARCH_TRIPLE}.json (flat fixture)"
 elif curl -fsSL -o "$TMP/manifest.json" "$BASE/manifest.json" 2>/dev/null; then
-  echo "[module-ota] manifest: manifest.json (legacy)"
+  echo "[module-ota] manifest: manifest.json (legacy flat)"
 else
   echo "[module-ota] no signed manifest at $BASE" >&2
   exit 1
 fi
 
-PK="${GR_PUBKEY_PATH:-${GV6_PUBKEY_PATH:-$INSTALL_ROOT/ota_ed25519.pk}}"
+PK="${GR_PUBKEY_PATH:-$INSTALL_ROOT/ota_ed25519.pk}"
 [[ -f "$PK" ]] || { echo "[module-ota] OTA root public key missing: $PK" >&2; exit 1; }
 [[ "$(sha256sum "$PK" | awk '{print $1}')" == "$OTA_ROOT_PUBKEY_SHA256" ]] \
   || { echo "[module-ota] OTA root public key fingerprint mismatch ($PK)" >&2; exit 1; }
@@ -104,6 +103,7 @@ PK="${GR_PUBKEY_PATH:-${GV6_PUBKEY_PATH:-$INSTALL_ROOT/ota_ed25519.pk}}"
 # Trust anchor check done above; gr-cli module update re-verifies the full chain.
 # Show the candidate artifact so operators can eyeball before activation.
 # (CLI's pick_module is authoritative for version ranking; this is display only.)
+if [[ "$BUNDLE_RELEASE" != "1" && -f "$TMP/manifest.json" ]]; then
 python3 - "$TMP/manifest.json" "$MODULE" "$VERSION" <<'PY'
 import json, sys
 try:
@@ -128,6 +128,8 @@ print(f"[module-ota] artifact {a['name']}@{a['version']} abi={a['abi']} "
       f"requires_major={a['requires_major']} min_runtime_minor={a['min_runtime_minor']} "
       f"max_runtime_minor={a.get('max_runtime_minor') or 'none'} sha256={a['sha256'][:16]}…")
 PY
+
+fi
 
 [[ -x "$GR_CLI" ]] || {
   echo "[module-ota] gr-cli not found/executable: $GR_CLI" >&2
@@ -157,8 +159,9 @@ if "$GR_CLI" module --help >/dev/null 2>&1; then
   OUT="$("$GR_CLI" "${ARGS[@]}")"
   echo "$OUT"
 else
-  # 7.x rollback helpers may predate `gr-cli module update`; keep rollback
-  # scriptable by doing the same signed stage/activate steps here.
+  # Flat/fixture trees with a legacy CLI only: direct signed stage/activate.
+  # (Bundle releases always carry a `module update`-capable gr-cli.)
+  [[ "$BUNDLE_RELEASE" != "1" ]] || { echo "[module-ota] bundle release but gr-cli lacks 'module update' — rerun install.sh" >&2; exit 1; }
   echo "[module-ota] legacy CLI without 'module update'; using direct stage/activate fallback"
   ART_JSON="$TMP/${MODULE}.artifact.json"
   SO_NAME="$(python3 - "$TMP/manifest.json" "$MODULE" "$VERSION" "$ART_JSON" "$ARCH_TRIPLE" <<'PY'

@@ -71,7 +71,7 @@ fn bot_human() -> BotScore {
 fn fe_b12_emits_antidetect_emulator_prototype_fields() {
     let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     root.pop(); // crates
-    root.pop(); // repo root (green-v7: FE lives under probe/fe; legacy green-v5: fe/)
+    root.pop(); // repo root (FE lives under probe/fe)
     let reg = [root.join("probe/fe/collectors/registry.js"), root.join("fe/collectors/registry.js")]
         .into_iter()
         .find(|p| p.is_file())

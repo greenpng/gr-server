@@ -5,7 +5,7 @@
 //!
 //! ```sh
 //! # 1) generate a lab issuer key (or export GR_LICENSE_SIGNING_KEY / GR_LICENSE_SIGNING_KEY=hex64)
-//! cargo run -p gr-probe-core --example issue_lb_token -- --data-dir /opt/green-v7/data
+//! cargo run -p gr-probe-core --example issue_lb_token -- --data-dir /opt/greenpng/data
 //! #     prints the public key hex + token; keep the private key secret
 //! # 2) the node verifies via <data-dir>/license_ed25519.pk (auto-written) or
 //! #    export GR_LICENSE_PUBKEY_B64=<hex64 of the pubkey>  # legacy GR_* also accepted

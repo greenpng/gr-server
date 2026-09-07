@@ -1,6 +1,6 @@
-# Green V7 数据/缓存服务 (仅数据层 — 本体由 install.sh 安装)
+# greenpng 数据/缓存服务 (仅数据层 — 本体由 install.sh 安装)
 #
-#   postgres: 4 个业务库 (greenv6 主库 + biz/admin/assoc; 8.0 起默认 gr_biz/gr_admin/gr_assoc)
+#   postgres: 4 个业务库 (greenpng 主库 + gr_biz/gr_admin/gr_assoc)
 #   redis:    soft store / 多 worker 共享 L2 / R100 模板 (可选)
 #
 # 用法:
@@ -13,19 +13,19 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: gv6
+      POSTGRES_USER: greenpng
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
-      POSTGRES_DB: greenv6
+      POSTGRES_DB: greenpng
       GR_DB_BIZ: ${GR_DB_BIZ:-gr_biz}
       GR_DB_ADMIN: ${GR_DB_ADMIN:-gr_admin}
       GR_DB_ASSOC: ${GR_DB_ASSOC:-gr_assoc}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - gv6_pg:/var/lib/postgresql/data
+      - greenpng_pg:/var/lib/postgresql/data
       - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gv6 -d greenv6"]
+      test: ["CMD-SHELL", "pg_isready -U greenpng -d greenpng"]
       interval: 3s
       timeout: 2s
       retries: 20
@@ -42,7 +42,7 @@ services:
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
-      - gv6_redis:/data
+      - greenpng_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 3s
@@ -50,5 +50,5 @@ services:
       retries: 20
 
 volumes:
-  gv6_pg:
-  gv6_redis:
+  greenpng_pg:
+  greenpng_redis:
