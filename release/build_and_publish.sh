@@ -4,7 +4,8 @@
 #
 # Asset model (greenpng 1.0.0+): a release ships ≈5 assets —
 #   greenpng-<VER>-<ARCH>.tar.gz   whole bundle (bin/ modules/ fe/ admin/
-#                                 manifest.json + ota_ed25519.pk inside)
+#                                 spec/ manifest.json + ota_ed25519.pk inside;
+#                                 spec/ 自 1.0.1 起 — analyze 运行时数据)
 #   fe-<VER>.tgz                   shared FE tarball (FE-only hot updates)
 #   manifest-index.json            arch → bundle name + sha256 (+ fe entry)
 #   ota_ed25519.pk                 OTA root public key
@@ -185,6 +186,12 @@ fi
 rm -rf "$BUNDLE_DIR/admin"
 cp -a "$AREA/panel/admin-spa" "$BUNDLE_DIR/admin"
 
+# ---- spec (运行时 analyze 依赖: sources/catalog/weights JSON) ----
+# 178 v1.0.0 实测: 缺 spec → analyze worker 全 DLQ "missing spec/sources.json",
+# analysis_results 永远为空。spec 属于产品运行时数据, 随整包分发并进签名清单。
+rm -rf "$BUNDLE_DIR/spec"
+cp -a "$AREA/spec" "$BUNDLE_DIR/spec"
+
 # ---- root public key ----
 if [[ -f keys/ota_ed25519.pk ]]; then
   cp -f keys/ota_ed25519.pk "$BUNDLE_DIR/ota_ed25519.pk"
@@ -228,6 +235,7 @@ man = {
     "fe": {"asset": fe_tgz.name, "sha256": sha(fe_tgz)},
     "fe_tree": {"epoch": version, "files": tree_files(bundle_dir / "fe")},
     "admin_tree": {"files": tree_files(bundle_dir / "admin")},
+    "spec_tree": {"files": tree_files(bundle_dir / "spec")},
     "modules": mods,
 }
 print(json.dumps(man, indent=2))

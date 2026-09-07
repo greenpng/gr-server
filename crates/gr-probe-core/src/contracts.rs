@@ -28,9 +28,9 @@ pub fn find_spec_dir() -> PathBuf {
         }
     }
     // Order: CWD-relative deploy paths first, then build-tree path (dev).
+    // (greenpng clean break: 不再回退旧 green-v5 安装树路径)
     let candidates = [
         PathBuf::from("spec"),
-        PathBuf::from("/opt/green-v5/spec"),
         PathBuf::from("../spec"),
         PathBuf::from("../../spec"),
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../spec"),

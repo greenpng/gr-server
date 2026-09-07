@@ -1,24 +1,33 @@
-//! Product stamp SSOT: root `VERSION` (semver 8.x.y). Keep aligned with gr-probe-core.
+//! Product stamp SSOT: workspace-root `VERSION`. Keep aligned with gr-probe-core.
+//! 布局可移植: 向上找「Cargo.toml + VERSION」工作区根 (编号布局/扁平发行仓两用);
+//! 旧固定 manifest/../../.. 在扁平发行仓落到仓库上一级 → 发版二进制错戳 "dev"。
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest.join("../../..");
-    let candidates = [
-        root.join("VERSION"),
-        root.join("fe/VERSION"),
-        manifest.join("../../../VERSION"),
-    ];
+    let mut root: Option<PathBuf> = None;
+    {
+        let mut dir = manifest.clone();
+        for _ in 0..6 {
+            if dir.join("Cargo.toml").is_file() && dir.join("VERSION").is_file() {
+                root = Some(dir.clone());
+                break;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
     let mut ver = "dev".to_string();
-    for p in &candidates {
+    if let Some(r) = root.as_ref() {
+        let p = r.join("VERSION");
         println!("cargo:rerun-if-changed={}", p.display());
-        if let Ok(s) = fs::read_to_string(p) {
+        if let Ok(s) = fs::read_to_string(&p) {
             let t = s.trim().to_string();
             if !t.is_empty() {
                 ver = t;
-                break;
             }
         }
     }
