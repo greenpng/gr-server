@@ -85,7 +85,10 @@ echo -n "$VERSION" > "$ROOT/VERSION.probe"
 echo "[release] product_version SSOT=$VERSION (probe/fe/VERSION + VERSION.probe synced)"
 if [[ -x "$AREA/scripts/fe/rebuild_bundles.sh" ]]; then
   echo "[release] rebuild FE bundles so pin/entry stamp == $VERSION"
-  bash "$AREA/scripts/fe/rebuild_bundles.sh"
+  # 树内重建强制 plain (terser-only): 保留字面 __GR_BUILD_IMPL__ 戳 —
+  # 该树会被 sync 提交, Gate A A2 静态检查依赖字面戳。发行面的 P1-6 混淆
+  # 由 release.yml fe job 的共享 tgz 承担 (整包 fe/ 取自该 tgz)。
+  GR_OBFUSCATE_FE=0 bash "$AREA/scripts/fe/rebuild_bundles.sh"
 fi
 export GR_RELEASE_VERSION="$VERSION"
 export GR_MODULE_VERSION="$VERSION"
@@ -142,16 +145,41 @@ for pair in identity:gr_module_identity brain:gr_module_brain analyze:gr_module_
 done
 
 # ---- FE (expanded fe/ in bundle) + shared fe tarball ----
+# 信任形态: 共享 fe tgz 由 release.yml 单独 fe job 用本 build_id 混淆构建
+# (P1-6 per-release 混淆)。提供 master tgz 时, 整包内 fe/ 直接取自该 tgz
+# (与 fe.sha256 同源同字节); 无 tgz (HOST_ONLY/A4 实验) 用树内 plain 重建。
 FE_ASSET="fe-${VERSION}.tgz"
+FE_FROM_TGZ=0
 if [[ -n "${GR_FE_MASTER_TGZ:-}" && -f "${GR_FE_MASTER_TGZ:-}" ]]; then
   cp -f "${GR_FE_MASTER_TGZ:-}" "$OUT/$FE_ASSET"
+  FE_FROM_TGZ=1
 else
   # deterministic tar (mtime/uid/order pinned + gzip -n): same tree → same sha
   tar -C "$AREA" --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
       -cf - probe/fe | gzip -n -9 > "$OUT/$FE_ASSET"
 fi
 rm -rf "$BUNDLE_DIR/fe"
-cp -a "$AREA/probe/fe" "$BUNDLE_DIR/fe"
+if [[ "$FE_FROM_TGZ" == "1" ]]; then
+  # 提取共享 tgz 的 probe/fe → 整包 fe/ (拒绝路径逃逸/符号链接, 同 updater 守卫;
+  # 组件级判定 — fe 树含 [[...path]] 模板目录名, 不能按 ".." 子串误伤)
+  FE_STAGE="$OUT/fe-tgx"
+  rm -rf "$FE_STAGE"
+  mkdir -p "$FE_STAGE"
+  BAD_TAR_ENTRY=0
+  tar -tzf "$OUT/$FE_ASSET" | while read -r line; do
+    [[ -z "$line" ]] && continue
+    if [[ "$line" == /* || "$line" == ../* || "$line" == *"/../"* || "$line" == *"/.." ]]; then
+      echo "[release] FE tgz entry rejected (path escape): $line" >&2
+      exit 1
+    fi
+  done || BAD_TAR_ENTRY=1
+  [[ "$BAD_TAR_ENTRY" == "0" ]] || exit 1
+  tar -xzf "$OUT/$FE_ASSET" -C "$FE_STAGE"
+  [[ -d "$FE_STAGE/probe/fe" ]] || { echo "[release] FE tgz layout invalid (probe/fe missing)" >&2; exit 1; }
+  cp -a "$FE_STAGE/probe/fe" "$BUNDLE_DIR/fe"
+else
+  cp -a "$AREA/probe/fe" "$BUNDLE_DIR/fe"
+fi
 
 # ---- admin SPA (expanded admin/) ----
 rm -rf "$BUNDLE_DIR/admin"
