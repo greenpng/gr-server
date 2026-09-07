@@ -582,8 +582,37 @@ async fn main() -> anyhow::Result<()> {
         "gr-service: independent process (control plane + in-tree probe plane)"
     );
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    // SIGTERM 必须能停掉控制面: Pingora 自装的 TERM handler 只关它自己的
+    // 探针/网关监听 (进程级 handler 注册后内核不再默认杀进程), axum 若不接
+    // graceful shutdown 会继续服 28680 → 进程半死 (TERM 后 28765/28766 关、
+    // 28680 活, 升级器/健康门被假阳性骗过 — v1.0.0→v1.0.1 gate-b B3 实测)。
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
+}
+
+/// 控制面 graceful shutdown 信号: SIGINT / SIGTERM 任一即返回。
+/// main 返回 = 进程退出 (detach 的 probe/gateway 线程随之终止)。
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 /// Directory that `ota/install-runtime` writes `bin/gr-service` into.
