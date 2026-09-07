@@ -131,6 +131,8 @@ pg_dsn() { echo "postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_P
 if [[ "$WITH_DOCKER" == "1" ]]; then
   command -v docker >/dev/null 2>&1 || die "--with-docker requires docker"
   DDIR="$SCRIPT_DIR/docker"
+  [[ -f "$DDIR/docker-compose.yml" ]] \
+    || die "--with-docker requires the install/docker/ tree next to install.sh (repo install); standalone single-file installs must provision data services separately (see install/docker/ in the repo)"
   D_ENV="$DDIR/.env"
   if [[ -f "$D_ENV" ]]; then
     set -a; # shellcheck disable=SC1091
@@ -502,7 +504,39 @@ if [[ "$NO_SYSTEMD" != "1" ]] && have_sudo; then
   else
     sudo chown -R greenpng:greenpng "$PREFIX"
   fi
-  sed "s|{PREFIX}|$PREFIX|g" "$SCRIPT_DIR/systemd/greenpng.service" > "$TMP/greenpng.service"
+  # systemd 单元来源: 仓库树文件优先 (install/systemd/greenpng.service);
+  # 单文件安装 (curl 独立下发, 无树) → 内嵌模板兜底, 保持 install.sh 自包含。
+  # 内嵌内容必须与 install/systemd/greenpng.service 保持一致。
+  if [[ -f "$SCRIPT_DIR/systemd/greenpng.service" ]]; then
+    cp "$SCRIPT_DIR/systemd/greenpng.service" "$TMP/greenpng.service"
+  else
+    cat > "$TMP/greenpng.service" <<'UNIT'
+[Unit]
+Description=greenpng (control plane + in-tree probe plane)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile={PREFIX}/.env
+User=greenpng
+Group=greenpng
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist
+ExecStart={PREFIX}/bin/gr-service
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  fi
+  sed -i "s|{PREFIX}|$PREFIX|g" "$TMP/greenpng.service"
   if [[ -n "${SUDO_PASS:-}" ]]; then
     printf '%s\n' "$SUDO_PASS" | sudo -S sh -c "install -m 0644 \"$TMP/greenpng.service\" /etc/systemd/system/greenpng.service && systemctl daemon-reload && systemctl enable greenpng && systemctl restart greenpng" >/dev/null
   else
