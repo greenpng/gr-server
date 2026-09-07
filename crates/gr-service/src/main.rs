@@ -69,11 +69,11 @@ struct Args {
     #[arg(long, default_value = "modules", env = "GR_MODULES_DIR")]
     modules_dir: PathBuf,
 
-    /// PostgreSQL DSN for probe store. Required. Legacy aliases: GR_/GR_DATABASE_URL.
+    /// PostgreSQL DSN for probe store. Required (env: GR_DATABASE_URL).
     #[arg(long, default_value = "", env = "GR_DATABASE_URL")]
     database_url: String,
 
-    /// Ignored. Probe store is PostgreSQL-only (`GR_DATABASE_URL`; legacy GR_/GR_ accepted).
+    /// Ignored. Probe store is PostgreSQL-only (`GR_DATABASE_URL`).
     #[arg(long, hide = true)]
     db: Option<PathBuf>,
 
@@ -166,91 +166,12 @@ fn is_prod_deploy_env() -> bool {
     matches!(e.as_str(), "prod" | "production" | "live")
 }
 
-fn mirror_one_env_alias(name: &str) {
-    let gr = format!("GR_{name}");
-    let gr = format!("GR_{name}");
-    let gr = format!("GR_{name}");
-    let Some(value) = std::env::var(&gr)
-        .ok()
-        .or_else(|| std::env::var(&gr).ok())
-        .or_else(|| std::env::var(&gr).ok())
-    else {
-        return;
-    };
-    // In-process only: enforce helper priority (GR → GR → GR) for older
-    // clap/env readers that still name a single legacy variable.
-    std::env::set_var(&gr, &value);
-    std::env::set_var(&gr, &value);
-    std::env::set_var(&gr, &value);
-}
-
-fn mirror_env_aliases() {
-    for name in [
-        // gr-service clap envs (clap accepts one env name; mirror GR before parse).
-        "BIND",
-        "PROBE_BIND",
-        "GATEWAY_BIND",
-        "PROBE_ADMIN_BIND",
-        "BIND_TLS",
-        "TLS_CERT",
-        "TLS_KEY",
-        "TLS_H2",
-        "SNI_MAP",
-        "DATA_DIR",
-        "MODULES_DIR",
-        "DATABASE_URL",
-        "STATIC_DIR",
-        "ROLE",
-        "ANALYZE_WORKERS",
-        "CLUSTER_KEY",
-        "ADVERTISE",
-        "INTERNAL_ADDR",
-        "RELEASE_URL",
-        "PUBKEY_PATH",
-        "ADMIN_SPA",
-        "SOFT_V2_READY",
-        "CORS_ORIGINS",
-        // Probe/admin companion DBs and historical probe-plane envs.
-        "BIZ_DATABASE_URL",
-        "ADMIN_DATABASE_URL",
-        "ASSOCIATION_DATABASE_URL",
-        "CHALLENGE_SECRET",
-        "SEAL_SECRET",
-        "REDIS_URL",
-        "DEPLOY_ENV",
-        "SOFT_STORE_BACKEND",
-        "R100_TEMPLATES",
-        "REQUIRE_SEALED_INGEST",
-        "REQUIRE_RESULT_TOKEN",
-        "ALLOW_LAB_CHALLENGE",
-        "RESULT_TOKEN",
-        "SITE_RESULT_TOKENS",
-        "OPS_TOKEN",
-        // Hardening/release/LB knobs that may still be consumed by legacy readers.
-        "ALLOW_OPEN_CORS",
-        "ALLOW_PUBLIC_BIND",
-        "ALLOW_HTTP_RELEASE",
-        "REQUIRE_MANIFEST_SIG",
-        "REQUIRE_FE_SHA",
-        "REQUIRE_RUNTIME_SHA",
-        "COOKIE_SECURE",
-        "DEV_INSECURE_COOKIE",
-        "STRICT_BOOT_VERIFY",
-        "NODE_ID",
-        "INSTALL_ROOT",
-        "PROBE_MODE",
-        "CLUSTER_PEERS",
-        "LB_STATIC_NODES",
-        "LB_CONFIG",
-        "LB_CONFIG_PATH",
-    ] {
-        mirror_one_env_alias(name);
-    }
-}
+// 历史 mirror_one_env_alias/mirror_env_aliases 已随批次2 clean-break 改名删除:
+// 旧实现把多个遗留前缀别名镜像到 clap 认的单一 env 名; 盲替换后三个前缀
+// 全坍缩为 GR_ 同名 (恒等 set_var, 纯死代码)。env 解析统一走 gr_abi::env
+// (GR_ 主名优先)。
 
 fn map_env_aliases() {
-    mirror_env_aliases();
-
     let prod = is_prod_deploy_env();
     if prod {
         // R-02 / supply-chain: require HTTPS release channel by default.
@@ -303,8 +224,6 @@ fn map_env_aliases() {
             std::env::set_var("GR_REQUIRE_RESULT_TOKEN", "0");
         }
     }
-
-    mirror_env_aliases();
 }
 
 #[tokio::main]
@@ -378,12 +297,11 @@ async fn main() -> anyhow::Result<()> {
     let static_dir = resolve_static_dir(&args.static_dir);
     let database_url = resolve_database_url(&args.database_url);
     if database_url.trim().is_empty() {
-        anyhow::bail!("GR_DATABASE_URL is required (legacy GR_/GR_ accepted); SQLite probe store was removed");
+        anyhow::bail!("GR_DATABASE_URL is required (PostgreSQL); SQLite probe store was removed");
     }
     if gr_abi::env::get("DATABASE_URL").is_none() {
         std::env::set_var("GR_DATABASE_URL", &database_url);
     }
-    mirror_one_env_alias("DATABASE_URL");
     require_pg_companion_urls()?;
     // Apply CLI CORS after env defaults (empty CLI → env / prod admin / lab *)
     let cors_final = {
@@ -402,7 +320,6 @@ async fn main() -> anyhow::Result<()> {
         }
     };
     std::env::set_var("GR_CORS_ORIGINS", &cors_final);
-    mirror_one_env_alias("CORS_ORIGINS");
     // P1-5: remember whether signed-OTA boot verification applies (pubkey
     // moves into `cfg` below).
     let has_ota_pubkey = !pubkey.is_empty();
@@ -498,7 +415,7 @@ async fn main() -> anyhow::Result<()> {
     // --- In-tree probe/analyze plane (blocking Pingora) on dedicated thread(s) ---
     if !args.admin_only {
         let db = args.data_dir.join("probe_pg_unused");
-        // Probe-plane admin DSN is GR_ADMIN_DATABASE_URL (legacy GR_/GR_ accepted).
+        // Probe-plane admin DSN is GR_ADMIN_DATABASE_URL.
         // This path is only the cert/data directory parent (not a SQLite file).
         let admin_db = args.data_dir.join("probe_admin").join("admin.pg");
         let soft_dir = args.data_dir.join("soft_store");
