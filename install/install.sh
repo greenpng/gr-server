@@ -198,7 +198,9 @@ fi
 # ---------- 下载 + 校验 (参考 update_runtime_from_github.sh) ----------
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$PREFIX/bin" "$PREFIX/modules" "$PREFIX/data" "$PREFIX/dist/release-$VERSION"
+# log/ 必须随树一并创建: systemd 单元 ReadWritePaths={PREFIX}/log 在
+# ProtectSystem=strict 命名空间下要求目录先存在, 否则 pre-exec 即 226/NAMESPACE 崩溃。
+mkdir -p "$PREFIX/bin" "$PREFIX/modules" "$PREFIX/data" "$PREFIX/dist/release-$VERSION" "$PREFIX/log"
 
 # ---------- 整包制: index → bundle sha → 安全解包 → 内部 manifest ----------
 # 信任顺序: 先取顶层公钥(指纹钉死) → 校验整包 sha(index) → 解包 → 用公钥
