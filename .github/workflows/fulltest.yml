@@ -1,0 +1,255 @@
+# fulltest — 公开仓 runner 的运行面全面测试 (docs/workstreams/gr-server/13-public-runner-fulltest.md)。
+#
+# 与既有两门互补 (测源码不能代替测包, 测包不能代替测行为):
+#   Gate A  = 源码能编/契约过/预打包树合法 (每次 push, 双架构)
+#   Gate B  = 发布资产 sh/docker 安装+升级+回滚 (发版时, release.yml 内)
+#   fulltest = 源码构建起来的「活栈」上的行为面: 管理面板/设置生效/高并发/冷热交换
+#              (每次 push 到 main 自动 + 每周一例行 + 手动; dispatch/schedule 额外跑 install-smoke)
+#
+# 触发策略: push main = 行为三件 (panel/load/hotcold, debug 构建, ~15min);
+#           workflow_dispatch / schedule = 加 install-smoke (预打包→install.sh→冒烟→升级)。
+# 架构: 仅 x86_64 — 行为与架构无关, 编译/打包架构覆盖归 Gate A/B。
+name: fulltest
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      with_install:
+        description: "run install-smoke (prepackage → install.sh → smoke → upgrade)"
+        type: boolean
+        default: true
+      load_sessions:
+        description: "load test session count"
+        type: number
+        default: 400
+      load_concurrency:
+        description: "load test concurrency"
+        type: number
+        default: 64
+  schedule:
+    - cron: "37 3 * * 1"
+concurrency:
+  group: fulltest-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.88.0"
+      - name: cargo build (debug, gr-service + gr-cli)
+        run: cargo build -p gr-service -p gr-cli
+      - name: upload binaries
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: e2e-bin
+          path: |
+            target/debug/gr-service
+            target/debug/gr-cli
+          if-no-files-found: error
+
+  panel:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with: { name: e2e-bin, path: target/debug }
+      - run: chmod +x target/debug/gr-service target/debug/gr-cli
+      - name: boot stack + panel e2e
+        run: |
+          set -euo pipefail
+          bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e"
+          bash install/test/e2e/panel_e2e.sh "$RUNNER_TEMP/gr-e2e/stack.env"
+      - name: teardown
+        if: always()
+        run: bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e" --stop || true
+      - name: upload evidence
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: fulltest-panel
+          path: ${{ runner.temp }}/gr-e2e/*.log
+          if-no-files-found: ignore
+
+  load:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with: { name: e2e-bin, path: target/debug }
+      - run: chmod +x target/debug/gr-service target/debug/gr-cli
+      - name: boot stack + load stability
+        run: |
+          set -euo pipefail
+          bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e"
+          python3 install/test/e2e/load_stability.py \
+            --stack-env "$RUNNER_TEMP/gr-e2e/stack.env" \
+            --sessions "${{ inputs.load_sessions || 400 }}" \
+            --concurrency "${{ inputs.load_concurrency || 64 }}" \
+            --out "$RUNNER_TEMP/gr-e2e/load.json"
+      - name: teardown
+        if: always()
+        run: bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e" --stop || true
+      - name: upload evidence
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: fulltest-load
+          path: |
+            ${{ runner.temp }}/gr-e2e/load.json
+            ${{ runner.temp }}/gr-e2e/*.log
+          if-no-files-found: ignore
+
+  hotcold:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with: { name: e2e-bin, path: target/debug }
+      - run: chmod +x target/debug/gr-service target/debug/gr-cli
+      - name: boot hotcold stack + tiering e2e
+        run: |
+          set -euo pipefail
+          bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e" --hotcold
+          bash install/test/e2e/hotcold_e2e.sh "$RUNNER_TEMP/gr-e2e/stack.env"
+      - name: teardown
+        if: always()
+        run: bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e" --stop || true
+      - name: upload evidence
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: fulltest-hotcold
+          path: ${{ runner.temp }}/gr-e2e/*.log
+          if-no-files-found: ignore
+
+  install-smoke:
+    # push 不跑 (Gate B 发版时已测正式资产; 此件抓「两次发版之间」安装器漂移,
+    # 对源码预打包树走用户同款 install.sh + 升级链)。dispatch / schedule 才跑。
+    needs: build
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.88.0"
+      - name: prepackage (lab keys, discard — Gate A A4 同款)
+        env:
+          GR_ALLOW_KEYGEN: "1"
+          SKIP_PUBLISH: "1"
+          HOST_ONLY: "1"
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          set -euo pipefail
+          npm install --prefix scripts/fe --no-audit --no-fund
+          npm ci --prefix panel/admin-ui --no-audit --no-fund
+          npm run build --prefix panel/admin-ui
+          TARGETS="$(uname -m)" bash release/build_multiarch.sh
+      - name: serve dist + compose PG (gate-b B1 同款)
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          DIST="$PWD/dist/release-${VERSION}"
+          [[ -d "$DIST" ]] || { find dist -maxdepth 3 -type d; echo "dist tree missing" >&2; exit 1; }
+          SRV_PORT=$((18000 + RANDOM % 2000))
+          echo "SRV_PORT=$SRV_PORT" >> "$GITHUB_ENV"
+          echo "DIST=$DIST" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          nohup python3 -m http.server "$SRV_PORT" --bind 127.0.0.1 --directory "$DIST" >/tmp/srv.log 2>&1 &
+          sleep 2
+          curl -fsS "http://127.0.0.1:${SRV_PORT}/manifest-index.json" >/dev/null && echo "artifact server up"
+          cd install/docker
+          if [[ ! -f .env ]]; then
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
+            echo "REDIS_PASSWORD=$(openssl rand -hex 16)" >> .env
+          fi
+          docker compose up -d
+          for db in gr_biz gr_admin gr_assoc; do
+            ok=0
+            for i in $(seq 1 90); do
+              docker compose exec -T postgres psql -U greenpng -d postgres -c "CREATE DATABASE $db" >/dev/null 2>&1 || true
+              if docker compose exec -T postgres psql -U greenpng -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" 2>/dev/null | grep -q 1; then
+                ok=1; break
+              fi
+              sleep 1
+            done
+            [[ "$ok" == 1 ]] || { echo "db $db never appeared" >&2; exit 1; }
+          done
+          cd "$GITHUB_WORKSPACE"
+          set -a; source install/docker/.env; set +a
+          cat > "$RUNNER_TEMP/gr.env" <<EOF
+          GR_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/greenpng
+          GR_BIZ_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_biz
+          GR_ASSOCIATION_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_assoc
+          GR_ADMIN_DATABASE_URL=postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:5432/gr_admin
+          GR_REDIS_URL=redis://:${REDIS_PASSWORD}@127.0.0.1:6379/0
+          GR_OFFICIAL_URL=https://example.com
+          GR_OAUTH_ADMIN_EMAILS=admin@example.com
+          GR_OAUTH_LOCAL_USER=admin
+          GR_OAUTH_REDIRECT_URI=http://127.0.0.1:28680/oauth/callback
+          GR_ANALYZE_WORKERS=1
+          EOF
+      - name: fresh install from this tree
+        run: |
+          set -euo pipefail
+          GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
+          GR_RAW_BASE="http://127.0.0.1:${SRV_PORT}/" \
+            bash install/install.sh --arch "$(uname -m)" --version "$VERSION" \
+              --prefix "$RUNNER_TEMP/gr" --env-file "$RUNNER_TEMP/gr.env" \
+              --no-systemd --yes 2>&1 | tee /tmp/install-f.log
+          grep -E '^(VERSION|ARCH|CONSOLE|PREFIX)=' "$RUNNER_TEMP/gr/install-state.env"
+          bash install/test/smoke_install.sh --prefix "$RUNNER_TEMP/gr"
+      - name: upgrade from previous stable (gate-b B3 同款)
+        run: |
+          set -euo pipefail
+          PREV="$(gh release list -R greenpng/gr-server --limit 30 \
+                --json tagName,isPrerelease \
+                --jq '.[] | select(.isPrerelease|not) | .tagName | ltrimstr("v")' \
+                | sort -rV | grep -v "^${VERSION}$" | head -1 || true)"
+          if [[ -z "${PREV:-}" ]]; then
+            echo "[install-smoke] no previous stable release yet — upgrade leg skipped"
+            exit 0
+          fi
+          echo "[install-smoke] previous stable: v${PREV} → upgrade target v${VERSION}"
+          pkill -f gr-service 2>/dev/null || true
+          sleep 1
+          pkill -9 -f 'bin/gr-service' 2>/dev/null || true
+          for i in $(seq 1 15); do
+            curl -fsS --max-time 2 http://127.0.0.1:28680/v1/health >/dev/null 2>&1 || break
+            pkill -9 -f 'bin/gr-service' 2>/dev/null || true
+            sleep 1
+          done
+          GR_RELEASE_BASE="https://github.com/greenpng/gr-server/releases/download/v${PREV}" \
+            bash install/install.sh --arch "$(uname -m)" --version "$PREV" \
+              --prefix "$RUNNER_TEMP/gr-old" --env-file "$RUNNER_TEMP/gr.env" \
+              --no-systemd --yes 2>&1 | tee /tmp/install-old.log
+          VERSION="$VERSION" INSTALL_ROOT="$RUNNER_TEMP/gr-old" \
+          GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
+            bash install/release/update_runtime_from_github.sh 2>&1 | tee /tmp/install-up.log
+          bash install/test/smoke_install.sh --prefix "$RUNNER_TEMP/gr-old"
+          [[ "$(tr -d '[:space:]' < "$RUNNER_TEMP/gr-old/VERSION")" == "$VERSION" ]] || {
+            echo "upgrade did not land VERSION=$VERSION" >&2; exit 1; }
+      - name: upload evidence
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: fulltest-install
+          path: |
+            /tmp/install-f.log
+            /tmp/install-old.log
+            /tmp/install-up.log
+          if-no-files-found: ignore

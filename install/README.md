@@ -39,7 +39,12 @@ install/
 │   └── greenpng-auto-upgrade.timer    # 每晚 04:30+30m 抖动 (Persistent)
 └── test/
     ├── smoke_install.sh       # 安装后冒烟 (控制面/管理面/探测面/业务会话)
-    └── upgrade_rollback_check.sh  # 升级/版本控制契约 (本地 fixture, runner 用)
+    ├── upgrade_rollback_check.sh  # 升级/版本控制契约 (本地 fixture, runner 用)
+    └── e2e/                   # 公开仓 runner 行为面 (fulltest.yml; 见 docs/workstreams/gr-server/13)
+        ├── boot_stack.sh      #   栈引导 (compose PG/Redis + lab 根钥 + 三面健康门)
+        ├── panel_e2e.sh       #   管理面板 + 设置生效 + 签名 OTA fixture (23 断言)
+        ├── load_stability.py  #   高并发合成负载 (open→ingest→result, 纯 stdlib)
+        └── hotcold_e2e.sh     #   冷热数据交换 (L1/L2 probe_batches/L3 probe_cold)
 ```
 
 ## 用户安装
