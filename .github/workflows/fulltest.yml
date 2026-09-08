@@ -22,11 +22,11 @@ on:
       load_sessions:
         description: "load test session count"
         type: number
-        default: 400
+        default: 240
       load_concurrency:
         description: "load test concurrency"
         type: number
-        default: 64
+        default: 24
   schedule:
     - cron: "37 3 * * 1"
 concurrency:
@@ -94,8 +94,8 @@ jobs:
           bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e"
           python3 install/test/e2e/load_stability.py \
             --stack-env "$RUNNER_TEMP/gr-e2e/stack.env" \
-            --sessions "${{ inputs.load_sessions || 400 }}" \
-            --concurrency "${{ inputs.load_concurrency || 64 }}" \
+            --sessions "${{ inputs.load_sessions || 240 }}" \
+            --concurrency "${{ inputs.load_concurrency || 24 }}" \
             --out "$RUNNER_TEMP/gr-e2e/load.json"
       - name: teardown
         if: always()

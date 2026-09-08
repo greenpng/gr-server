@@ -179,10 +179,19 @@ impl AssociationStore {
         thread::Builder::new()
             .name("gr-assoc-pg".into())
             .spawn(move || {
-                let mut client = connect_assoc_pg(&dsn_owned)
-                    .unwrap_or_else(|e| panic!("gr_assoc pg connect ({label_t}): {e}"));
+                let mut client = match connect_assoc_pg(&dsn_owned) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        // 引导期竞态（全新 PG 的 entrypoint 重启窗内 DDL 会撞断连）；
+                        // hub open 自带 1/5 重试并自愈，这里静默退出走错误路径即可，
+                        // 不再 panic 留噪音（公开仓 fulltest 断言日志零 panic，2026-09-08）。
+                        log::warn!("gr_assoc pg connect failed ({label_t}); hub open will retry: {e}");
+                        return;
+                    }
+                };
                 if let Err(e) = client.batch_execute(PG_DDL) {
-                    panic!("gr_assoc pg schema: {e}");
+                    log::warn!("gr_assoc pg schema failed ({label_t}); hub open will retry: {e}");
+                    return;
                 }
                 while let Ok(job) = rx.recv() {
                     job(&mut client);

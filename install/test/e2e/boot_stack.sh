@@ -65,6 +65,13 @@ compose() { docker compose --project-name "$PROJECT" --env-file "$E2E_DIR/compos
 kill_service_only() {
   # 连续 boot 之间的清场: 只杀服务 + 等端口释放, 不动 compose (抹卷会触发
   # PG entrypoint 重启窗, 服务首连即拒)。--stop 才 compose down -v。
+  # 端口同配的跨目录残留 (如中止的上轮验证栈) 也一并杀 — 否则它占着端口
+  # 假答健康门, 新服务永远绑不上 (本地 /tmp/gr-e2e-x 残留实证)。
+  local _sp
+  for _sp in "$ADMIN_PORT" "$PROBE_PORT" "$GW_PORT"; do
+    pkill -f "gr-service.*--bind 127.0.0.1:${_sp}" 2>/dev/null || true
+    pkill -f "gr-service.*--bind 0.0.0.0:${_sp}" 2>/dev/null || true
+  done
   if [[ -f "$E2E_DIR/stack.env" ]]; then
     # shellcheck disable=SC1091
     set +e; source "$E2E_DIR/stack.env" 2>/dev/null; set -e
@@ -77,6 +84,8 @@ kill_service_only() {
   for _p in "$ADMIN_PORT" "$PROBE_PORT" "$GW_PORT"; do
     for _ in $(seq 1 15); do
       ss -ltn 2>/dev/null | grep -q ":${_p} " || break
+      pkill -9 -f "gr-service.*--bind 127.0.0.1:${_p}" 2>/dev/null || true
+      pkill -9 -f "gr-service.*--bind 0.0.0.0:${_p}" 2>/dev/null || true
       pkill -9 -f "gr-service.*--data-dir $E2E_DIR" 2>/dev/null || true
       sleep 1
     done
@@ -125,6 +134,21 @@ for db in greenpng gr_biz gr_admin gr_assoc; do
   done
   [[ "$ok" == "1" ]] || { echo "boot_stack: db $db never appeared" >&2; exit 1; }
 done
+# entrypoint 重启窗稳定化: socket 探活 (-d $db) 在 init 的临时 server 阶段也会答,
+# 证不了对外 TCP 真就绪 — 服务是走 127.0.0.1:$PG_PORT 连的。改为容器内
+# 显式 TCP 连四个业务库, 连续 3 次(间隔 2s)全过才继续 (临时 server 只听 socket,
+# TCP 必须等最终 server 起来; HC2 实证 socket 探活放行后服务仍撞 db error)。
+stbl=0
+for i in $(seq 1 45); do
+  allok=1
+  for db in greenpng gr_biz gr_admin gr_assoc; do
+    compose exec -T -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+      psql -h 127.0.0.1 -p 5432 -U greenpng -d "$db" -tAc "SELECT 1" >/dev/null 2>&1 || allok=0
+  done
+  if [[ "$allok" == "1" ]]; then stbl=$((stbl+1)); [[ $stbl -ge 3 ]] && break; else stbl=0; fi
+  sleep 2
+done
+[[ "$stbl" -ge 3 ]] || { echo "boot_stack: PG unstable (entrypoint restart window never closed)" >&2; exit 1; }
 DSN_PG="postgres://greenpng:${POSTGRES_PASSWORD}@127.0.0.1:${PG_PORT}/greenpng"
 
 # --- 2. 实验室 OTA 根钥 (runner 无私钥; keygen 一次性, 用于签名 fixture) ---
@@ -185,9 +209,12 @@ boot_once() {
 }
 
 wait_healthy() {
-  local i c p g
+  local i c p g pid
   for i in $(seq 1 60); do
-    kill -0 "$(cat "$E2E_DIR/service.pid" 2>/dev/null)" 2>/dev/null || return 1
+    pid="$(cat "$E2E_DIR/service.pid" 2>/dev/null || true)"
+    kill -0 "$pid" 2>/dev/null || return 1
+    # 进程身份核验: pid 活着且确实是本目录的服务 — 防跨目录残留同端口假答
+    tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q -- "--data-dir $E2E_DIR" || return 1
     c=$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${ADMIN_PORT}/v1/health" || true)
     p=$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${PROBE_PORT}/v1/health" || true)
     g=$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${GW_PORT}/healthz" || true)
