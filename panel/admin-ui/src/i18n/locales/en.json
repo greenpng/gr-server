@@ -318,7 +318,10 @@
     "runtime_env": "Runtime env (read-only)",
     "saved": "Integrations saved",
     "note": "Configure third-party IP intelligence. Secrets are stored server-side and masked in the UI.",
-    "vpn_source": "VPN/proxy feed"
+    "vpn_source": "VPN/proxy feed",
+    "test_query": "Test query (pre-save)",
+    "test_ip_ph": "Visitor IP, e.g. 183.192.38.0/24",
+    "test_run": "Run test"
   },
   "workers": {
     "analyze": "Analyze",

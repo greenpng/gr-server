@@ -562,6 +562,11 @@ async fn main() -> anyhow::Result<()> {
     // crate::official_cloud::spawn_license_sync_loop();
 
     let console = rt.admin.auth.console_path.clone();
+    // Panel QA P1b + P2a bootstrap repair (2026-09-08): ensure
+    // panel_policy.json exists (panel display == plane effective config) and
+    // backfill control.sites → public.sites for sites that predate the
+    // upsert-time sync. Fire-and-forget thread; failures log, never block boot.
+    crate::api::startup_repair(&rt);
     let install_root = resolve_install_root(&args.data_dir);
     let app = api::router(
         rt.clone(),

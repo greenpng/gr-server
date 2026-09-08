@@ -1019,10 +1019,18 @@ impl PgStore {
         limit: i64,
         device_tier: Option<&str>,
         since_ms: Option<i64>,
+        site_id: Option<&str>,
     ) -> Result<Value, StoreError> {
         let device_tier = device_tier.map(|s| s.to_string());
+        let site_id = site_id.map(|s| s.to_string());
         self.run(move |c| {
-            list_analysis_latest_inner(c, limit, device_tier.as_deref(), since_ms)
+            list_analysis_latest_inner(
+                c,
+                limit,
+                device_tier.as_deref(),
+                since_ms,
+                site_id.as_deref(),
+            )
         })
     }
 
@@ -3952,6 +3960,7 @@ fn list_analysis_latest_inner(
     limit: i64,
     device_tier: Option<&str>,
     since_ms: Option<i64>,
+    site_id: Option<&str>,
 ) -> Result<Value, StoreError> {
     let lim = limit.clamp(1, 2000);
     let rows = c
@@ -3964,10 +3973,11 @@ SELECT session_id, rev, created_ms, device_id, device_tier, device_prefix,
 FROM analysis_latest
 WHERE ($1::text IS NULL OR device_tier = $1)
   AND ($2::bigint IS NULL OR created_ms >= $2)
+  AND ($4::text IS NULL OR site_id = $4)
 ORDER BY created_ms DESC
 LIMIT $3
 "#,
-            &[&device_tier, &since_ms, &lim],
+            &[&device_tier, &since_ms, &lim, &site_id],
         )
         .map_err(|e| StoreError::Msg(e.to_string()))?;
     let mut out = Vec::new();

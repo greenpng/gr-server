@@ -1,74 +1,115 @@
 # GR Server (greenpng)
 
-GR 服务端发行仓：安装 · 探测 · 分析 · 返回 · SDK · 签名模块 · 管理面板。
-本仓是 **02 探测分析产品线的整理发布打包仓**，也是**安装与版本更新的唯一公开入口**
-（`install.sh` / 更新脚本 / 面板 OTA 都指向本仓 Release）。
+Browser-side human-verification and anti-bot intelligence — signed probe,
+sealed ingest, analysis plane, and per-site result SDKs. This repository is
+the **release packaging tree of the 02 probe-analysis product line** and the
+**single public entry point for install and updates** (`install.sh` /
+updater scripts / panel OTA all point at this repository's Releases).
 
-- 版本：见 [`VERSION`](VERSION)（当前 8.0.x）
-- 许可：MIT（见 [LICENSE](LICENSE)）
-- 在线更新通道：本仓 GitHub Release + 仓库内 `install/` 脚本
+- Version: see [`VERSION`](VERSION) and the
+  [Releases](https://github.com/greenpng/gr-server/releases) page
+- License: MIT ([LICENSE](LICENSE))
+- Official site (product introduction, EN + 中文): https://www.greenpng.cc
 
-## 安装（新节点）
+## Documentation
+
+The product guide — features, architecture, and the full usage tutorial
+(install → panel → site → probe deploy → receive results → smoke) — is
+maintained here in **12 languages**. English is the default; pick your
+language:
+
+| Language | Guide |
+|---|---|
+| English | [`docs/en/README.md`](docs/en/README.md) |
+| 中文 (Chinese) | [`docs/zh/README.md`](docs/zh/README.md) |
+| 日本語 (Japanese) | [`docs/ja/README.md`](docs/ja/README.md) |
+| 한국어 (Korean) | [`docs/ko/README.md`](docs/ko/README.md) |
+| Deutsch (German) | [`docs/de/README.md`](docs/de/README.md) |
+| Français (French) | [`docs/fr/README.md`](docs/fr/README.md) |
+| Español (Spanish) | [`docs/es/README.md`](docs/es/README.md) |
+| Português (Portuguese) | [`docs/pt/README.md`](docs/pt/README.md) |
+| Русский (Russian) | [`docs/ru/README.md`](docs/ru/README.md) |
+| العربية (Arabic) | [`docs/ar/README.md`](docs/ar/README.md) |
+| हिन्दी (Hindi) | [`docs/hi/README.md`](docs/hi/README.md) |
+| Bahasa Indonesia | [`docs/id/README.md`](docs/id/README.md) |
+
+The admin panel ships with **English + 中文** locales, kept in sync in
+`panel/admin-ui/src/i18n/`.
+
+## Install (new node)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/greenpng/gr-server/main/install/install.sh | bash
-# 或显式版本 / 架构：
-bash install/install.sh --version 8.0.3 --arch x86_64 --yes
-# 本机无 PostgreSQL/Redis 时（只起数据层，本体仍是宿主机二进制）：
-bash install/install.sh --version 8.0.3 --with-docker --yes
+# or with an explicit version / arch:
+bash install/install.sh --version <VERSION> --arch x86_64 --yes
+# with a dockerized data layer (PostgreSQL/Redis only; the server itself stays a host binary):
+bash install/install.sh --version <VERSION> --with-docker --yes
 ```
 
-安装器会做 sha256 + ELF + ed25519 模块签名校验，落地 `/opt/greenpng`，
-生成 `.env` 与 systemd 服务，并通过控制面/探测面 `/v1/health` 健康门。
+The installer verifies sha256 + ELF + ed25519 module signatures, installs
+under `/opt/greenpng`, writes `.env` and the systemd unit, stages and
+activates the six signed modules, and gates on the control/plane
+`/v1/health`. First-login credentials and the random console path are
+written to `/opt/greenpng/data/admin/admin_bootstrap_once.txt`.
 
-## 更新（已装节点）
+## Update (installed node)
 
-| 优先级 | 通道 | 适用 |
-|--------|------|------|
-| P0 | 管理面板 OTA（set-release-url → install / install-fe / install-runtime） | 默认 |
-| P1 | `install/release/update_runtime_from_github.sh`、`update_module_from_github.sh` | 无面板 / 免费节点 |
-| P2 | SSH 手工 | 进程死 / 首次装机 |
+| Priority | Channel | For |
+|---|---|---|
+| P0 | Panel OTA (set-release-url → install / install-fe / install-runtime) | default |
+| P1 | `install/release/update_runtime_from_github.sh`, `update_module_from_github.sh` | no panel / free nodes |
+| P2 | SSH manual | dead process / first install |
 
-所有更新都拉本仓同一 tag 的 Release 资产。**Docker 只是运行时容器，不是更新通道。**
+All updates pull the same tag's signed Release assets from this repository.
+**Docker is a runtime container, not an update channel.**
 
-## 仓库内容
+## Repository layout
 
-| 目录 | 内容 |
-|------|------|
-| `crates/` | Rust 工作区：gr-service（控制/探测/网关）、gr-probe-core、gr-probe-plane、gr-ota 等 |
-| `modules/` | 签名热更模块源（identity / brain / analyze / ingest / edge / probe_assets） |
-| `probe/` | 浏览器探测 FE（gv5.seal.js 打包链, sealed ingest） |
-| `panel/` | 管理面板（admin-ui 源 + admin-spa 产物） |
-| `sdk/` | 后端接入 SDK（探测数据回传/结果拉取） |
-| `spec/` | 线协议/评分规格（运行时加载, 非文档） |
-| `fixtures/` | 契约测试数据 |
-| `scripts/` | 构建脚本与 FE 工具链（含 `scripts/fe/checks/` FE 静态契约检查） |
-| `vendor/` | vendored 依赖源（pingora） |
-| `install/` | 安装器 + 数据层 compose + 升级脚本 |
-| `release/` | 打包脚本（build_multiarch / SBOM / 模块签名） |
+| Directory | Contents |
+|---|---|
+| `crates/` | Rust workspace — gr-service (control/probe/gateway), gr-probe-core, gr-probe-plane, gr-probe-store, gr-ota, gr-admin, gr-runtime, … |
+| `modules/` | Signed hot-update module sources (identity / brain / analyze / ingest / edge / probe_assets) |
+| `probe/` | Browser probe FE (loader, gv5.seal.js pack chain, sealed ingest) |
+| `panel/` | Admin panel — Vue sources (`admin-ui/`) + built SPA (`admin-spa/`), EN + 中文 |
+| `sdk/` | Backend integration SDKs (result retrieval, six languages) |
+| `spec/` | Wire/scoring specs loaded at runtime (not documentation) |
+| `fixtures/` | Contract-test data |
+| `scripts/` | Build scripts and FE tooling (incl. `scripts/fe/checks/` FE static contract checks) |
+| `vendor/` | Vendored dependency sources (pingora) |
+| `install/` | Installer + data-layer compose + upgrade scripts |
+| `release/` | Packaging scripts (build_multiarch / SBOM / module signing) |
+| `docs/` | Product guide in 12 languages (this is the documentation home) |
+| `VERSION` | Release version, single source of truth |
 
-文档、实验室测试与官网在开发仓维护，不进入本发行仓。
+Full documentation of workstreams and lab tests lives in the development
+tree and is intentionally not mirrored here; `docs/` in this repository is
+the public documentation surface.
 
-## 从源码构建与测试
+## Build and test from source
 
 ```bash
-# 工具链: rust-toolchain.toml 指定的 Rust 版本
+# Toolchain: the Rust version pinned in rust-toolchain.toml
 cargo build --release -p gr-service -p gr-cli
 
-# 契约测试（= CI Gate A 同款）
+# Contract tests (same set as CI Gate A)
 cargo test -p gr-probe-store --lib
 cargo test -p gr-probe-plane --lib
 cargo check -p gr-service -p gr-admin
 npm ci --prefix panel/admin-ui && npm run build --prefix panel/admin-ui
 
-# FE 静态契约检查
+# FE static contract checks
 for f in scripts/fe/checks/*.js; do node "$f"; done
 ```
 
-正式发布产物只由本仓 CI（`gate-a.yml` → `release.yml`）打出并经 Gate B 安装复测后上传。
+Release artifacts are produced only by this repository's CI
+(`gate-a.yml` → `release.yml`) and re-verified by Gate B install tests
+before publishing.
 
-## 安全
+## Security
 
-- Release 资产由根 Ed25519 钥签署，安装器钉死公钥指纹（`install.sh` 内 `OTA_ROOT_PUBKEY_SHA256`）。
-- 私钥只存在于 GitHub Secrets，永不入库；仓内 `ota_ed25519.pk` 是公钥。
-- tag 与 Release 资产不可变：修复以新 PATCH 版本发布，不覆盖历史。
+- Release assets are signed by the root Ed25519 key; the installer pins the
+  public-key fingerprint (`OTA_ROOT_PUBKEY_SHA256` inside `install.sh`).
+- The private key exists only in GitHub Secrets and never enters the tree;
+  `ota_ed25519.pk` in this repository is the public key.
+- Tags and Release assets are immutable: fixes ship as new PATCH versions,
+  history is never rewritten.

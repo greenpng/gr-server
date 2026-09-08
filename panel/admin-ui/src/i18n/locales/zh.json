@@ -318,7 +318,10 @@
     "runtime_env": "运行时环境（只读）",
     "saved": "集成配置已保存",
     "note": "配置第三方 IP 情报。密钥仅存服务端，界面中脱敏显示。",
-    "vpn_source": "VPN/代理数据源"
+    "vpn_source": "VPN/代理数据源",
+    "test_query": "测试查询（保存前）",
+    "test_ip_ph": "访客 IP，如 183.192.38.0/24",
+    "test_run": "运行测试"
   },
   "workers": {
     "analyze": "分析",
@@ -383,7 +386,6 @@
     "advertise": "地址",
     "version": "版本",
     "load": "负载",
-    "analyze": "分析",
     "analyze": "分析",
     "cpu": "CPU",
     "mem": "内存",

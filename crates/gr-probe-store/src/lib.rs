@@ -1523,10 +1523,11 @@ impl Store {
         limit: i64,
         device_tier: Option<&str>,
         since_ms: Option<i64>,
+        site_id: Option<&str>,
     ) -> Result<Value, StoreError> {
         match &self.backend {
-            Backend::Postgres(s) => s.list_analysis_latest(limit, device_tier, since_ms),
-            Backend::Sqlite(s) => s.list_analysis_latest(limit, device_tier, since_ms),
+            Backend::Postgres(s) => s.list_analysis_latest(limit, device_tier, since_ms, site_id),
+            Backend::Sqlite(s) => s.list_analysis_latest(limit, device_tier, since_ms, site_id),
         }
     }
 
@@ -4195,6 +4196,7 @@ impl SqliteStore {
         limit: i64,
         device_tier: Option<&str>,
         since_ms: Option<i64>,
+        site_id: Option<&str>,
     ) -> Result<Value, StoreError> {
         // SQLite: project from latest analysis rows (no materialised analysis_latest table).
         let analyses = self.list_recent_latest_analyses(limit.clamp(1, 2000) as usize)?;
@@ -4214,6 +4216,17 @@ impl SqliteStore {
                     continue;
                 }
             }
+            let site = a
+                .get("site_id")
+                .or_else(|| a.pointer("/fields/site_id"))
+                .or_else(|| product.get("site_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if let Some(want) = site_id {
+                if site != want {
+                    continue;
+                }
+            }
             let updated = a
                 .get("analyzed_ms")
                 .or_else(|| a.get("updated_ms"))
@@ -4228,6 +4241,7 @@ impl SqliteStore {
                 "session_id": a.get("session_id"),
                 "device_id": device.get("device_id").or_else(|| product.get("device_id")),
                 "device_tier": tier,
+                "site_id": site,
                 "digest_path": device.get("digest_path").or_else(|| trust.get("digest_path")),
                 "residual_entropy_ok": trust.get("residual_entropy_ok"),
                 "has_webrtc_host": trust.get("materials_included").and_then(|m| m.as_array()).map(|arr| {
