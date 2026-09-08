@@ -338,16 +338,25 @@ else
   echo "[runtime-ota] spec_tree not in bundle (pre-1.0.2) — keeping existing $INSTALL_ROOT/spec"
 fi
 
-# Point OTA module channel at this tag (panel still installs so separately)
+# Point OTA module channel at this tag (panel still installs so separately).
+# 178 v1.0.6 incident: a local http:// mirror base was written into the prod
+# .env and the R-02 boot guard then refused to start the binary (crash loop
+# until .env was repaired by hand). Production .env only ever receives an
+# https:// pointer; other bases (lab mirror, file) are runtime-only and are
+# NOT persisted — the health gate below still validates the running process.
 ENVF="$INSTALL_ROOT/.env"
 if [[ -f "$ENVF" ]]; then
-  python3 - "$ENVF" "$BASE" <<'PYENV'
+  if [[ "$BASE" == https://* ]]; then
+    python3 - "$ENVF" "$BASE" <<'PYENV'
 import sys
 p, base = sys.argv[1], sys.argv[2]
 lines = [l for l in open(p).read().splitlines(keepends=True) if not l.startswith(("GR_RELEASE_URL=",))]
 lines.append(f"GR_RELEASE_URL={base}\n")
 open(p, "w").writelines(lines)
 PYENV
+  else
+    echo "[runtime-ota] non-https base — GR_RELEASE_URL in .env left untouched (http pointer would fail the R-02 prod boot guard)" >&2
+  fi
 fi
 
 # 属主修正: 本脚本常以 root 跑, cp -a 换入的 fe/spec 树会保持 root 属主,

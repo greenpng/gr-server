@@ -455,6 +455,35 @@ impl OtaEngine {
     pub fn active_link(&self, name: &str) -> PathBuf {
         self.cfg.modules_dir.join("active").join(name)
     }
+    /// Enumerate the active module set straight from the markers: (name,
+    /// version) for every `active/<name>` file whose target resolves. This is
+    /// the node's real module universe — only `analyze` hot-dlopen-swaps, so
+    /// the loaded registry is NOT a complete inventory (static-path modules
+    /// are marker + next-boot). Unreadable markers are skipped.
+    pub fn active_modules(&self) -> Vec<(String, String)> {
+        let dir = self.cfg.modules_dir.join("active");
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for ent in rd.flatten() {
+            let name = ent.file_name().to_string_lossy().to_string();
+            if name.is_empty() {
+                continue;
+            }
+            if let Ok(target) = std::fs::read_to_string(ent.path()) {
+                if let Some(ver) = std::path::Path::new(target.trim())
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .filter(|v| !v.is_empty())
+                {
+                    out.push((name, ver));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
 
     /// Resolve which manifest file to fetch for this host.
     /// Prefer `manifest-index.json` → arch-specific file; fall back to `manifest.json`.
