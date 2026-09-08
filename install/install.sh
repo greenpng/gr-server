@@ -181,6 +181,11 @@ echo; echo "--- [D] 管理面板登录 ---"
 echo "  本地管理员账号 = GR_ADMIN_USER（首次启动自动生成一次性密码，见 data/admin/admin_bootstrap_once.txt）"
 echo; echo "--- [E] 运行参数 (回车默认) ---"
 ask GR_ANALYZE_WORKERS "分析 worker 数 GR_ANALYZE_WORKERS" "2"
+echo "  无人值守自动升级 (iss/ota-unattended-auto-upgrade-design): GR_AUTO_UPGRADE=1 装并启用"
+echo "  root 定时器 (每晚 04:30+抖动)。面板勾“自动应用”后节点自动跟进新版本："
+echo "  模块/FE 由服务内热线程即时应用（需 GR_AUTO_OTA_HOT=1），runtime/重启由"
+echo "  定时器在维护窗口内验签执行，健康门失败自动回滚并挂起。"
+ask GR_AUTO_UPGRADE "GR_AUTO_UPGRADE (1=装定时器, 回车=不装)" ""
 
 GR_CLUSTER_KEY="${GR_CLUSTER_KEY:-$(openssl rand -hex 32)}"
 GR_RESULT_TOKEN="${GR_RESULT_TOKEN:-$(openssl rand -hex 16)}"
@@ -572,6 +577,75 @@ UNIT
     sudo sh -c "install -m 0644 \"$TMP/greenpng.service\" /etc/systemd/system/greenpng.service && systemctl daemon-reload && systemctl enable greenpng && systemctl restart greenpng"
   fi
   say "systemd service greenpng enabled"
+
+  # ---------- 无人值守自动升级 (iss/ota-unattended-auto-upgrade-design L3) ----------
+  # sbin 脚本必须 root 属主: 定时器以 root 执行它们, 绝不能让服务用户可写
+  # (防服务被攻破后借 root 定时器提权)。安装顺序在 chown -R greenpng 之后。
+  AUTO_FILES_SRC_UPDATER="$SCRIPT_DIR/release/update_runtime_from_github.sh"
+  AUTO_FILES_SRC_CHECK="$SCRIPT_DIR/release/auto_upgrade_check.sh"
+  if [[ ! -f "$AUTO_FILES_SRC_UPDATER" || ! -f "$AUTO_FILES_SRC_CHECK" ]]; then
+    # 单文件安装 (curl 下发的 install.sh, 无仓库树): 从钉定 raw 源自举两脚本。
+    # 放 $TMP 下让 EXIT 陷阱统一清理。
+    AUTO_BOOT_TMP="$TMP/auto-boot"
+    mkdir -p "$AUTO_BOOT_TMP"
+    curl -fsSL --max-time 30 -o "$AUTO_BOOT_TMP/update_runtime_from_github.sh" "$RAW_BASE/release/update_runtime_from_github.sh" 2>/dev/null \
+      && curl -fsSL --max-time 30 -o "$AUTO_BOOT_TMP/auto_upgrade_check.sh" "$RAW_BASE/release/auto_upgrade_check.sh" 2>/dev/null \
+      || AUTO_BOOT_TMP=""
+    if [[ -n "$AUTO_BOOT_TMP" ]]; then
+      AUTO_FILES_SRC_UPDATER="$AUTO_BOOT_TMP/update_runtime_from_github.sh"
+      AUTO_FILES_SRC_CHECK="$AUTO_BOOT_TMP/auto_upgrade_check.sh"
+    fi
+  fi
+  if [[ -f "$AUTO_FILES_SRC_UPDATER" && -f "$AUTO_FILES_SRC_CHECK" ]]; then
+    SUDO_INSTALL_AUTO="(umask 022 && mkdir -p \"$PREFIX/sbin\" && chown root:root \"$PREFIX/sbin\" && install -m 0755 -o root -g root \"$AUTO_FILES_SRC_UPDATER\" \"$PREFIX/sbin/update_runtime_from_github.sh\" && install -m 0755 -o root -g root \"$AUTO_FILES_SRC_CHECK\" \"$PREFIX/sbin/auto_upgrade_check.sh\")"
+    if [[ -n "${SUDO_PASS:-}" ]]; then
+      printf '%s\n' "$SUDO_PASS" | sudo -S sh -c "$SUDO_INSTALL_AUTO" >/dev/null
+    else
+      sudo sh -c "$SUDO_INSTALL_AUTO"
+    fi
+    say "auto-upgrade scripts installed (root-owned $PREFIX/sbin)"
+    if [[ "${GR_AUTO_UPGRADE:-}" == "1" ]]; then
+      # 单元: 仓库树优先, 内嵌兜底 (与 greenpng.service 同型 {PREFIX} 模板)
+      if [[ -f "$SCRIPT_DIR/systemd/greenpng-auto-upgrade.service" && -f "$SCRIPT_DIR/systemd/greenpng-auto-upgrade.timer" ]]; then
+        cp "$SCRIPT_DIR/systemd/greenpng-auto-upgrade.service" "$TMP/greenpng-auto-upgrade.service"
+        cp "$SCRIPT_DIR/systemd/greenpng-auto-upgrade.timer" "$TMP/greenpng-auto-upgrade.timer"
+      else
+        cat > "$TMP/greenpng-auto-upgrade.service" <<'UNIT'
+[Unit]
+Description=greenpng unattended auto-upgrade (cold part: runtime binary + restart)
+Documentation=file:{PREFIX}/sbin/auto_upgrade_check.sh
+After=network-online.target greenpng.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={PREFIX}/sbin/auto_upgrade_check.sh
+TimeoutStartSec=30min
+UNIT
+        cat > "$TMP/greenpng-auto-upgrade.timer" <<'UNIT'
+[Unit]
+Description=Nightly greenpng unattended auto-upgrade check
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+      fi
+      sed -i "s|{PREFIX}|$PREFIX|g" "$TMP/greenpng-auto-upgrade.service" "$TMP/greenpng-auto-upgrade.timer"
+      if [[ -n "${SUDO_PASS:-}" ]]; then
+        printf '%s\n' "$SUDO_PASS" | sudo -S sh -c "install -m 0644 \"$TMP/greenpng-auto-upgrade.service\" \"$TMP/greenpng-auto-upgrade.timer\" /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now greenpng-auto-upgrade.timer" >/dev/null
+      else
+        sudo sh -c "install -m 0644 \"$TMP/greenpng-auto-upgrade.service\" \"$TMP/greenpng-auto-upgrade.timer\" /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now greenpng-auto-upgrade.timer"
+      fi
+      say "auto-upgrade timer enabled (nightly 04:30+30m; gates: desired.auto_apply + monotonic + window + hold)"
+    fi
+  else
+    say "WARN: auto-upgrade scripts unavailable (no repo tree, raw fetch failed) — timer not installed"
+  fi
 else
   # 无 systemd (runner / 容器 / 无 sudo): 后台拉起并记录 PID/日志
   say "no systemd — starting gr-service in background (pid + log under $PREFIX/log)"
@@ -644,5 +718,10 @@ echo "  console  : http://127.0.0.1:28680${CONSOLE}"
   [[ -n "${GR_OFFICIAL_URL:-}" ]] && echo "  可选 OAuth: ${GR_OFFICIAL_URL}"
 echo "  探针引导凭据: cat $PREFIX/data/admin/admin_bootstrap_once.txt"
 echo "  连接信息 : $PREFIX/.env (管理面: GR_ADMIN_DATABASE_URL / 业务面: GR_DATABASE_URL, GR_BIZ_DATABASE_URL, GR_ASSOCIATION_DATABASE_URL / 缓存: GR_REDIS_URL)"
+AUTO_TAIL_ENABLED="未"
+[[ "${GR_AUTO_UPGRADE:-}" == "1" ]] && AUTO_TAIL_ENABLED="已"
 echo "  升级     : VERSION=x.y.z bash ${SCRIPT_DIR}/release/update_runtime_from_github.sh"
+echo "  自动升级 : 脚本已装 $PREFIX/sbin (root 属主); 本次${AUTO_TAIL_ENABLED}启用定时器"
+echo "             已启用: systemctl list-timers | grep auto-upgrade; 未启用: sudo systemctl enable --now greenpng-auto-upgrade.timer"
+echo "             生效条件: 面板勾“自动应用”; 热件(模块/FE)另需 .env 加 GR_AUTO_OTA_HOT=1"
 echo "=============================================="

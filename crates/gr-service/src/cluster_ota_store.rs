@@ -35,15 +35,26 @@ fn ensure_table(c: &mut postgres::Client) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-pub fn write_desired(release_url: &str, activate: bool) -> Result<ClusterOtaDesired, String> {
+pub fn write_desired(
+    release_url: &str,
+    activate: bool,
+    auto_apply: bool,
+    window: &str,
+) -> Result<ClusterOtaDesired, String> {
     let url = release_url.trim().trim_end_matches('/').to_string();
     if url.is_empty() {
         return Err("release_url empty".into());
+    }
+    let window = window.trim().to_string();
+    if !gr_runtime::cluster_ota::window_valid(&window) {
+        return Err(format!("window malformed: {window}"));
     }
     let desired = ClusterOtaDesired {
         version: version_from_release_url(&url),
         release_url: url,
         activate,
+        auto_apply,
+        window,
         written_ms: now_ms(),
     };
     let Some(dsn) = admin_pg_url() else {

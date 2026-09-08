@@ -114,6 +114,8 @@ pub fn router(
         .route(&format!("{c}/api/ota/full-upgrade"), post(ota_full_upgrade))
         .route(&format!("{c}/api/ota/cluster-apply"), post(ota_cluster_apply_authed))
         .route(&format!("{c}/api/ota/cluster-desired"), get(ota_cluster_desired))
+        .route(&format!("{c}/api/ota/auto-state"), get(ota_auto_state))
+        .route(&format!("{c}/api/ota/auto-hold"), post(ota_auto_hold))
         .route("/v1/cluster/ota-apply", post(cluster_ota_apply_key))
         .route("/v1/cluster/heartbeat", post(cluster_heartbeat_key))
         .route("/v1/ota-mirror/:ver/:asset", get(ota_mirror_asset))
@@ -3336,6 +3338,30 @@ async fn ota_remote(State(st): State<AppState>, headers: HeaderMap) -> Response 
 #[derive(Deserialize)]
 struct SetReleaseUrlBody {
     url: String,
+    /// iss/ota-unattended-auto-upgrade-design L1: declare unattended auto-apply
+    /// with this URL. `None` keeps the existing desired row's values.
+    #[serde(default)]
+    auto_apply: Option<bool>,
+    /// Optional cold-part maintenance window `"HH:MM-HH:MM"`. `None` keeps the
+    /// existing value; empty string clears it.
+    #[serde(default)]
+    window: Option<String>,
+}
+
+/// Merge optional L1 fields with the current desired row (None = keep).
+async fn desired_auto_fields(
+    auto_apply: Option<bool>,
+    window: Option<String>,
+) -> (bool, String) {
+    let cur = tokio::task::spawn_blocking(crate::cluster_ota_store::read_desired)
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .flatten();
+    (
+        auto_apply.or_else(|| cur.as_ref().map(|c| c.auto_apply)).unwrap_or(false),
+        window.or_else(|| cur.map(|c| c.window)).unwrap_or_default(),
+    )
 }
 
 async fn ota_set_release_url(
@@ -3351,11 +3377,17 @@ async fn ota_set_release_url(
         Ok(()) => {
             let url = st.rt.get_release_base_url();
             let url2 = url.clone();
-            let cluster = tokio::task::spawn_blocking(move || crate::cluster_ota_store::write_desired(&url2, true))
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()));
+            let (auto_apply, window) = desired_auto_fields(body.auto_apply, body.window.clone()).await;
+            let window2 = window.clone();
+            let cluster = tokio::task::spawn_blocking(move || {
+                crate::cluster_ota_store::write_desired(&url2, true, auto_apply, &window2)
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
             let cluster = cluster
-                .map(|d| json!({"version": d.version, "written_ms": d.written_ms}))
+                .map(|d| {
+                    json!({"version": d.version, "written_ms": d.written_ms, "auto_apply": d.auto_apply, "window": d.window})
+                })
                 .unwrap_or_else(|e| json!({"error": e}));
             let _ = st.rt.admin.db.audit(
                 &actor,
@@ -3381,7 +3413,12 @@ fn current_analyze_version(rt: &Runtime) -> Option<String> {
 }
 
 fn apply_github_analyze(rt: &Arc<Runtime>, url: &str, activate: bool) -> Result<Value, String> {
-    let desired = crate::cluster_ota_store::write_desired(url, activate)?;
+    // Manual panel path: keep the desired row's unattended fields as-is.
+    let (auto_apply, window) = match crate::cluster_ota_store::read_desired() {
+        Ok(Some(d)) => (d.auto_apply, d.window),
+        _ => (false, String::new()),
+    };
+    let desired = crate::cluster_ota_store::write_desired(url, activate, auto_apply, &window)?;
     rt.set_release_base_url(&desired.release_url)?;
     let analyze = current_analyze_version(rt);
     if !gr_runtime::cluster_ota::should_apply_cluster_ota(
@@ -3483,6 +3520,98 @@ async fn ota_cluster_desired(State(st): State<AppState>, headers: HeaderMap) -> 
     .await
     .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
     Json(status).into_response()
+}
+
+/// iss/ota-unattended-auto-upgrade-design: unattended auto-upgrade status for
+/// the panel — the L3 root timer's state file plus the desired/hot view.
+async fn ota_auto_state(State(st): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(r) = authed(&st, &headers) {
+        return r;
+    }
+    let path = st.rt.cfg.data_dir.join("auto_upgrade_state.json");
+    let timer_state = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    let av = current_analyze_version(&st.rt);
+    let cur = st.rt.get_release_base_url();
+    let av2 = av.clone();
+    let desired = tokio::task::spawn_blocking(move || {
+        crate::cluster_ota_store::desired_status_json(&cur, av2.as_deref())
+    })
+    .await
+    .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+    let hot_mode = match gr_runtime::cluster_ota::hot_ota_mode(
+        &gr_abi::env::get("AUTO_OTA_HOT").unwrap_or_default(),
+    ) {
+        gr_runtime::cluster_ota::HotOtaMode::Enforce => "enforce",
+        gr_runtime::cluster_ota::HotOtaMode::Warn => "warn",
+    };
+    Json(json!({
+        "ok": true,
+        "timer_state": timer_state,
+        "timer_state_path": path,
+        "hot_mode": hot_mode,
+        "release_base_url": st.rt.get_release_base_url(),
+        "analyze_version": current_analyze_version(&st.rt),
+        "desired": desired,
+    }))
+    .into_response()
+}
+
+#[derive(Deserialize)]
+struct AutoHoldBody {
+    hold: bool,
+}
+
+/// Set/clear the L3 latch from the panel. `hold=true` stops the root timer from
+/// applying anything (operator pause); clearing it lets the timer proceed
+/// again (also the recovery path after an automatic rollback latched it).
+async fn ota_auto_hold(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<AutoHoldBody>,
+) -> Response {
+    let actor = match authed(&st, &headers) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let path = st.rt.cfg.data_dir.join("auto_upgrade_state.json");
+    let mut state: Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| json!({}));
+    let obj = state.as_object_mut().ok_or(())
+        .map_err(|_| "state_file_not_object".to_string());
+    let mut obj = match obj {
+        Ok(o) => o,
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok": false, "error": e})))
+                .into_response()
+        }
+    };
+    obj.insert("hold".into(), json!(body.hold));
+    obj.insert(
+        "hold_updated_ms".into(),
+        json!(std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0)),
+    );
+    let body_out = serde_json::to_string_pretty(&state).unwrap_or_default();
+    if let Err(e) = std::fs::write(&path, body_out) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"ok": false, "error": e.to_string()})),
+        )
+            .into_response();
+    }
+    let _ = st.rt.admin.db.audit(
+        &actor,
+        "ota_auto_hold",
+        "",
+        json!({"hold": body.hold}),
+    );
+    Json(json!({"ok": true, "hold": body.hold, "state": state})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -3650,6 +3779,14 @@ struct OtaFullUpgradeBody {
     restart_runtime: bool,
     #[serde(default = "default_true_bool")]
     activate: bool,
+    /// iss/ota-unattended-auto-upgrade-design L1: declare unattended auto-apply
+    /// with this release. `None` keeps the existing desired row's values.
+    #[serde(default)]
+    auto_apply: Option<bool>,
+    /// Optional cold-part maintenance window `"HH:MM-HH:MM"`. `None` keeps the
+    /// existing value; empty string clears it.
+    #[serde(default)]
+    window: Option<String>,
 }
 
 async fn ota_full_upgrade(
@@ -3661,13 +3798,42 @@ async fn ota_full_upgrade(
         Ok(u) => u,
         Err(r) => return r,
     };
-    if let Some(ref url) = body.release_url {
-        if let Err(e) = st.rt.set_release_base_url(url) {
+    // iss/ota-unattended-auto-upgrade-design L1: declaring auto-apply/window
+    // works with or without a new release URL — without one, the currently
+    // pinned release base URL becomes the desired URL.
+    if body.release_url.is_some() || body.auto_apply.is_some() || body.window.is_some() {
+        let desired_url = match body.release_url.as_ref() {
+            Some(url) => {
+                if let Err(e) = st.rt.set_release_base_url(url) {
+                    return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": e})))
+                        .into_response();
+                }
+                st.rt.get_release_base_url()
+            }
+            None => st.rt.get_release_base_url(),
+        };
+        if desired_url.is_empty() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "ok": false,
+                    "error": "release_base_url not configured — set a release URL before declaring auto-apply"
+                })),
+            )
+                .into_response();
+        }
+        let url_pg = desired_url;
+        let act = body.activate;
+        let (auto_apply, window) =
+            desired_auto_fields(body.auto_apply, body.window.clone()).await;
+        let desired_out = tokio::task::spawn_blocking(move || {
+            crate::cluster_ota_store::write_desired(&url_pg, act, auto_apply, &window)
+        })
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
+        if let Err(e) = desired_out {
             return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": e}))).into_response();
         }
-        let url_pg = url.clone();
-        let act = body.activate;
-        let _ = tokio::task::spawn_blocking(move || crate::cluster_ota_store::write_desired(&url_pg, act)).await;
     }
     let rt = st.rt.clone();
     let static_dir = st.static_dir.clone();

@@ -1,0 +1,16 @@
+[Unit]
+Description=greenpng unattended auto-upgrade (cold part: runtime binary + restart)
+Documentation=file:{PREFIX}/sbin/auto_upgrade_check.sh
+After=network-online.target greenpng.service
+Wants=network-online.target
+# Gated by desired.auto_apply in shared admin PG; exits 0 on every skip.
+# The updater inside verifies the full OTA signature chain and rolls back
+# automatically on health-gate failure.
+
+[Service]
+Type=oneshot
+# Root by design (iss/ota-unattended-auto-upgrade-design L3): the hardened
+# greenpng.service has no write access to bin/ and no restart privilege, so
+# this timer unit is the single privileged point of the unattended path.
+ExecStart={PREFIX}/sbin/auto_upgrade_check.sh
+TimeoutStartSec=30min

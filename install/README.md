@@ -27,13 +27,16 @@ install/
 ├── ota_ed25519.pk             # 模块签名公钥 (ed25519, 公开)
 ├── release/
 │   ├── update_runtime_from_github.sh  # 服务端运行时升级 (sha256 校验/失败回滚)
+│   ├── auto_upgrade_check.sh          # 无人值守冷件门+调度 (flock/挂起/单调/窗口 → 调 updater)
 │   └── update_module_from_github.sh   # 单模块热更 (链式验签)
 ├── docker/
 │   ├── docker-compose.yml     # postgres(4库)+redis, 仅回环监听
 │   ├── init-databases.sh      # 自动创建 gr_biz/gr_admin/gr_assoc
 │   └── .env.example
 ├── systemd/
-│   └── greenpng.service       # systemd 单元模板 ({PREFIX} 占位)
+│   ├── greenpng.service       # systemd 单元模板 ({PREFIX} 占位)
+│   ├── greenpng-auto-upgrade.service  # 无人值守冷件 oneshot (root, {PREFIX} 占位)
+│   └── greenpng-auto-upgrade.timer    # 每晚 04:30+30m 抖动 (Persistent)
 └── test/
     ├── smoke_install.sh       # 安装后冒烟 (控制面/管理面/探测面/业务会话)
     └── upgrade_rollback_check.sh  # 升级/版本控制契约 (本地 fixture, runner 用)
@@ -93,6 +96,23 @@ VERSION=1.0.1 bash release/update_runtime_from_github.sh   # 在安装机上执�
 - 运行时/CLI/FE 全部取自包内并按 manifest `sha256` 校验（fe_tree 逐文件）；
 - 装入 `bin/releases/<ver>/` 版本化 slot，写入 `VERSION` / `fe/VERSION`；
 - systemd 重启 + 健康门，失败自动回滚旧二进制（上次成功备份）。
+
+### 5) 无人值守自动升级（可选，`GR_AUTO_UPGRADE=1`）
+
+安装时传 `GR_AUTO_UPGRADE=1`（或向导选 1）即装并启用
+`greenpng-auto-upgrade.timer`；脚本始终装到 `$PREFIX/sbin/`（root 属主）。
+生效还需两步：面板"升级所选"勾 **自动应用**（可填维护窗口）；服务 env 加
+`GR_AUTO_OTA_HOT=1` 启用热件（模块/FE）自动跟进——默认 `warn` 只记日志不动作。
+
+- 门序（`release/auto_upgrade_check.sh`，全过才调 updater）：flock →
+  hold 挂起（面板暂停/回滚锁存，24h 冷却）→ `desired.auto_apply` →
+  严格 semver 单调（只升不降）→ 维护窗口；
+- 每次决策与结果在 `journalctl -u greenpng-auto-upgrade` 与
+  `data/auto_upgrade_state.json`（面板"自动升级"卡展示）；
+- 热层（服务内线程）升级-only 且模块激活带单调地板；失败指数退避（20s→300s）；
+- 完整设计与 runbook：`docs/iss/ota-unattended-auto-upgrade-design.md`、
+  `docs/guides/11-OPERATIONS.md`；门契约沙测
+  `03-local-test-lab/tests/local/auto_upgrade_gate_sandbox.sh`。
 
 ## 安全说明
 

@@ -379,34 +379,29 @@ async fn main() -> anyhow::Result<()> {
     let _ = rt.set_workers(args.analyze_workers as u32, 1, 1);
     {
         let rt_ota = rt.clone();
+        let static_dir_ota = static_dir.clone();
         thread::Builder::new()
             .name("gr-cluster-ota".into())
-            .spawn(move || loop {
-                thread::sleep(std::time::Duration::from_secs(20));
-                let Ok(Some(d)) = cluster_ota_store::read_desired() else {
-                    continue;
-                };
-                let av = rt_ota
-                    .registry
-                    .get("analyze")
-                    .map(|m| m.version().to_string());
-                if !gr_runtime::cluster_ota::should_apply_cluster_ota(
-                    &rt_ota.get_release_base_url(),
-                    av.as_deref(),
-                    &d,
-                ) {
-                    continue;
-                }
-                if let Err(e) = rt_ota.set_release_base_url(&d.release_url) {
-                    tracing::warn!(error = %e, "cluster ota set-release-url failed");
-                    continue;
-                }
-                match rt_ota.ota_install_remote("analyze", Some(&d.version), d.activate) {
-                    Ok(_) => {
-                        mint_wire::wire_analyze_mint(&rt_ota);
-                        tracing::info!(version = %d.version, "cluster ota applied GitHub analyze");
-                    }
-                    Err(e) => tracing::warn!(error = %e, "cluster ota install analyze failed"),
+            .spawn(move || {
+                // iss/ota-unattended-auto-upgrade-design L2: unattended hot OTA
+                // (all manifest modules + FE) when the shared desired state says
+                // auto_apply. `GR_AUTO_OTA_HOT` defaults to warn — log the
+                // would-apply decision, touch nothing.
+                let mode = gr_runtime::cluster_ota::hot_ota_mode(
+                    &gr_abi::env::get("AUTO_OTA_HOT").unwrap_or_default(),
+                );
+                tracing::info!(
+                    ?mode,
+                    "cluster ota hot thread started (desired.auto_apply gates; runtime restart stays with the root auto-upgrade timer)"
+                );
+                let mut fail_streak: u32 = 0;
+                loop {
+                    // 20s baseline; consecutive failures back off up to 300s
+                    // so a node without egress cannot hammer the release URL.
+                    thread::sleep(std::time::Duration::from_secs(
+                        (20 * u64::from(fail_streak.min(15))).max(1),
+                    ));
+                    fail_streak = apply_cluster_ota_tick(&rt_ota, &static_dir_ota, mode, fail_streak);
                 }
             })
             .ok();
@@ -738,6 +733,102 @@ fn make_probe_args(
 /// Post signed heartbeats to peer control planes (`GR_CLUSTER_PEERS`, legacy `GR_`,
 /// comma-separated `host:port`). Receivers verify key + HMAC + clock window
 /// before ingesting; the LB control loop consumes the resulting snapshot.
+/// One poll of the unattended hot-OTA loop (iss/ota-unattended-auto-upgrade-design
+/// L2). Hot parts only — every manifest module (`ota_install_all_remote`, with
+/// per-module monotonic floor and analyze hot-load rollback semantics) plus FE
+/// (`ota_install_fe`, sha-verified hot swap with .bak). The runtime binary +
+/// restart stay with the root auto-upgrade timer (L3): the systemd sandbox has
+/// no write access to `bin/` and no restart privilege.
+/// Returns the failure streak so the caller can back off.
+fn apply_cluster_ota_tick(
+    rt: &Arc<Runtime>,
+    static_dir: &std::path::Path,
+    mode: gr_runtime::cluster_ota::HotOtaMode,
+    fail_streak: u32,
+) -> u32 {
+    let Ok(Some(d)) = cluster_ota_store::read_desired() else {
+        return 0;
+    };
+    // Manual semantics unless the declarer opted into unattended apply.
+    if !d.auto_apply {
+        return 0;
+    }
+    let av = rt
+        .registry
+        .get("analyze")
+        .map(|m| m.version().to_string());
+    if !gr_runtime::cluster_ota::should_apply_cluster_ota(
+        &rt.get_release_base_url(),
+        av.as_deref(),
+        &d,
+    ) {
+        return 0;
+    }
+    // Upgrade-only pre-gate (mirrors the module activation floor and the L3
+    // timer's monotonic gate): a desired row at or below the active analyze
+    // version can never apply cleanly (modules refuse downgrade) and must not
+    // silently roll FE back either — log and skip instead of a retry storm.
+    if let Some(cur) = av.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if !gr_runtime::cluster_ota::version_gt(&d.version, cur) {
+            tracing::info!(
+                desired = %d.version,
+                active = cur,
+                "cluster ota auto: desired not newer than active analyze — unattended path never downgrades (explicit rollback: panel per-module install)"
+            );
+            return 0;
+        }
+    }
+    if mode == gr_runtime::cluster_ota::HotOtaMode::Warn {
+        tracing::info!(
+            version = %d.version,
+            "GR_AUTO_OTA_HOT=warn — desired release not applied (set GR_AUTO_OTA_HOT=1 for unattended hot OTA)"
+        );
+        return 0;
+    }
+    if let Err(e) = rt.set_release_base_url(&d.release_url) {
+        tracing::warn!(error = %e, "cluster ota set-release-url failed");
+        return fail_streak + 1;
+    }
+    let mods = rt.ota_install_all_remote(d.activate);
+    let mods_ok = match &mods {
+        Ok(v) => v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false),
+        Err(_) => false,
+    };
+    if mods_ok && d.activate {
+        // analyze hot-swap re-wires the commercial mint path (same as panel OTA).
+        mint_wire::wire_analyze_mint(rt);
+    }
+    let fe = rt.ota_install_fe(static_dir);
+    let fe_ok = matches!(&fe, Ok(v) if v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false));
+    let summary = serde_json::json!({
+        "desired": d.version,
+        "activate": d.activate,
+        "modules": mods.clone().unwrap_or(serde_json::Value::Null),
+        "fe": fe.clone().unwrap_or(serde_json::Value::Null),
+        "modules_ok": mods_ok,
+        "fe_ok": fe_ok,
+    });
+    // Best-effort audit trail next to the panel-driven OTA records.
+    let _ = rt
+        .admin
+        .db
+        .audit("auto-ota-hot", "ota_auto_hot", "", summary.clone());
+    if mods_ok && fe_ok {
+        tracing::info!(version = %d.version, "cluster ota auto-applied hot parts (modules+FE)");
+        0
+    } else {
+        let em = mods.as_ref().err().map(|e| e.as_str()).unwrap_or("");
+        let ef = fe.as_ref().err().map(|e| e.as_str()).unwrap_or("");
+        tracing::warn!(
+            version = %d.version,
+            modules_error = em,
+            fe_error = ef,
+            "cluster ota auto-apply incomplete — will retry with backoff"
+        );
+        fail_streak + 1
+    }
+}
+
 fn spawn_cluster_peer_sync(rt: Arc<Runtime>) {
     let peers: Vec<String> = gr_abi::env::get("CLUSTER_PEERS")
         .unwrap_or_default()
