@@ -268,15 +268,55 @@ impl ProxyHttp for GrService {
             Vec::new()
         };
 
-        // Admin console / ACME (before role-gated business APIs)
-        if let Some(disp) =
-            crate::admin::try_dispatch(&self.state, &method, &path, &headers, &query, &body)
-        {
+        // Admin console / ACME (before role-gated business APIs).
+        //
+        // P0 fix (2026-09-08, 178 prod wedge): every sync handler below does
+        // blocking work — PG pool round-trips inside `Store::run()`, admin-DB
+        // queries, file IO. The Pingora proxy-service runtime has ONE worker
+        // thread by default (`ServerConf.threads: 1`); blocking it inside
+        // `request_filter` starves accepts and every other request on that
+        // listener. Under the 178 crawler flood this surfaced as Recv-Q
+        // pileup, nginx 60s timeouts → CLOSE_WAIT/FD accumulation and a full
+        // wedge of the probe plane (healthz included) while the gateway plane
+        // on its own runtime stayed fast. All sync handler work now runs on
+        // the service runtime's blocking pool via `spawn_blocking`; the
+        // worker stays free for accept/read/write.
+        let admin_disp = {
+            let st = self.state.clone();
+            let (m, p, h, q) = (method.clone(), path.clone(), headers.clone(), query.clone());
+            let b = body.clone();
+            match tokio::task::spawn_blocking(move || {
+                crate::admin::try_dispatch(&st, &m, &p, &h, &q, &b)
+            })
+            .await
+            {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("admin dispatch task join failed: {e}");
+                    Some(crate::admin::AdminDispatch::Json(
+                        500,
+                        json!({"ok": false, "error": "admin_dispatch_task_failed"}),
+                    ))
+                }
+            }
+        };
+        if let Some(disp) = admin_disp {
             ctx.responded = true;
             return respond_admin(session, disp).await;
         }
 
-        let result = dispatch(&self.state, &method, &path, &headers, &query, &body);
+        let result = {
+            let st = self.state.clone();
+            let (m, p, h, q) = (method.clone(), path.clone(), headers.clone(), query.clone());
+            let b = body.clone();
+            match tokio::task::spawn_blocking(move || dispatch(&st, &m, &p, &h, &q, &b)).await {
+                Ok(d) => d,
+                Err(e) => {
+                    log::error!("dispatch task join failed: {e}");
+                    Dispatch::Json(500, json!({"ok": false, "error": "dispatch_task_failed"}))
+                }
+            }
+        };
         ctx.responded = true;
         match result {
             Dispatch::Json(status, v) => respond_json(session, status, &v).await,

@@ -952,7 +952,26 @@ pub fn run_with(args: Args) {
     };
 
     let opt = PingoraOpt::default();
-    let mut server = Server::new(Some(opt)).expect("create pingora server");
+    // P0 fix companion (2026-09-08, 178 prod wedge): each Pingora service
+    // runtime defaults to ONE worker thread (`ServerConf.threads: 1`). Sync
+    // handler work now runs on the blocking pool (service.rs spawn_blocking),
+    // so one worker is sufficient for correctness; GR_SERVICE_THREADS gives
+    // ops accept/IO headroom on busy nodes without a code change.
+    let service_threads = gr_abi::env::get("SERVICE_THREADS")
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|n| (1..=64).contains(n))
+        .unwrap_or(1);
+    let conf = {
+        let mut c = pingora::server::configuration::ServerConf::new_with_opt_override(&opt)
+            .or_else(pingora::server::configuration::ServerConf::new)
+            .expect("pingora server conf");
+        c.threads = service_threads;
+        c
+    };
+    let mut server = Server::new_with_opt_and_conf(opt, conf);
+    if service_threads > 1 {
+        info!("service runtime threads={service_threads} (GR_SERVICE_THREADS)");
+    }
     server.bootstrap();
 
     // SNI multi-cert map (P-V2)
