@@ -182,6 +182,12 @@ GR_PUBKEY_PATH=$E2E_DIR/keys/ota_ed25519.pk
 GR_REQUIRE_MANIFEST_SIG=1
 GR_RESULT_TOKEN=e2e-result-token
 GR_REQUIRE_RESULT_TOKEN=1
+# 限流配额放宽 10x (默认 open 120/min 每站点): 负载件单站点分钟级突发会撞 429
+# (run 34246830314 open 120/400、34249515793 open 144/240 全因 120/min 顶格)。
+# 限流器语义归单元测试; 这里测的是服务面并发稳定性。
+GR_RATE_LIMIT_OPEN_PER_MIN=1200
+GR_RATE_LIMIT_INGEST_PER_MIN=6000
+GR_RATE_LIMIT_RESULT_PER_MIN=2400
 EOF
 
 # 冷热短旋钮 (--hotcold): 默认 L1 30m / L3 7d / 窗 24h → 分钟级可观测
@@ -195,9 +201,13 @@ EOF
 fi
 
 boot_once() {
+  # 不用 setsid: 它在特定进程组上下文会 fork, $! 落到短命父进程上 →
+  # wait_healthy 把活服务当死进程秒判失败 (本地全新卷复现: 服务 83 行日志在写、
+  # pid 已死被重试 TERM; runner 34249515793 panel/load 双连败同源)。
+  # nohup 不 fork: $! 恒为 gr-service pid; 脚本退出后孤儿化给 init, 继续跑。
   # shellcheck disable=SC1091
   ( set -a; source "$E2E_DIR/gr.env"; set +a
-    setsid nohup "$SRV" \
+    nohup "$SRV" \
       --bind "127.0.0.1:${ADMIN_PORT}" --probe-bind "127.0.0.1:${PROBE_PORT}" \
       --gateway-bind "127.0.0.1:${GW_PORT}" \
       --data-dir "$E2E_DIR/data" --static-dir "$E2E_DIR/fe" \
@@ -225,18 +235,37 @@ wait_healthy() {
   return 1
 }
 
+boot_diagnose() {
+  # 健康门失败时的取证转储 (runner 无法交互调试; 公开仓 34249515793 教训:
+  # 空日志秒死必须留全量证据)
+  echo "[boot_stack] --- diagnostics ---" >&2
+  echo "service.pid=$(cat "$E2E_DIR/service.pid" 2>/dev/null || echo MISSING)" >&2
+  pgrep -af "gr-service" 2>/dev/null | head -5 >&2 || true
+  echo "service.log: $(wc -c < "$E2E_DIR/service.log" 2>/dev/null || echo 0) bytes" >&2
+  tail -40 "$E2E_DIR/service.log" 2>/dev/null >&2 || true
+  echo "--- dmesg tail (OOM?) ---" >&2
+  (dmesg 2>/dev/null || sudo dmesg 2>/dev/null || true) | tail -8 >&2
+  echo "[boot_stack] --- end diagnostics ---" >&2
+}
+
 boot_once
 if ! wait_healthy; then
-  # 首轮偶发撞 PG 就绪缝 → 等稳后原数据目录重试一次 (admin store 幂等)
-  echo "[boot_stack] first boot not healthy — retry once" >&2
-  kill_service_only
-  sleep 5
-  boot_once
+  # 全新卷首撞 PG 就绪缝 → 等稳后原数据目录重试 (admin store 幂等)
+  echo "[boot_stack] first boot not healthy — retry (up to 2)" >&2
+  boot_diagnose
+  for attempt in 1 2; do
+    kill_service_only
+    sleep 5
+    boot_once
+    wait_healthy && break
+    echo "[boot_stack] retry $attempt not healthy" >&2
+    boot_diagnose
+  done
 fi
 SERVICE_PID="$(cat "$E2E_DIR/service.pid")"
 if ! wait_healthy; then
   echo "boot_stack: service did not become healthy" >&2
-  tail -20 "$E2E_DIR/service.log" >&2 || true
+  boot_diagnose
   stop_stack
   exit 1
 fi
