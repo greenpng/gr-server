@@ -491,13 +491,27 @@ pub async fn respond_options(session: &mut Session) -> Result<bool> {
 ///   Previously all `.min.js` got `max-age=31536000, immutable`, so CDN/browser kept
 ///   pre-upgrade collectors for up to a year when `withVer` omitted the query.
 pub async fn respond_file(session: &mut Session, path: &std::path::Path) -> Result<bool> {
-    let data = match std::fs::read(path) {
-        Ok(d) => d,
-        Err(_) => {
+    // P0 fix (2026-09-08, 178 prod wedge): asset reads ran as blocking
+    // `std::fs::read` on the service runtime's single worker thread; under the
+    // script/asset flood this joined PG round-trips in starving accepts.
+    // Read on the blocking pool; the worker only writes the response.
+    let read_path = path.to_path_buf();
+    let data = match tokio::task::spawn_blocking(move || std::fs::read(&read_path)).await {
+        Ok(Ok(d)) => d,
+        Ok(Err(_)) => {
             return respond_json(
                 session,
                 404,
                 &serde_json::json!({"ok": false, "error": "not_found"}),
+            )
+            .await;
+        }
+        Err(e) => {
+            log::error!("respond_file task join failed: {e}");
+            return respond_json(
+                session,
+                500,
+                &serde_json::json!({"ok": false, "error": "file_read_task_failed"}),
             )
             .await;
         }
