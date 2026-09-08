@@ -732,7 +732,7 @@ fn soft_assoc_candidate_ids(
 
     // Prefer residual-complete analyses (dh/dv) over B8-only recent sessions.
     if my_rm.is_some() {
-        if let Ok(al) = st.store.list_analysis_latest(80, None, None) {
+        if let Ok(al) = st.store.list_analysis_latest(80, None, None, None) {
             if let Some(rows) = al.get("rows").and_then(|v| v.as_array()) {
                 for row in rows {
                     let ok = row
@@ -4666,7 +4666,10 @@ pub fn ops_device(st: &AppState, device_id: &str, query: &HashMap<String, String
     Ok(out)
 }
 
-/// P0: list analysis_latest scalars (tier / time filters; no TOAST).
+/// P0: list analysis_latest scalars (tier / time / site filters; no TOAST).
+/// `site_id` filters server-side BEFORE the limit is applied (panel QA P3
+/// fix, 2026-09-08: `limit=1&site_id=X` used to return 0 rows when the
+/// globally-latest row belonged to another site).
 pub fn ops_analysis_latest(st: &AppState, query: &HashMap<String, String>) -> AppResult {
     let limit = query
         .get("limit")
@@ -4674,9 +4677,36 @@ pub fn ops_analysis_latest(st: &AppState, query: &HashMap<String, String>) -> Ap
         .unwrap_or(100);
     let tier = query.get("device_tier").map(|s| s.as_str());
     let since_ms = query.get("since_ms").and_then(|s| s.parse().ok());
+    let site_id = query
+        .get("site_id")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
     st.store
-        .list_analysis_latest(limit, tier, since_ms)
+        .list_analysis_latest(limit, tier, since_ms, site_id)
         .map_err(|e| ApiError(500, e.to_string()))
+}
+
+/// Panel Integrations "test query" (ops-gated): run the IP-enrichment
+/// pipeline for one IP against the saved panel policy, or an incoming
+/// `config.ip_enrichment` override (pre-save connectivity check).
+pub fn ops_ip_enrichment_test(st: &AppState, body: &Value) -> AppResult {
+    let ip = body
+        .get("ip")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if ip.is_empty() {
+        return Err(ApiError(400, "ip_required".into()));
+    }
+    let integrations = match body.get("config").and_then(|c| c.get("ip_enrichment")) {
+        Some(ie) => json!({ "ip_enrichment": ie }),
+        None => {
+            let dir = panel_data_dir(st);
+            gr_probe_core::load_panel_policy(dir.as_deref()).integrations
+        }
+    };
+    Ok(fetch_ip_provider(&integrations, &ip))
 }
 
 /// Probe completeness board: main_complete / missing_probe by site × product_version.
@@ -4785,7 +4815,7 @@ pub fn ops_vt_best_silicon(st: &AppState, query: &HashMap<String, String>) -> Ap
     }
     let latest = st
         .store
-        .list_analysis_latest(limit.max(100), None, None)
+        .list_analysis_latest(limit.max(100), None, None, None)
         .unwrap_or_else(|_| json!({"rows": []}));
     let rows = latest
         .get("rows")
@@ -7248,6 +7278,26 @@ fn provider_ip_allowed(ip: &str) -> bool {
     !private
 }
 
+/// Panel QA P1a fix (2026-09-08): stored visitor IPs are privacy-masked CIDRs
+/// (`a.b.c.0/24` for v4, `first3::/48` for v6 — single-write at ingestion, no
+/// raw/masked dual track). A masked CIDR is not an IP literal, so the
+/// enrichment gate used to reject every real session with a misleading
+/// `non_public_ip`. Strip the mask suffix and query the network address
+/// instead: the /24 is already public in the result payload, and the bare
+/// network address is exactly what geo/IP providers expect. Values that are
+/// not masked (bare IPs, hashes, "unknown") pass through unchanged.
+fn provider_ip_target(ip: &str) -> std::borrow::Cow<'_, str> {
+    if let Some((base, mask)) = ip.trim().rsplit_once('/') {
+        if !mask.is_empty()
+            && mask.bytes().all(|b| b.is_ascii_digit())
+            && base.parse::<std::net::IpAddr>().is_ok()
+        {
+            return std::borrow::Cow::Owned(base.to_string());
+        }
+    }
+    std::borrow::Cow::Borrowed(ip.trim())
+}
+
 fn integration_url_allowed(raw: &str) -> Result<reqwest::Url, &'static str> {
     let url = reqwest::Url::parse(raw).map_err(|_| "invalid_url")?;
     if !matches!(url.scheme(), "http" | "https")
@@ -7341,6 +7391,10 @@ fn fetch_ip_provider(policy: &Value, ip: &str) -> Value {
     if ie.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
         return json!({"status": "disabled"});
     }
+    // P1a: unmask the stored /24 (v4) or /48 (v6) CIDR to its network
+    // address before the public-IP gate, so real sessions reach the provider.
+    let unmasked = provider_ip_target(ip);
+    let ip: &str = unmasked.as_ref();
     if !provider_ip_allowed(ip) {
         return json!({"status": "skipped", "reason": "non_public_ip"});
     }
@@ -8411,7 +8465,7 @@ pub fn ops_identity_sla(st: &AppState) -> AppResult {
     // P0 path: materialised scalars (fast). Fallback only if table empty / PG missing.
     let latest = st
         .store
-        .list_analysis_latest(500, None, None)
+        .list_analysis_latest(500, None, None, None)
         .unwrap_or_else(|_| json!({"ok": true, "count": 0, "rows": []}));
     let scalar_rows: Vec<Value> = latest
         .get("rows")
@@ -10124,6 +10178,7 @@ mod cookie_capture_tests {
 mod ip_provider_tests {
     use super::{
         fetch_ip_provider, integration_url_allowed, map_ip_provider_response, provider_ip_allowed,
+        provider_ip_target,
     };
     use serde_json::{json, Value};
     use std::io::{Read, Write};
@@ -10241,6 +10296,44 @@ mod ip_provider_tests {
         let result = fetch_ip_provider(&custom_policy(&url), "8.8.8.8");
         assert_eq!(result["status"], "error");
         assert_eq!(result["error"], "timeout");
+        std::env::remove_var("GR_ALLOW_LAB_INTEGRATION_HTTP");
+    }
+
+    /// Panel QA P1a (2026-09-08): stored visitor IPs are privacy-masked CIDRs
+    /// (`a.b.c.0/24`); the enrichment pipeline must query the network address,
+    /// not reject the masked literal as non_public.
+    #[test]
+    fn masked_cidr_resolves_to_network_address() {
+        assert_eq!(provider_ip_target("183.192.38.0/24").as_ref(), "183.192.38.0");
+        assert_eq!(
+            provider_ip_target("2001:db8:abcd::/48").as_ref(),
+            "2001:db8:abcd::"
+        );
+        // Bare IPs / non-IP strings pass through unchanged.
+        assert_eq!(provider_ip_target("8.8.8.8").as_ref(), "8.8.8.8");
+        assert_eq!(provider_ip_target("unknown").as_ref(), "unknown");
+        // A masked PRIVATE subnet still skips (correct non_public verdict).
+        assert!(!provider_ip_allowed(provider_ip_target("10.0.0.0/24").as_ref()));
+    }
+
+    #[test]
+    fn masked_ip_reaches_provider_end_to_end() {
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("GR_ALLOW_LAB_INTEGRATION_HTTP", "1");
+        let url = serve_responses(
+            vec![(
+                200,
+                r#"{"asn":"AS24400","countryCode":"CN","organization":"Shanghai Mobile"}"#,
+            )],
+            None,
+        );
+        let result = fetch_ip_provider(&custom_policy(&url), "183.192.38.0/24");
+        assert_eq!(
+            result["status"], "ok",
+            "masked /24 must reach the provider: {result}"
+        );
+        assert_eq!(result["asn"], "AS24400");
+        assert_eq!(result["country"], "CN");
         std::env::remove_var("GR_ALLOW_LAB_INTEGRATION_HTTP");
     }
 

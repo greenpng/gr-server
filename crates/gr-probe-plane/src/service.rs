@@ -1074,6 +1074,20 @@ fn dispatch(
                 Err(e) => map_err(e),
             }
         }
+        // Panel QA P3 (2026-09-08): admin Integrations "test query" — run the
+        // IP-enrichment pipeline for one IP against the saved panel policy (or
+        // an incoming ip_enrichment override) without waiting for a result
+        // retrieval. Ops-gated like the other /v1/ops endpoints.
+        ("POST", "/v1/ops/ip_enrichment/test") => {
+            let v: Value = match serde_json::from_slice(body) {
+                Ok(v) => v,
+                Err(_) => json!({}),
+            };
+            match handlers::ops_ip_enrichment_test(st, &v) {
+                Ok(v) => Dispatch::Json(200, v),
+                Err(e) => map_err(e),
+            }
+        }
         ("GET", "/v1/ops/binder_lookup") => {
             match handlers::ops_binder_lookup(st, query) {
                 Ok(v) => Dispatch::Json(200, v),

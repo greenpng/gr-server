@@ -22,6 +22,14 @@ export async function api(path, opts = {}) {
   const j = await r.json().catch(() => ({}))
   if (r.status === 401) {
     setAuthedFlag(false)
+    // Panel QA P3 (2026-09-08): bounce to the login page immediately on a
+    // dead session instead of leaving a stale shell that only recovers on
+    // the next route change. Skipped on the login page itself (failed login
+    // attempts are handled there).
+    if (!location.hash.includes('/login')) {
+      const redirect = encodeURIComponent(location.hash.slice(1) || '/dashboard')
+      location.hash = `#/login?redirect=${redirect}`
+    }
     throw new Error(j.error || 'unauthorized')
   }
   if (!r.ok) throw new Error(j.error || r.statusText || 'request_failed')

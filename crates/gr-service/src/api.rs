@@ -157,6 +157,9 @@ pub fn router(
             &format!("{c}/api/integrations"),
             get(integrations_get).post(integrations_save),
         )
+        // Panel QA P3: pre-save provider connectivity check (proxied to the
+        // probe plane ops endpoint, ops-token attached by the helper).
+        .route(&format!("{c}/api/integrations/test"), post(integrations_test))
         .route(
             &format!("{c}/api/retention"),
             get(retention_get).post(retention_save),
@@ -1122,6 +1125,118 @@ async fn integrations_save(
     Json(json!({"ok": true, "effective": true})).into_response()
 }
 
+/// Panel QA P3 (2026-09-08): pre-save provider connectivity check. Proxies
+/// `{ip, config?}` to the probe plane's ops-gated enrichment test endpoint —
+/// saved policy is used when no `config.ip_enrichment` override is supplied.
+async fn integrations_test(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if let Err(r) = authed(&st, &headers) {
+        return r;
+    }
+    let ip = body
+        .get("ip")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if ip.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "error": "ip_required"})),
+        )
+            .into_response();
+    }
+    let url = format!("{}/v1/ops/ip_enrichment/test", st.probe_base);
+    match reqwest_post_json(&url, &body).await {
+        Ok((code, mut out)) => {
+            if let Some(obj) = out.as_object_mut() {
+                obj.insert("ok".into(), json!(code == 200));
+            }
+            (StatusCode::from_u16(code).unwrap_or(StatusCode::BAD_GATEWAY), Json(out)).into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"ok": false, "error": e})),
+        )
+            .into_response(),
+    }
+}
+
+/// Panel QA P1b + P2a bootstrap repair (2026-09-08), run once at startup:
+///
+/// 1. **P2a — display vs effective integrations**: write
+///    `{data_dir}/panel_policy.json` when missing so the panel GET (which
+///    shows the default config) and the probe plane (which reads the file)
+///    agree from first boot instead of diverging until the first save.
+/// 2. **P1b — control↔probe site sync backfill**: sites created before the
+///    upsert-time sync existed (or via non-panel paths) never reached
+///    `public.sites`, which broke `sdk/embed` (`site_not_found`) for the whole
+///    panel. Re-push every control-plane site through the same idempotent
+///    upsert the panel save path uses.
+pub fn startup_repair(rt: &gr_runtime::Runtime) {
+    // P2a: ensure panel_policy.json exists (DB integrations setting wins if
+    // a re-install kept the control DB but lost the data dir).
+    let dir = rt.cfg.data_dir.clone();
+    let mut pol = gr_probe_core::load_panel_policy(Some(dir.as_path()));
+    let policy_path = gr_probe_core::panel_policy_path(Some(dir.as_path()));
+    let missing = !policy_path.is_file();
+    if missing {
+        if let Ok(Some(raw)) = rt.admin.db.get_setting(SETTING_INTEGRATIONS) {
+            if let Ok(cfg) = serde_json::from_str::<Value>(&raw) {
+                pol.integrations = cfg;
+            }
+        }
+        if let Err(e) = gr_probe_core::save_panel_policy(Some(dir.as_path()), pol) {
+            tracing::warn!("startup_repair: panel_policy.json write failed: {e}");
+        } else {
+            tracing::info!(
+                path = %policy_path.display(),
+                "startup_repair: panel_policy.json bootstrapped (panel display now == plane effective config)"
+            );
+        }
+    }
+    // P1b: backfill public.sites from control.sites (idempotent upsert).
+    let records: Vec<SiteRecord> = rt
+        .admin
+        .db
+        .list_sites()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|v| serde_json::from_value(v.clone()).ok())
+        .collect();
+    if records.is_empty() {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("gr-startup-site-backfill".into())
+        .spawn(move || {
+            let mut ok = 0usize;
+            let mut failed = 0usize;
+            for rec in &records {
+                match sync_site_to_probe_admin_pg(rec) {
+                    Ok(()) => ok += 1,
+                    Err(e) => {
+                        failed += 1;
+                        tracing::warn!(
+                            "startup_repair: site backfill failed site_id={}: {e}",
+                            rec.site_id
+                        );
+                    }
+                }
+            }
+            tracing::info!(
+                total = records.len(),
+                ok,
+                failed,
+                "startup_repair: control→public.sites backfill complete"
+            );
+        })
+        .ok();
+}
+
 /// Sync control-plane site into probe-plane admin Postgres (`public.sites` / domains).
 /// Control-plane rows live in schema `control`; probe-plane reads `public`.
 fn sync_site_to_probe_admin(_data_dir: &std::path::Path, site: &SiteRecord) {
@@ -1482,15 +1597,64 @@ const SESSION_COOKIE: &str = "gr_session";
 #[allow(dead_code)]
 const OAUTH_STATE_COOKIE: &str = "gr_oauth_state";
 
-/// iss/opus5 S-8: `Secure` is now default-on (local http dev must opt out via
-/// `GR_DEV_INSECURE_COOKIE=1`; deployment env aliases may still set the same key);
-/// `GR_COOKIE_SECURE` remains an explicit override.
-fn cookie_secure() -> bool {
+/// iss/opus5 S-8 baseline (env-only resolver, used by the retired OAuth state
+/// cookie): explicit `GR_COOKIE_SECURE=1|0` wins; `GR_DEV_INSECURE_COOKIE=1`
+/// forces off; otherwise default ON.
+fn cookie_secure_env() -> bool {
     if let Some(v) = gr_abi::env::get("COOKIE_SECURE") {
-        return v == "1" || v.eq_ignore_ascii_case("true");
+        let t = v.trim().to_ascii_lowercase();
+        if t == "1" || t == "true" {
+            return true;
+        }
+        if t == "0" || t == "false" {
+            return false;
+        }
     }
     !gr_abi::env::get("DEV_INSECURE_COOKIE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .map(|v| {
+            let t = v.trim().to_ascii_lowercase();
+            t == "1" || t == "true"
+        })
+        .unwrap_or(false)
+}
+
+/// Session-cookie `Secure` policy resolved per request (panel QA P0 fix,
+/// 2026-09-08): explicit env wins (`GR_COOKIE_SECURE=1|0`,
+/// `GR_DEV_INSECURE_COOKIE=1` forces off). Default follows the actual request
+/// scheme — an https facade in front (`x-forwarded-proto: https`) keeps
+/// `Secure`; a panel reached over plain HTTP directly (no forwarding header)
+/// drops it, because on a plaintext channel the flag only makes browsers
+/// discard the session cookie (login 200 → /api/me 401 loop) without adding
+/// any real protection.
+fn request_secure_cookie(headers: &HeaderMap) -> bool {
+    if let Some(v) = gr_abi::env::get("COOKIE_SECURE") {
+        let t = v.trim().to_ascii_lowercase();
+        if t == "1" || t == "true" {
+            return true;
+        }
+        if t == "0" || t == "false" {
+            return false;
+        }
+    }
+    if gr_abi::env::get("DEV_INSECURE_COOKIE")
+        .map(|v| {
+            let t = v.trim().to_ascii_lowercase();
+            t == "1" || t == "true"
+        })
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|p| {
+            p.split(',')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("https")
+        })
         .unwrap_or(false)
 }
 
@@ -1509,7 +1673,7 @@ fn cookie_value_from_header(raw: &str, name: &str) -> Option<String> {
     None
 }
 
-fn cookie_header(name: &str, path: &str, token: &str, max_age: i64) -> String {
+fn cookie_header(name: &str, path: &str, token: &str, max_age: i64, secure: bool) -> String {
     let mut parts = vec![
         format!("{}={}", name, token),
         format!("Path={path}"),
@@ -1517,20 +1681,26 @@ fn cookie_header(name: &str, path: &str, token: &str, max_age: i64) -> String {
         "SameSite=Lax".into(),
         format!("Max-Age={max_age}"),
     ];
-    if cookie_secure() {
+    if secure {
         parts.push("Secure".into());
     }
     parts.join("; ")
 }
 
-fn session_cookie_header(name: &str, console: &str, token: &str, clear: bool) -> String {
+fn session_cookie_header(
+    name: &str,
+    console: &str,
+    token: &str,
+    clear: bool,
+    secure: bool,
+) -> String {
     let path = format!("/{}/", console.trim_matches('/'));
     let max_age = if clear {
         0
     } else {
         gr_admin::AdminAuth::session_ttl_secs()
     };
-    cookie_header(name, &path, if clear { "" } else { token }, max_age)
+    cookie_header(name, &path, if clear { "" } else { token }, max_age, secure)
 }
 
 fn append_set_cookie(headers: &mut HeaderMap, cookie: String) {
@@ -1539,8 +1709,17 @@ fn append_set_cookie(headers: &mut HeaderMap, cookie: String) {
     }
 }
 
-fn append_session_cookie_headers(headers: &mut HeaderMap, console: &str, token: &str, clear: bool) {
-    append_set_cookie(headers, session_cookie_header(SESSION_COOKIE, console, token, clear));
+fn append_session_cookie_headers(
+    headers: &mut HeaderMap,
+    console: &str,
+    token: &str,
+    clear: bool,
+    secure: bool,
+) {
+    append_set_cookie(
+        headers,
+        session_cookie_header(SESSION_COOKIE, console, token, clear, secure),
+    );
 }
 
 #[allow(dead_code)]
@@ -1550,6 +1729,7 @@ fn oauth_state_cookie_header(name: &str, state: &str, clear: bool) -> String {
         "/oauth/callback",
         if clear { "" } else { state },
         if clear { 0 } else { 600 },
+        cookie_secure_env(),
     )
 }
 
@@ -1584,7 +1764,7 @@ fn token_from_headers(headers: &HeaderMap) -> String {
 
 async fn admin_login(
     State(st): State<AppState>,
-    _headers: HeaderMap,
+    headers: HeaderMap,
     ConnectInfo(peer_addr): ConnectInfo<std::net::SocketAddr>,
     Json(body): Json<LoginBody>,
 ) -> Response {
@@ -1592,8 +1772,9 @@ async fn admin_login(
     let prod = matches!(deploy.as_str(), "prod" | "production" | "live");
     // 2026-09 product decision: local admin password login is the primary
     // path in every environment — the official-site OAuth requirement has
-    // been removed. The break-glass audit branch below is kept for tracing.
+    // been removed. The audit branch below is kept for tracing.
     let peer = peer_addr.ip().to_string();
+    let secure = request_secure_cookie(&headers);
     match st
         .rt
         .admin
@@ -1604,13 +1785,19 @@ async fn admin_login(
             if prod {
                 let _ = st.rt.admin.db.audit(
                     &body.username,
-                    "break_glass_login",
+                    "local_password_login",
                     &peer_addr.to_string(),
                     json!({"source":"local_password"}),
                 );
             }
             let mut res = Json(json!({ "ok": true, "token": token })).into_response();
-            append_session_cookie_headers(res.headers_mut(), &st.rt.admin.auth.console_path, &token, false);
+            append_session_cookie_headers(
+                res.headers_mut(),
+                &st.rt.admin.auth.console_path,
+                &token,
+                false,
+                secure,
+            );
             res
         }
         Err(e) => {
@@ -1795,7 +1982,13 @@ async fn oauth_callback(
             });
             let dest = format!("/{}/", st.rt.admin.auth.console_path);
             let mut res = axum::response::Redirect::temporary(&dest).into_response();
-            append_session_cookie_headers(res.headers_mut(), &st.rt.admin.auth.console_path, &token, false);
+            append_session_cookie_headers(
+                res.headers_mut(),
+                &st.rt.admin.auth.console_path,
+                &token,
+                false,
+                request_secure_cookie(&headers),
+            );
             append_oauth_state_cookie_headers(res.headers_mut(), "", true);
             res
         }
@@ -2046,8 +2239,15 @@ async fn cloud_sync_strategies(State(st): State<AppState>, headers: HeaderMap) -
 async fn admin_logout(State(st): State<AppState>, headers: HeaderMap) -> Response {
     let token = token_from_headers(&headers);
     let _ = st.rt.admin.auth.logout(&st.rt.admin.db, &token);
+    let secure = request_secure_cookie(&headers);
     let mut res = Json(json!({"ok": true})).into_response();
-    append_session_cookie_headers(res.headers_mut(), &st.rt.admin.auth.console_path, "", true);
+    append_session_cookie_headers(
+        res.headers_mut(),
+        &st.rt.admin.auth.console_path,
+        "",
+        true,
+        secure,
+    );
     res
 }
 
@@ -3664,4 +3864,64 @@ async fn fallback_404(req: Request<Body>) -> Response {
         Json(json!({"ok":false,"error":"not_found","path": req.uri().path()})),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod cookie_secure_tests {
+    use super::*;
+    use std::sync::Mutex;
+    static ENV: Mutex<()> = Mutex::new(());
+
+    fn hdr(k: &str, v: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(
+            axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+            axum::http::HeaderValue::from_str(v).unwrap(),
+        );
+        h
+    }
+
+    /// Panel QA P0 (2026-09-08): the session cookie must stay usable on a
+    /// direct plain-http panel while keeping `Secure` behind an https facade.
+    #[test]
+    fn secure_follows_request_scheme_by_default() {
+        let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("GR_COOKIE_SECURE");
+        std::env::remove_var("GR_DEV_INSECURE_COOKIE");
+        // Direct plain-http panel (no forwarding header): cookie must NOT be
+        // Secure, or browsers discard it and login loops 401.
+        assert!(!request_secure_cookie(&HeaderMap::new()));
+        assert!(!request_secure_cookie(&hdr("x-forwarded-proto", "http")));
+        // Behind an https facade: keep Secure.
+        assert!(request_secure_cookie(&hdr("x-forwarded-proto", "https")));
+        // Comma-list proxy chains: first hop wins.
+        assert!(request_secure_cookie(&hdr("x-forwarded-proto", "https, http")));
+        assert!(!request_secure_cookie(&hdr("x-forwarded-proto", "http, https")));
+    }
+
+    #[test]
+    fn explicit_env_overrides_win() {
+        let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("GR_DEV_INSECURE_COOKIE");
+        std::env::set_var("GR_COOKIE_SECURE", "1");
+        assert!(request_secure_cookie(&HeaderMap::new()));
+        std::env::set_var("GR_COOKIE_SECURE", "0");
+        assert!(!request_secure_cookie(&hdr("x-forwarded-proto", "https")));
+        std::env::remove_var("GR_COOKIE_SECURE");
+        std::env::set_var("GR_DEV_INSECURE_COOKIE", "1");
+        assert!(!request_secure_cookie(&hdr("x-forwarded-proto", "https")));
+        std::env::remove_var("GR_DEV_INSECURE_COOKIE");
+    }
+
+    #[test]
+    fn session_cookie_header_carries_secure_flag_conditionally() {
+        let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("GR_COOKIE_SECURE");
+        std::env::remove_var("GR_DEV_INSECURE_COOKIE");
+        let plain = session_cookie_header(SESSION_COOKIE, "c-abc", "tok", false, false);
+        assert!(plain.contains("HttpOnly") && plain.contains("SameSite=Lax"));
+        assert!(!plain.contains("Secure"), "plain http cookie must not be Secure: {plain}");
+        let tls = session_cookie_header(SESSION_COOKIE, "c-abc", "tok", false, true);
+        assert!(tls.contains("Secure"));
+    }
 }

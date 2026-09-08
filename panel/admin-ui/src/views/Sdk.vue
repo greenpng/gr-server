@@ -135,8 +135,15 @@ function pickMethod() {
   }
 }
 async function loadEmbed() {
-  const j = await api(`sdk/embed?site_id=${encodeURIComponent(siteId.value)}`)
-  snippetFrom(j)
+  // Panel QA P3 (2026-09-08): surface provider/policy rejections instead of
+  // silently leaving the snippet textarea empty.
+  try {
+    const j = await api(`sdk/embed?site_id=${encodeURIComponent(siteId.value)}`)
+    snippetFrom(j)
+  } catch (e) {
+    embed.value = ''
+    ElMessage.error(e.message || t('app.failed'))
+  }
 }
 onMounted(load)
 watch([siteId, tick], load)

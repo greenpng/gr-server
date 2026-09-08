@@ -68,6 +68,27 @@
         <el-form-item :label="t('integrations.vpn_source')">
           <el-input v-model="ip.vpn_proxy_source" placeholder="none | ip2proxy | spur | …" />
         </el-form-item>
+
+        <el-form-item :label="t('integrations.test_query')">
+          <div class="test-row" data-testid="ip-test-row">
+            <el-input
+              v-model="testIp"
+              :placeholder="t('integrations.test_ip_ph')"
+              style="max-width: 280px"
+              data-testid="ip-test-input"
+            />
+            <el-button
+              type="primary"
+              plain
+              :loading="testing"
+              data-testid="ip-test-run"
+              @click="runTest"
+            >{{ t('integrations.test_run') }}</el-button>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="testResult">
+          <pre class="mono muted" data-testid="ip-test-result" style="margin:0;white-space:pre-wrap">{{ testResult }}</pre>
+        </el-form-item>
       </el-form>
       </div>
     </div>
@@ -127,6 +148,40 @@ const providers = reactive({
   custom_http: { url: '', header_auth: '', label: 'Custom HTTP' },
 })
 const webhooks = reactive({ enabled: false, result_url: '', secret: '' })
+const testIp = ref('8.8.8.8')
+const testing = ref(false)
+const testResult = ref('')
+
+// Panel QA P3 (2026-09-08): pre-save provider connectivity check — runs the
+// enrichment pipeline on the plane against the CURRENT FORM config (masked
+// visitor IPs like 183.192.38.0/24 are accepted and resolve to the /24
+// network address server-side).
+async function runTest() {
+  testing.value = true
+  testResult.value = ''
+  try {
+    const j = await api('integrations/test', {
+      method: 'POST',
+      body: JSON.stringify({
+        ip: testIp.value.trim(),
+        config: {
+          ip_enrichment: {
+            enabled: ip.enabled,
+            provider: ip.provider,
+            vpn_proxy_source: ip.vpn_proxy_source,
+            providers: { ...providers },
+          },
+        },
+      }),
+    })
+    testResult.value = JSON.stringify(j, null, 2)
+  } catch (e) {
+    testResult.value = JSON.stringify({ ok: false, error: e.message || 'failed' }, null, 2)
+    ElMessage.error(e.message || t('app.failed'))
+  } finally {
+    testing.value = false
+  }
+}
 
 function providerLabel(p) {
   const meta = providers[p.id]
@@ -185,4 +240,5 @@ watch(tick, load)
   max-width: 720px;
 }
 .w-full { width: 100%; }
+.test-row { display: flex; gap: 10px; align-items: center; }
 </style>
