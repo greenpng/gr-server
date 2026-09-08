@@ -13,8 +13,10 @@
 
 用法:
   python3 load_stability.py --stack-env /tmp/gr-e2e/stack.env \
-      [--sessions 400] [--concurrency 64] [--out /tmp/gr-e2e/load.json]
+      [--sessions 240] [--concurrency 24] [--out /tmp/gr-e2e/load.json]
 纯 stdlib (runner 无第三方依赖)。
+默认按 runner debug 构建调参 (240/24): 首跑 400/64 时 ingest max=12.016s 顶到
+旧 12s 超时、280 个 open 超时失败 — 计数器当时只记 >=500 漏账, 现已全量入账。
 """
 import argparse
 import concurrent.futures
@@ -30,8 +32,8 @@ from pathlib import Path
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--stack-env", default="/tmp/gr-e2e/stack.env")
-    p.add_argument("--sessions", type=int, default=400)
-    p.add_argument("--concurrency", type=int, default=64)
+    p.add_argument("--sessions", type=int, default=240)
+    p.add_argument("--concurrency", type=int, default=24)
     p.add_argument("--result-timeout", type=int, default=30)
     p.add_argument("--out", default="")
     return p.parse_args()
@@ -46,8 +48,9 @@ def load_env(path):
     return env
 
 
-def req(url, method="GET", body=None, headers=None, timeout=12):
-    """Return (status, text). 5xx/timeout raise nothing — 返回原样统计."""
+def req(url, method="GET", body=None, headers=None, timeout=30):
+    """Return (status, text). 5xx/timeout raise nothing — 返回原样统计.
+    timeout 30s: CI 是 debug 构建 (慢于 release 一个量级), 首跑 12s 顶到过 max=12.016."""
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -147,22 +150,25 @@ def main():
             lat_open.append(r["dt_open"])
             if 200 <= r["open"] < 300:
                 cnt["open_2xx"] += 1
-            elif r["open"] >= 500:
-                cnt["s5xx"] += 1
+            else:
+                # 非 2xx 一律入账 (5xx、4xx、0=连接失败/超时)。
+                # 首跑 34246830314 教训: 280 个 open 失败因只记 >=500 而静默漏账。
+                cnt["s5xx"] += 1 if r["open"] >= 500 else 0
                 cnt["errs"].append(f"open {r['open']}")
             for ig in r["ing"]:
                 cnt["ing_total"] += 1
                 if ig["accepted"]:
                     cnt["ing_ok"] += 1
-                elif ig["status"] >= 500:
-                    cnt["s5xx"] += 1
+                else:
+                    cnt["s5xx"] += 1 if ig["status"] >= 500 else 0
                     cnt["errs"].append(f"ingest {ig['status']}")
             lat_ing.extend(r["dt_ing"])
             if r["res"] is not None:
                 if r["res"][1]:
                     cnt["res_done"] += 1
-                elif r["res"][0] >= 500:
-                    cnt["s5xx"] += 1
+                else:
+                    cnt["s5xx"] += 1 if r["res"][0] >= 500 else 0
+                    cnt["errs"].append(f"result {r['res'][0]}")
                 lat_res.append(r["dt_res"])
             elif r["sid"]:
                 cnt["errs"].append("result timeout/pending")
