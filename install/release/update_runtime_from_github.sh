@@ -364,7 +364,20 @@ if [[ "$(id -u)" == "0" && -d "$INSTALL_ROOT" ]]; then
     chown "$SVC_USER:$SVC_GROUP" \
       "$INSTALL_ROOT/bin/gr-service" "$INSTALL_ROOT/bin/gr-cli" \
       "$INSTALL_ROOT/VERSION" 2>/dev/null || true
-    echo "[runtime-ota] installed trees chowned → $SVC_USER (fe/spec/bin)"
+    # Module OTA trees: root-run `gr-cli module update` writes modules/staging,
+    # modules/versions/<m>/<v> and modules/active markers; the service user must
+    # own them or the next service-user CLI/panel OTA run fails with io EACCES
+    # and the service cannot read root-600 active markers (v1.0.4 178 hit both).
+    [[ -d "$INSTALL_ROOT/modules" ]] && chown -R "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/modules" 2>/dev/null || true
+    # Release manifests under dist/release-*/ are read by module OTA (binding +
+    # rollback lookups); root-run updaters/CLIs create them root-owned.
+    for d in "$INSTALL_ROOT"/dist/release-*; do
+      [[ -d "$d" ]] && chown -R "$SVC_USER:$SVC_GROUP" "$d" 2>/dev/null || true
+    done
+    # gr-cli whole-bundle cache (temp-dir default). A root-run CLI leaves it
+    # root-owned and blocks every later service-user module update. Best-effort.
+    [[ -d /tmp/gr-ota-bundle ]] && chown -R "$SVC_USER:$SVC_GROUP" /tmp/gr-ota-bundle 2>/dev/null || true
+    echo "[runtime-ota] installed trees chowned → $SVC_USER (fe/spec/bin/modules/dist/cache)"
   fi
 fi
 
