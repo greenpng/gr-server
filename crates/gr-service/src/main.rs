@@ -396,10 +396,12 @@ async fn main() -> anyhow::Result<()> {
                 );
                 let mut fail_streak: u32 = 0;
                 loop {
-                    // 20s baseline; consecutive failures back off up to 300s
-                    // so a node without egress cannot hammer the release URL.
+                    // 20s baseline; consecutive failures add 20s each, capped
+                    // at 300s, so a node without egress cannot hammer the
+                    // release URL (streak 0 must stay at the 20s baseline —
+                    // `20 * streak` degraded to a 1s loop on a healthy node).
                     thread::sleep(std::time::Duration::from_secs(
-                        (20 * u64::from(fail_streak.min(15))).max(1),
+                        (20 + 20 * u64::from(fail_streak.min(14))).min(300),
                     ));
                     fail_streak = apply_cluster_ota_tick(&rt_ota, &static_dir_ota, mode, fail_streak);
                 }
@@ -738,7 +740,10 @@ fn make_probe_args(
 /// per-module monotonic floor and analyze hot-load rollback semantics) plus FE
 /// (`ota_install_fe`, sha-verified hot swap with .bak). The runtime binary +
 /// restart stay with the root auto-upgrade timer (L3): the systemd sandbox has
-/// no write access to `bin/` and no restart privilege.
+/// no write access to `bin/` and no restart privilege. Completion signal is
+/// "every active module (marker set) at the desired version", and the
+/// upgrade-only pre-gate blocks a desired below any active version. The
+/// runtime binary + restart stay with the root auto-upgrade timer (L3).
 /// Returns the failure streak so the caller can back off.
 fn apply_cluster_ota_tick(
     rt: &Arc<Runtime>,
@@ -753,30 +758,71 @@ fn apply_cluster_ota_tick(
     if !d.auto_apply {
         return 0;
     }
-    let av = rt
-        .registry
-        .get("analyze")
-        .map(|m| m.version().to_string());
-    if !gr_runtime::cluster_ota::should_apply_cluster_ota(
-        &rt.get_release_base_url(),
-        av.as_deref(),
-        &d,
-    ) {
-        return 0;
+    // Completion is "every active module at the desired version" — an
+    // analyze-only completion signal closed the gate while other modules
+    // still lagged (178 v1.0.6: analyze landed first over a flaky link, the
+    // gate closed and four modules stalled on 1.0.5 until manual gr-cli
+    // completion). The module universe comes from the ACTIVE MARKERS, not the
+    // loaded registry: only `analyze` hot-dlopen-swaps, static-path modules
+    // are marker + next-boot (their registry entries do not exist at all
+    // until a hot swap) — the marker set is what install-all writes and what
+    // the next boot runs. Registry fallback covers a marker-less edge case.
+    let eng = rt.ota_engine();
+    let mut versions: Vec<String> = eng
+        .active_modules()
+        .into_iter()
+        .map(|(_, v)| v)
+        .collect();
+    if versions.is_empty() {
+        versions = rt
+            .registry
+            .loaded_names()
+            .iter()
+            .filter_map(|n| rt.registry.get(n).map(|m| m.version().to_string()))
+            .collect();
     }
-    // Upgrade-only pre-gate (mirrors the module activation floor and the L3
-    // timer's monotonic gate): a desired row at or below the active analyze
-    // version can never apply cleanly (modules refuse downgrade) and must not
-    // silently roll FE back either — log and skip instead of a retry storm.
-    if let Some(cur) = av.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        if !gr_runtime::cluster_ota::version_gt(&d.version, cur) {
+    let vrefs: Vec<&str> = versions.iter().map(String::as_str).collect();
+    let decision = gr_runtime::cluster_ota::hot_apply_decision(&vrefs, &d.version);
+    match decision {
+        gr_runtime::cluster_ota::HotApplyDecision::DowngradeBlocked => {
+            // Upgrade-only (mirrors the module activation floor and the L3
+            // timer's monotonic gate): a desired below any active version can
+            // never apply cleanly and must not silently roll FE back — log and
+            // skip instead of a retry storm.
+            let max_v = versions.iter().map(String::as_str).max().unwrap_or("");
             tracing::info!(
                 desired = %d.version,
-                active = cur,
-                "cluster ota auto: desired not newer than active analyze — unattended path never downgrades (explicit rollback: panel per-module install)"
+                active = max_v,
+                "cluster ota auto: desired below an active module — unattended path never downgrades (explicit rollback: panel per-module install)"
             );
             return 0;
         }
+        gr_runtime::cluster_ota::HotApplyDecision::Closed => {
+            // Modules converged. Only a fetch-base mismatch can remain (stale
+            // release URL from an older desired) — converge the pointer
+            // without reinstalling. The docker ota-mirror protection lives
+            // inside should_apply_cluster_ota (same version via another base
+            // is not flipped).
+            let min_v = versions.iter().map(String::as_str).min().map(str::to_string);
+            if mode == gr_runtime::cluster_ota::HotOtaMode::Enforce
+                && gr_runtime::cluster_ota::should_apply_cluster_ota(
+                    &rt.get_release_base_url(),
+                    min_v.as_deref(),
+                    &d,
+                )
+            {
+                if let Err(e) = rt.set_release_base_url(&d.release_url) {
+                    tracing::warn!(error = %e, "cluster ota set-release-url failed");
+                    return fail_streak + 1;
+                }
+                tracing::info!(
+                    version = %d.version,
+                    "cluster ota auto: modules converged, release URL re-pointed"
+                );
+            }
+            return 0;
+        }
+        gr_runtime::cluster_ota::HotApplyDecision::Apply => {}
     }
     if mode == gr_runtime::cluster_ota::HotOtaMode::Warn {
         tracing::info!(

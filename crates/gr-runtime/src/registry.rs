@@ -37,6 +37,18 @@ impl ModuleRegistry {
             .and_then(|s| s.load_full().as_ref().as_ref().cloned())
     }
 
+    /// Names of currently loaded modules. The unattended OTA thread iterates
+    /// these for its all-modules convergence check, but reads VERSIONS from
+    /// the active markers (static-path modules keep their boot version in the
+    /// registry until restart — see apply_cluster_ota_tick).
+    pub fn loaded_names(&self) -> Vec<String> {
+        let g = self.slots.read();
+        g.iter()
+            .filter(|(_, s)| s.load_full().is_some())
+            .map(|(k, _)| k.clone())
+            .collect()
+    }
+
     /// Load so and atomically activate (old module dropped when refs gone).
     pub fn hot_load(&self, name: &str, so_path: &Path) -> Result<Arc<LoadedModule>, String> {
         let loaded = LoadedModule::open(so_path, &self.runtime_version)?;

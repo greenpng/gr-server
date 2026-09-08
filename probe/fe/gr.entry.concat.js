@@ -1,4 +1,4 @@
- /* greenpng entry | 1.0.6 */
+ /* greenpng entry | 1.0.7 */
 
 /* ---- gr.fe_impl.js ---- */
 /**

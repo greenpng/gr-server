@@ -172,6 +172,45 @@ pub fn should_apply_cluster_ota(
     true
 }
 
+/// Unattended hot-apply decision from the active module versions vs desired.
+///
+/// Completion is "every active module sits at the desired version" — an
+/// analyze-only completion signal closes the gate while other modules still
+/// lag (178 v1.0.6: analyze landed first over a flaky link, the gate closed
+/// and the remaining four modules stalled on 1.0.5). Upgrade-only, mirroring
+/// `ota_activate`'s floor and the L3 timer's monotonic gate: a desired below
+/// any active version is blocked; a desired equal to the max active with
+/// laggards is a catch-up apply, not a downgrade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotApplyDecision {
+    /// Desired differs from the active set and is not below any active version.
+    Apply,
+    /// Every active module already sits at the desired version.
+    Closed,
+    /// Desired is below at least one active version — never downgrade unattended.
+    DowngradeBlocked,
+}
+
+/// `versions` = versions of the node's active modules (marker set; see
+/// `OtaEngine::active_modules`); empty (fresh install, no markers) bootstraps
+/// with an apply.
+pub fn hot_apply_decision(versions: &[&str], desired: &str) -> HotApplyDecision {
+    let desired = desired.trim();
+    if versions.is_empty() {
+        return HotApplyDecision::Apply;
+    }
+    if !versions.iter().any(|v| v.trim() != desired) {
+        return HotApplyDecision::Closed;
+    }
+    if versions
+        .iter()
+        .any(|v| version_gt(v.trim(), desired))
+    {
+        return HotApplyDecision::DowngradeBlocked;
+    }
+    HotApplyDecision::Apply
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,6 +288,44 @@ mod tests {
     fn empty_desired_never_applies() {
         let d = desired("", "");
         assert!(!should_apply_cluster_ota("https://x/v1", Some("1"), &d));
+    }
+
+    #[test]
+    fn hot_apply_decision_gates() {
+        use HotApplyDecision::*;
+        // nothing loaded → bootstrap apply
+        assert_eq!(hot_apply_decision(&[], "1.0.6"), Apply);
+        // all at desired → closed
+        assert_eq!(
+            hot_apply_decision(&["1.0.6", "1.0.6", "1.0.6"], "1.0.6"),
+            Closed
+        );
+        // uniform upgrade
+        assert_eq!(
+            hot_apply_decision(&["1.0.5", "1.0.5", "1.0.5"], "1.0.6"),
+            Apply
+        );
+        // 178 v1.0.6 regression: analyze+ingest at desired, four lagging — the
+        // gate must stay open as a catch-up apply, not close on analyze alone
+        assert_eq!(
+            hot_apply_decision(&["1.0.6", "1.0.6", "1.0.5", "1.0.5", "1.0.5", "1.0.5"], "1.0.6"),
+            Apply
+        );
+        // desired below one active module → downgrade blocked (floor parity)
+        assert_eq!(
+            hot_apply_decision(&["1.0.6", "1.0.5"], "1.0.5"),
+            DowngradeBlocked
+        );
+        assert_eq!(
+            hot_apply_decision(&["1.0.6", "1.0.5"], "1.0.4"),
+            DowngradeBlocked
+        );
+        // unparseable active version does not authorize a downgrade (version_gt
+        // fails closed) but also does not block a legitimate catch-up
+        assert_eq!(
+            hot_apply_decision(&["1.0.6", "dev-local"], "1.0.6"),
+            Apply
+        );
     }
 
     #[test]

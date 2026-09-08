@@ -1133,10 +1133,13 @@ pub fn release_url_allowed(url: &str) -> Result<(), String> {
         return Ok(());
     }
     let raw = if raw.trim().is_empty() {
-        // Production default allowlist: the public V7 install repo only.
-        // The legacy private v6 archive (kullyeilert-jpg) is intentionally
-        // no longer allowed — panel OTA must target the signed public release.
-        "https://github.com/greenpng/install/".to_string()
+        // Production default allowlist: the signed public release repos —
+        // gr-server (live, v1.0.6+) and the greenpng install repo (legacy
+        // layouts). The legacy private v6 archive (kullyeilert-jpg) is
+        // intentionally no longer allowed. 178 v1.0.6: the default pointed
+        // only at the retired install repo and rejected every gr-server URL
+        // until ops set GR_RELEASE_URL_ALLOWLIST by hand.
+        "https://github.com/greenpng/gr-server/,https://github.com/greenpng/install/".to_string()
     } else {
         raw
     };
@@ -1215,13 +1218,21 @@ mod release_url_tests {
         let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("GR_DEPLOY_ENV", "production");
         std::env::remove_var("GR_RELEASE_URL_ALLOWLIST");
-        // Default allowlist = public V7 install repo.
+        // Default allowlist = gr-server (live) + greenpng install repo (legacy).
         assert!(release_url_allowed(
             "https://github.com/greenpng/install/releases/download/v7.0.1"
         )
         .is_ok());
         assert!(release_url_allowed(
             "https://github.com/greenpng/install/releases/download/v7.0.2/fe-7.0.2.tgz"
+        )
+        .is_ok());
+        assert!(release_url_allowed(
+            "https://github.com/greenpng/gr-server/releases/download/v1.0.6"
+        )
+        .is_ok());
+        assert!(release_url_allowed(
+            "https://github.com/greenpng/gr-server/releases/download/v1.0.6/fe-1.0.6.tgz"
         )
         .is_ok());
         // Legacy private archive must NOT be reachable by default.
@@ -1232,6 +1243,8 @@ mod release_url_tests {
         assert!(release_url_allowed("https://github.com/greenpng.evil.com/x").is_err());
         assert!(release_url_allowed("https://greenpng.com/install/x").is_err());
         assert!(release_url_allowed("https://evil.com/greenpng/install/x").is_err());
+        assert!(release_url_allowed("https://greenpng.com/gr-server/x").is_err());
+        assert!(release_url_allowed("https://evil.com/greenpng/gr-server/x").is_err());
         std::env::remove_var("GR_DEPLOY_ENV");
     }
 
