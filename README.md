@@ -13,25 +13,24 @@ updater scripts / panel OTA all point at this repository's Releases).
 
 ## Documentation
 
-The product guide — features, architecture, and the full usage tutorial
-(install → panel → site → probe deploy → receive results → smoke) — is
-maintained here in **12 languages**. English is the default; pick your
-language:
+The project guide — what the project is, repository layout & architecture,
+and install & usage — is maintained here as **one file per language** under
+`docs/`. English is the default; pick your language:
 
 | Language | Guide |
 |---|---|
-| English | [`docs/en/README.md`](docs/en/README.md) |
-| 中文 (Chinese) | [`docs/zh/README.md`](docs/zh/README.md) |
-| 日本語 (Japanese) | [`docs/ja/README.md`](docs/ja/README.md) |
-| 한국어 (Korean) | [`docs/ko/README.md`](docs/ko/README.md) |
-| Deutsch (German) | [`docs/de/README.md`](docs/de/README.md) |
-| Français (French) | [`docs/fr/README.md`](docs/fr/README.md) |
-| Español (Spanish) | [`docs/es/README.md`](docs/es/README.md) |
-| Português (Portuguese) | [`docs/pt/README.md`](docs/pt/README.md) |
-| Русский (Russian) | [`docs/ru/README.md`](docs/ru/README.md) |
-| العربية (Arabic) | [`docs/ar/README.md`](docs/ar/README.md) |
-| हिन्दी (Hindi) | [`docs/hi/README.md`](docs/hi/README.md) |
-| Bahasa Indonesia | [`docs/id/README.md`](docs/id/README.md) |
+| English | [`docs/README.md`](docs/README.md) |
+| 中文 (Chinese) | [`docs/README.zh-CN.md`](docs/README.zh-CN.md) |
+| 日本語 (Japanese) | [`docs/README.ja.md`](docs/README.ja.md) |
+| 한국어 (Korean) | [`docs/README.ko.md`](docs/README.ko.md) |
+| Deutsch (German) | [`docs/README.de.md`](docs/README.de.md) |
+| Français (French) | [`docs/README.fr.md`](docs/README.fr.md) |
+| Español (Spanish) | [`docs/README.es.md`](docs/README.es.md) |
+| Português (Portuguese) | [`docs/README.pt.md`](docs/README.pt.md) |
+| Русский (Russian) | [`docs/README.ru.md`](docs/README.ru.md) |
+| العربية (Arabic) | [`docs/README.ar.md`](docs/README.ar.md) |
+| हिन्दी (Hindi) | [`docs/README.hi.md`](docs/README.hi.md) |
+| Bahasa Indonesia | [`docs/README.id.md`](docs/README.id.md) |
 
 The admin panel ships with **English + 中文** locales, kept in sync in
 `panel/admin-ui/src/i18n/`.
@@ -78,7 +77,7 @@ All updates pull the same tag's signed Release assets from this repository.
 | `vendor/` | Vendored dependency sources (pingora) |
 | `install/` | Installer + data-layer compose + upgrade scripts |
 | `release/` | Packaging scripts (build_multiarch / SBOM / module signing) |
-| `docs/` | Product guide in 12 languages (this is the documentation home) |
+| `docs/` | Project guide, one file per language |
 | `VERSION` | Release version, single source of truth |
 
 Full documentation of workstreams and lab tests lives in the development
