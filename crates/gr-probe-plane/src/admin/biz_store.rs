@@ -169,10 +169,19 @@ impl BizStore {
         thread::Builder::new()
             .name("gr-biz-pg".into())
             .spawn(move || {
-                let mut client = connect_biz_pg(&dsn_owned)
-                    .unwrap_or_else(|e| panic!("gr_biz pg connect ({label_t}): {e}"));
+                let mut client = match connect_biz_pg(&dsn_owned) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        // 引导期竞态 (全新 PG entrypoint 重启窗) — 与 association_store
+                        // 同款: 静默退出走错误路径, 不留 panic 噪音 (fulltest 零 panic
+                        // 断言; 公开仓 run 34249515793 hotcold 实证 biz 线程同撞)。
+                        log::warn!("gr_biz pg connect failed ({label_t}); jobs will error: {e}");
+                        return;
+                    }
+                };
                 if let Err(e) = client.batch_execute(PG_SCHEMA) {
-                    panic!("gr_biz pg schema: {e}");
+                    log::warn!("gr_biz pg schema failed ({label_t}); jobs will error: {e}");
+                    return;
                 }
                 while let Ok(job) = rx.recv() {
                     job(&mut client);

@@ -159,6 +159,10 @@ jobs:
           npm ci --prefix panel/admin-ui --no-audit --no-fund
           npm run build --prefix panel/admin-ui
           TARGETS="$(uname -m)" bash release/build_multiarch.sh
+          # 实验室一次性根钥: install.sh/update_runtime 钉扎产线钥指纹, 实验树
+          # 必须显式覆写 (B1/B3 用正式资产无此需)。后续步骤经 LAB_PK_SHA256 取用。
+          _v="$(tr -d '[:space:]' < VERSION)"
+          echo "LAB_PK_SHA256=$(sha256sum "dist/release-${_v}/ota_ed25519.pk" | awk '{print $1}')" >> "$GITHUB_ENV"
       - name: serve dist + compose PG (gate-b B1 同款)
         run: |
           set -euo pipefail
@@ -208,6 +212,7 @@ jobs:
           set -euo pipefail
           GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
           GR_RAW_BASE="http://127.0.0.1:${SRV_PORT}/" \
+          GR_OTA_ROOT_PUBKEY_SHA256="$LAB_PK_SHA256" \
             bash install/install.sh --arch "$(uname -m)" --version "$VERSION" \
               --prefix "$RUNNER_TEMP/gr" --env-file "$RUNNER_TEMP/gr.env" \
               --no-systemd --yes 2>&1 | tee /tmp/install-f.log
@@ -239,6 +244,7 @@ jobs:
               --no-systemd --yes 2>&1 | tee /tmp/install-old.log
           VERSION="$VERSION" INSTALL_ROOT="$RUNNER_TEMP/gr-old" \
           GR_RELEASE_BASE="http://127.0.0.1:${SRV_PORT}/" \
+          GR_OTA_ROOT_PUBKEY_SHA256="$LAB_PK_SHA256" \
             bash install/release/update_runtime_from_github.sh 2>&1 | tee /tmp/install-up.log
           bash install/test/smoke_install.sh --prefix "$RUNNER_TEMP/gr-old"
           [[ "$(tr -d '[:space:]' < "$RUNNER_TEMP/gr-old/VERSION")" == "$VERSION" ]] || {
