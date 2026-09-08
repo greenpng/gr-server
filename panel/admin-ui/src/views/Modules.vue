@@ -38,6 +38,19 @@
               <el-checkbox v-model="full.install_fe" data-testid="ota-chk-fe">{{ t('modules.chk_fe') }}</el-checkbox>
               <el-checkbox v-model="full.install_runtime" data-testid="ota-chk-runtime">{{ t('modules.chk_runtime') }}</el-checkbox>
               <el-checkbox v-model="full.restart_runtime" :disabled="!full.install_runtime" data-testid="ota-chk-restart">{{ t('modules.chk_restart') }}</el-checkbox>
+              <el-checkbox v-model="full.auto_apply" data-testid="ota-chk-auto">{{ t('modules.chk_auto') }}</el-checkbox>
+            </div>
+          </el-form-item>
+          <el-form-item v-if="full.auto_apply" :label="t('modules.auto_window')" data-testid="ota-window-item">
+            <div class="url-row">
+              <el-input
+                v-model="full.window"
+                placeholder="04:00-05:00"
+                data-testid="ota-window-input"
+                class="url-input"
+                style="max-width: 220px"
+              />
+              <span class="hint-inline">{{ t('modules.auto_window_hint') }}</span>
             </div>
           </el-form-item>
           <div class="toolbar">
@@ -48,6 +61,50 @@
         </el-form>
         <el-alert class="mt" type="info" :closable="false" show-icon :title="t('modules.layers_title')" :description="t('modules.layers_desc')" />
         <pre v-if="fullOut" class="mono muted out" data-testid="ota-full-out">{{ fullOut }}</pre>
+      </div>
+    </div>
+
+    <div class="surface" data-testid="ota-auto-card">
+      <div class="surface-header">
+        <span>{{ t('modules.auto_title') }}</span>
+        <div class="toolbar">
+          <el-button
+            v-if="!(autoState.timer_state?.hold)"
+            data-testid="ota-auto-hold-btn"
+            @click="setAutoHold(true)"
+          >{{ t('modules.auto_hold') }}</el-button>
+          <el-button
+            v-else
+            type="warning"
+            data-testid="ota-auto-unhold-btn"
+            @click="setAutoHold(false)"
+          >{{ t('modules.auto_unhold') }}</el-button>
+        </div>
+      </div>
+      <div class="surface-body">
+        <div class="kpi-grid cols-3" data-testid="ota-auto-kpis">
+          <div class="kpi-card">
+            <div class="label">{{ t('modules.auto_hot_mode') }}</div>
+            <div class="value mono" data-testid="ota-auto-mode">{{ autoState.hot_mode || '—' }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="label">{{ t('modules.auto_desired') }}</div>
+            <div class="value mono" data-testid="ota-auto-desired">
+              {{ autoState.desired?.desired?.version || '—' }}
+              <el-tag v-if="autoState.desired?.desired?.auto_apply" type="success" size="small" style="margin-left:6px">{{ t('modules.auto_on') }}</el-tag>
+              <el-tag v-else type="info" size="small" style="margin-left:6px">{{ t('modules.auto_off') }}</el-tag>
+            </div>
+            <div class="hint mono" v-if="autoState.desired?.desired?.window" data-testid="ota-auto-window">{{ autoState.desired.desired.window }}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="label">{{ t('modules.auto_state') }}</div>
+            <div class="value mono" data-testid="ota-auto-last">
+              {{ autoState.timer_state?.last_result || t('modules.auto_state_none') }}
+            </div>
+            <div class="hint mono" v-if="autoState.timer_state?.last_run" data-testid="ota-auto-last-run">{{ autoState.timer_state.last_run }}</div>
+          </div>
+        </div>
+        <pre v-if="autoState.timer_state?.last_error" class="mono muted out" data-testid="ota-auto-error">{{ autoState.timer_state.last_error }}</pre>
       </div>
     </div>
 
@@ -129,12 +186,15 @@ const remoteOut = ref('')
 const fullOut = ref('')
 const busy = ref(false)
 const stage = reactive({ name: 'analyze', version: '6.0.1-lab', path: '' })
+const autoState = ref({})
 const full = reactive({
   release_url: '',
   install_modules: true,
   install_fe: true,
   install_runtime: true,
   restart_runtime: true,
+  auto_apply: false,
+  window: '',
 })
 const tick = inject('refreshTick', ref(0))
 
@@ -142,6 +202,34 @@ async function load() {
   ota.value = await api('ota/local')
   if (ota.value.release_base_url && !full.release_url) {
     full.release_url = ota.value.release_base_url
+  }
+}
+
+// iss/ota-unattended-auto-upgrade-design: unattended status card — the
+// hot thread view plus the L3 root timer state file.
+async function loadAutoState() {
+  try {
+    autoState.value = await api('ota/auto-state')
+    const d = autoState.value?.desired?.desired
+    if (d) {
+      full.auto_apply = !!d.auto_apply
+      full.window = d.window || ''
+    }
+  } catch {
+    autoState.value = {}
+  }
+}
+
+async function setAutoHold(hold) {
+  busy.value = true
+  try {
+    await api('ota/auto-hold', { method: 'POST', body: JSON.stringify({ hold }) })
+    ElMessage.success(hold ? t('modules.auto_hold_ok') : t('modules.auto_unhold_ok'))
+    await loadAutoState()
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    busy.value = false
   }
 }
 async function loadRemote() {
@@ -185,11 +273,16 @@ async function fullUpgrade() {
       install_runtime: full.install_runtime,
       restart_runtime: full.restart_runtime,
       activate: true,
+      // Declare unattended auto-apply with this release (None-merge server side:
+      // these are always sent explicitly from the form).
+      auto_apply: full.auto_apply,
+      window: full.window.trim(),
     }
     const j = await api('ota/full-upgrade', { method: 'POST', body: JSON.stringify(body) })
     fullOut.value = JSON.stringify(j, null, 2)
     ElMessage[j.ok ? 'success' : 'warning'](j.ok ? t('modules.full_ok') : t('modules.full_partial'))
     await load()
+    await loadAutoState()
   } catch (e) {
     ElMessage.error(e.message)
   } finally {
@@ -283,8 +376,8 @@ async function doStage() {
   ElMessage.success(t('modules.staged_ok'))
   load()
 }
-onMounted(load)
-watch(tick, load)
+onMounted(() => { load(); loadAutoState() })
+watch(tick, () => { load(); loadAutoState() })
 </script>
 
 <style scoped>
@@ -318,4 +411,5 @@ watch(tick, load)
   max-width: 860px;
 }
 .hint { margin-top: 8px; color: var(--gv-text-muted); }
+.hint-inline { color: var(--gv-text-muted); font-size: 12px; }
 </style>

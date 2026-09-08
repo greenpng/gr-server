@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly greenpng unattended auto-upgrade check
+
+[Timer]
+# The wrapper re-checks desired.version/window each run; the calendar just
+# picks a quiet hour. RandomizedDelaySec spreads multi-node fleets.
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=30m
+# Catch up after downtime (Persistent) so an off-at-04:30 host still checks.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
