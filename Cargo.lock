@@ -2563,7 +2563,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "gr-abi"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "hex",
  "semver",
@@ -2575,7 +2575,7 @@ dependencies = [
 
 [[package]]
 name = "gr-admin"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "base64",
@@ -2600,7 +2600,7 @@ dependencies = [
 
 [[package]]
 name = "gr-cli"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "clap",
@@ -2619,7 +2619,7 @@ dependencies = [
 
 [[package]]
 name = "gr-cluster"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "chrono",
  "hex",
@@ -2635,7 +2635,7 @@ dependencies = [
 
 [[package]]
 name = "gr-harden"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2649,7 +2649,7 @@ dependencies = [
 
 [[package]]
 name = "gr-lb"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "serde",
  "serde_json",
@@ -2660,7 +2660,7 @@ dependencies = [
 
 [[package]]
 name = "gr-module-analyze"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "gr-abi",
  "gr-probe-core",
@@ -2670,7 +2670,7 @@ dependencies = [
 
 [[package]]
 name = "gr-module-brain"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "gr-abi",
  "serde",
@@ -2679,7 +2679,7 @@ dependencies = [
 
 [[package]]
 name = "gr-module-edge"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "gr-abi",
  "serde_json",
@@ -2687,7 +2687,7 @@ dependencies = [
 
 [[package]]
 name = "gr-module-identity"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "gr-abi",
  "hex",
@@ -2699,7 +2699,7 @@ dependencies = [
 
 [[package]]
 name = "gr-module-ingest"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "gr-abi",
  "gr-admin",
@@ -2710,7 +2710,7 @@ dependencies = [
 
 [[package]]
 name = "gr-module-lb"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "gr-abi",
  "gr-probe-core",
@@ -2720,7 +2720,7 @@ dependencies = [
 
 [[package]]
 name = "gr-module-probe-assets"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "gr-abi",
  "parking_lot",
@@ -2730,11 +2730,11 @@ dependencies = [
 
 [[package]]
 name = "gr-obf"
-version = "1.0.7"
+version = "1.0.8"
 
 [[package]]
 name = "gr-ota"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "base64",
@@ -2755,7 +2755,7 @@ dependencies = [
 
 [[package]]
 name = "gr-probe-core"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "aes-gcm",
  "base64",
@@ -2778,7 +2778,7 @@ dependencies = [
 
 [[package]]
 name = "gr-probe-net"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -2794,7 +2794,7 @@ dependencies = [
 
 [[package]]
 name = "gr-probe-plane"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "async-trait",
  "base64",
@@ -2839,13 +2839,15 @@ dependencies = [
 
 [[package]]
 name = "gr-probe-store"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "aes-gcm",
  "base64",
+ "fallible-iterator 0.2.0",
  "flate2",
  "getrandom 0.2.17",
  "gr-abi",
+ "log",
  "postgres",
  "rusqlite",
  "serde",
@@ -2856,7 +2858,7 @@ dependencies = [
 
 [[package]]
 name = "gr-runtime"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2882,7 +2884,7 @@ dependencies = [
 
 [[package]]
 name = "gr-service"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "aes-gcm",
  "anyhow",

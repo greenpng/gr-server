@@ -345,7 +345,8 @@ if m.get("cli") is not None:
 # Whole-bundle (greenpng 1.0.0+): fe_tree/admin_tree signed when present.
 # spec_tree (1.0.1+): analyze 运行时依赖随包分发并签名; v1.0.0 包无此项 →
 # 安装侧走 $PREFIX/spec 既有目录或告警 (向后兼容)。
-for k in ("fe_tree", "admin_tree", "spec_tree"):
+# data_tree (1.0.8+): r100 模板 + geoip mmdb (P0 运行时数据) — 同型。
+for k in ("fe_tree", "admin_tree", "spec_tree", "data_tree"):
     if m.get(k) is not None:
         t = m[k] or {}
         entry = {"files": t.get("files") or {}}
@@ -413,6 +414,18 @@ if spec_files:
     if bad:
         raise SystemExit(f"spec_tree sha mismatch: {bad[:3]} … ({len(bad)} files)")
     print(f"spec_tree: {len(spec_files)} files verified")
+# data_tree (1.0.8+): r100 模板 + geoip mmdb — 存在则逐文件验签
+data_tree = man.get("data_tree") or {}
+data_files = data_tree.get("files") or {}
+if data_files:
+    bad = []
+    for rel, want in data_files.items():
+        p = bundle / "data" / rel
+        if not p.is_file() or sha(p) != want:
+            bad.append(rel)
+    if bad:
+        raise SystemExit(f"data_tree sha mismatch: {bad[:3]} … ({len(bad)} files)")
+    print(f"data_tree: {len(data_files)} files verified")
 PY
 [[ $? -eq 0 ]] || die "bundle fe/admin tree verification failed"
 rm -rf "$PREFIX/fe" "$PREFIX/admin-spa"
@@ -428,6 +441,27 @@ elif [[ -d "$PREFIX/spec" ]]; then
   say "spec_tree not in bundle (v1.0.0) — reusing existing $PREFIX/spec"
 else
   say "WARN: bundle has no spec_tree and $PREFIX/spec missing — analyze will fail (spec/sources.json); provision spec/ and set GR_SPEC_DIR"
+fi
+
+# data (1.0.8+ data_tree): r100 模板 + geoip mmdb — overlay 落 $PREFIX/data。
+# 该目录同时承载运行期状态 (admin bootstrap / auto_upgrade_state 等):
+# 只覆盖产品文件, 永不整树删除 (与 spec 的 rm -rf 换树不同型, 是刻意的)。
+if python3 -c "import json,sys; sys.exit(0 if (json.load(open('$TMP/manifest.json')).get('data_tree') or {}).get('files') else 1)"; then
+  if [[ -f "$BUNDLE/data/r100_templates.json" ]]; then
+    install -m 0644 "$BUNDLE/data/r100_templates.json" "$PREFIX/data/r100_templates.json"
+    say "data: r100_templates.json installed"
+  fi
+  mkdir -p "$PREFIX/data/geo"
+  for _m in dbip-asn-lite.mmdb dbip-country-lite.mmdb; do
+    if [[ -f "$BUNDLE/data/geo/$_m" ]]; then
+      install -m 0644 "$BUNDLE/data/geo/$_m" "$PREFIX/data/geo/$_m"
+    fi
+  done
+  say "data tree installed (overlay onto existing \$PREFIX/data)"
+elif [[ -f "$PREFIX/data/r100_templates.json" ]]; then
+  say "data_tree not in bundle (pre-1.0.8) — reusing existing \$PREFIX/data/r100_templates.json"
+else
+  say "WARN: bundle has no data_tree and r100_templates.json missing — r100 spotcheck channel degraded (data/r100_templates.json)"
 fi
 
 # .env (chmod 600)

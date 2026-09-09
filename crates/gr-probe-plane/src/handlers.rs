@@ -12,8 +12,8 @@ use gr_probe_core::{
     DEFAULT_CHALLENGE_SECRET, PROMOTE_TO_COMMERCIAL_ID, RUNTIME_CONFIDENCE_VERSION,
 };
 use gr_probe_store::{
-    analyze_idle_poll_ms_range, cold_promote_window_ms, cold_ttl_ms, hot_idle_ms,
-    timeout_matrix_json, AnalyzeDueMerge, HotProbeCache, Store, StoreError, ANALYZE_CLAIM_BATCH,
+    analyze_claim_batch, analyze_idle_poll_ms_range, cold_promote_window_ms, cold_ttl_ms,
+    hot_idle_ms, timeout_matrix_json, AnalyzeDueMerge, HotProbeCache, Store, StoreError,
     ANALYZE_DEBOUNCE_MS, ANALYZE_LOCK_MS, ANALYZE_IDLE_IMMINENT_MS,
 };
 use serde::Deserialize;
@@ -560,6 +560,11 @@ const PEER_ASSOC_KEYS: &[&str] = &[
 ///
 /// Returns the **first** rich peer for evaluate ensemble, and `used` lists all
 /// peers that had usable materials (for soft_edges write path).
+///
+/// P2: 一次往返取全部 peer 的关联键瘦投影 (原逐 peer 全量 build_evidence —
+/// 12 peer 时 ~24 查询 + 全量合并机件只为提 ~29 个键, 178 实测为 peer
+/// 证据风暴大头)。首个富 peer 的 evaluate 集成仍需完整证据 — 仅此一次
+/// 全量构建。
 pub fn resolve_multi_session_peers(
     store: &gr_probe_store::Store,
     session_id: &str,
@@ -576,6 +581,16 @@ pub fn resolve_multi_session_peers(
             ids = found;
         }
     }
+    let projections: std::collections::HashMap<String, serde_json::Map<String, Value>> = store
+        .peer_assoc_fields(&ids, PEER_ASSOC_KEYS)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .map(|m| {
+            m.into_iter()
+                .filter_map(|(k, v)| v.as_object().cloned().map(|fo| (k, fo)))
+                .collect()
+        })
+        .unwrap_or_default();
     let mut used = Vec::new();
     let mut first_vec: Option<Value> = None;
     let mut first_ev: Option<Value> = None;
@@ -583,18 +598,10 @@ pub fn resolve_multi_session_peers(
         if pid == session_id {
             continue;
         }
-        let Ok(ev) = store.build_evidence(&pid) else {
+        // 无投影条目 = 无可用批次材料 (旧路径 build_evidence 失败/空 fields 同效跳过)
+        let Some(fo) = projections.get(&pid) else {
             continue;
         };
-        let Some(fields) = ev.get("fields").cloned() else {
-            continue;
-        };
-        let Some(fo) = fields.as_object() else {
-            continue;
-        };
-        if fo.is_empty() {
-            continue;
-        }
         let mut peer_vec = serde_json::Map::new();
         for k in PEER_ASSOC_KEYS {
             if let Some(v) = fo.get(*k) {
@@ -611,10 +618,11 @@ pub fn resolve_multi_session_peers(
         if !rich && peer_vec.len() < 2 {
             continue;
         }
-        used.push(pid);
+        used.push(pid.clone());
         if first_vec.is_none() {
             first_vec = Some(Value::Object(peer_vec));
-            first_ev = Some(ev);
+            // evaluate 集成需要首个富 peer 的完整证据 — 仅此一次全量构建。
+            first_ev = store.build_evidence(&pid).ok();
         }
         // Cap soft peer fan-out (analyze path walks used for edges).
         if used.len() >= 8 {
@@ -9236,6 +9244,7 @@ pub async fn analyze_worker_loop(
     worker_id: String,
     analyze_runs: Arc<AtomicU64>,
     cancel: Arc<AtomicBool>,
+    wakeup: Option<Arc<tokio::sync::Notify>>,
 ) {
     log::info!("analyze worker started worker_id={worker_id}");
     let (idle_min, idle_max) = analyze_idle_poll_ms_range();
@@ -9247,8 +9256,11 @@ pub async fn analyze_worker_loop(
             log::info!("analyze worker stopping (scaled down) worker_id={worker_id}");
             return;
         }
-        let claimed = match store.claim_due_analyze_jobs(&worker_id, ANALYZE_CLAIM_BATCH, ANALYZE_LOCK_MS)
-        {
+        let claimed = match store.claim_due_analyze_jobs(
+            &worker_id,
+            gr_probe_store::analyze_claim_batch(),
+            ANALYZE_LOCK_MS,
+        ) {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("claim_due_analyze_jobs failed: {e}");
@@ -9259,8 +9271,21 @@ pub async fn analyze_worker_loop(
         if claimed.is_empty() {
             // Exponential backoff on empty queue — 20ms fixed poll caused ~1–2k TPS
             // of empty claim SQL on multi-worker prod (fsync / load storm).
-            tokio::time::sleep(Duration::from_millis(idle_sleep_ms)).await;
-            idle_sleep_ms = idle_sleep_ms.saturating_mul(2).clamp(idle_min, idle_max);
+            // P2: LISTEN/NOTIFY 唤醒优先 (调度臂 due<1s 时 pg_notify), 退避计时
+            // 只作兜底 — 空轮询 claim 风暴与 worker 数解耦。
+            if let Some(n) = wakeup.as_ref() {
+                tokio::select! {
+                    _ = n.notified() => {
+                        idle_sleep_ms = idle_min;
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(idle_sleep_ms)) => {
+                        idle_sleep_ms = idle_sleep_ms.saturating_mul(2).clamp(idle_min, idle_max);
+                    }
+                }
+            } else {
+                tokio::time::sleep(Duration::from_millis(idle_sleep_ms)).await;
+                idle_sleep_ms = idle_sleep_ms.saturating_mul(2).clamp(idle_min, idle_max);
+            }
             continue;
         }
         idle_sleep_ms = idle_min;
@@ -9321,11 +9346,15 @@ pub async fn analyze_worker_loop(
                     &evidence,
                     gr_probe_core::GR_PRODUCT_VERSION,
                 );
-                let prev_mask: Option<Value> = store2
+                // P2: prior_meta 一次读出 — 掩码差分 / brain 单调 / history
+                // 滚动共用 (原 session_meta + persist_brain_control prior +
+                // mask merge + ticket merge 各自读改写)。
+                let prior_meta: Value = store2
                     .session_meta(&rt_sid)
                     .ok()
                     .flatten()
-                    .and_then(|m| m.get("analyzed_mask_v1").cloned());
+                    .unwrap_or(json!({}));
+                let prev_mask: Option<Value> = prior_meta.get("analyzed_mask_v1").cloned();
                 gr_probe_core::analyze_mask::stamp_observability(
                     &mut result,
                     &evidence,
@@ -9341,14 +9370,23 @@ pub async fn analyze_worker_loop(
                 // overwrite (and later analyzed_mask_v1 reuse) freezes the
                 // inferior "insufficient" band and replay diverges.
                 apply_evidence_withheld(&store2, &rt_sid, &mut result);
+                // P2 单事务写回: analysis 落库 + 剪枝 + 查询表物化 + meta
+                // (mask/brain/ticket) 合并 + 任务收尾同事务一次 commit
+                // (原 save→persist_brain_control→mask merge→ticket merge
+                // ~25 往返 → ~5)。查询表物化失败仅告警不回滚 — 与旧
+                // best-effort 语义一致。
+                let (brain_pieces, brain_plan_epoch, battle_log) =
+                    brain_control_pieces(&result);
+                let bundle = gr_probe_store::AnalysisBundleMeta {
+                    analyzed_mask_v1: Some(cur_mask),
+                    session_ticket: result.get("session_ticket").cloned(),
+                    brain_pieces,
+                    brain_plan_epoch,
+                    battle_log,
+                };
                 let rev = store2
-                    .save_analysis(&rt_sid, &result)
+                    .save_analysis_bundle(&rt_sid, &result, &bundle, &wid)
                     .map_err(|e| e.to_string())?;
-                persist_brain_control(&store2, &rt_sid, &result, rev);
-                let _ = store2.merge_session_meta(
-                    &rt_sid,
-                    &json!({"analyzed_mask_v1": cur_mask}),
-                );
                 // Persist page-scoped result when page_id present (parity with /analyze)
                 if let Some(page) = result.get("page") {
                     if let Some(pid) = page.get("page_id").and_then(|v| v.as_str()) {
@@ -9359,17 +9397,7 @@ pub async fn analyze_worker_loop(
                         let _ = store2.save_page_result(&rt_sid, pid, prev, page);
                     }
                 }
-                if let Some(ticket) = result.get("session_ticket") {
-                    let _ = store2.merge_session_meta(
-                        &rt_sid,
-                        &json!({
-                            "session_ticket": ticket,
-                            "skip_session_probe": true,
-                        }),
-                    );
-                }
                 let _ = store2.maybe_complete_cycle_from_analysis(&rt_sid, &result);
-                let _ = store2.complete_analyze_job(&rt_sid, &wid);
                 Ok::<_, String>((rt_sid, rev))
             })
             .await;
@@ -9394,7 +9422,49 @@ pub async fn analyze_worker_loop(
 
 
 
+/// P2: persist_brain_control 的 result→片段纯提取 (worker 单事务写回路径)。
+/// meta 读改写 / analysis_rev / plan_epoch 单调 / battle_log_history 滚动
+/// 由 store 层 assemble_bundle_meta_patch 在锁定行上完成 — 本函数零 IO。
+/// 返回 (pieces, plan_epoch 候选, 本轮 battle_log)。
+fn brain_control_pieces(
+    result: &Value,
+) -> (serde_json::Map<String, Value>, Option<i64>, Option<Value>) {
+    let mut pieces = serde_json::Map::new();
+    if let Some(v) = result.get("plan_version") {
+        pieces.insert("plan_version".into(), v.clone());
+    }
+    let pe = result
+        .get("plan_epoch")
+        .and_then(|v| v.as_i64())
+        .or_else(|| result.pointer("/route_plan/plan_epoch").and_then(|v| v.as_i64()))
+        .or_else(|| result.get("plan_version").and_then(|v| v.as_i64()));
+    if let Some(v) = result.get("stop_reason") {
+        pieces.insert("stop_reason".into(), v.clone());
+    }
+    let src = result
+        .get("control_persist")
+        .cloned()
+        .unwrap_or_else(|| result.clone());
+    for k in [
+        "belief",
+        "missions",
+        "capability_envelope",
+        "battle_log",
+        "policy_band",
+        "direction_priors",
+        "unknown_bucket",
+        "evidence_rev",
+    ] {
+        if let Some(v) = src.get(k) {
+            pieces.insert(k.to_string(), v.clone());
+        }
+    }
+    (pieces, pe, result.get("battle_log").cloned())
+}
+
 /// iss/22 P1b: write belief / battle_log / direction_priors / unknown_bucket into session meta.
+/// P2: worker 路径已迁移 save_analysis_bundle 单事务写回 (brain_control_pieces +
+/// assemble_bundle_meta_patch); 本函数保留给 HTTP /analyze 路径。
 fn persist_brain_control(store: &Store, session_id: &str, result: &Value, analysis_rev: i64) {
     let mut patch = Map::new();
     patch.insert("analysis_rev".into(), json!(analysis_rev));

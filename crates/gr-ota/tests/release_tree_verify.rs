@@ -92,13 +92,15 @@ fn verify_tree(man: &ReleaseManifest, root: &Path, root_pk: &[u8]) {
         eprintln!("[release_tree_verify] module ok: {}@{} ({})", art.name, art.version, art.asset);
     }
 
-    // fe_tree + admin_tree + spec_tree: per-file sha of the expanded dirs
-    // (typed fields — part of the signed canonical body on whole-bundle
-    // releases; spec_tree joins in 1.0.2+, older bundles legitimately lack it)
+    // fe_tree + admin_tree + spec_tree + data_tree: per-file sha of the
+    // expanded dirs (typed fields — part of the signed canonical body on
+    // whole-bundle releases; spec_tree joins in 1.0.2+, data_tree in 1.0.8+,
+    // older bundles legitimately lack them)
     for (label, tree, sub) in [
         ("fe_tree", &man.fe_tree, "fe"),
         ("admin_tree", &man.admin_tree, "admin"),
         ("spec_tree", &man.spec_tree, "spec"),
+        ("data_tree", &man.data_tree, "data"),
     ] {
         let Some(tree) = tree else {
             if label == "fe_tree" {

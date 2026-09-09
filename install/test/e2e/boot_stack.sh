@@ -188,6 +188,12 @@ GR_REQUIRE_RESULT_TOKEN=1
 GR_RATE_LIMIT_OPEN_PER_MIN=1200
 GR_RATE_LIMIT_INGEST_PER_MIN=6000
 GR_RATE_LIMIT_RESULT_PER_MIN=2400
+# P0 运行时数据显式钉路径 (r100 反脚本模板 + geoip mmdb; 1.0.8+ data_tree
+# 随包分发到 \$PREFIX/data, 安装机由 GR_DATA_DIR 候选解析 — e2e 显式钉
+# 仓内路径, 让 fulltest 成为这组文件在位的回归门)。
+GR_R100_TEMPLATES=$ROOT/data/r100_templates.json
+GR_GEOIP_ASN_MMDB=$ROOT/data/geo/dbip-asn-lite.mmdb
+GR_GEOIP_COUNTRY_MMDB=$ROOT/data/geo/dbip-country-lite.mmdb
 EOF
 
 # 冷热短旋钮 (--hotcold): 默认 L1 30m / L3 7d / 窗 24h → 分钟级可观测
@@ -269,6 +275,31 @@ if ! wait_healthy; then
   stop_stack
   exit 1
 fi
+
+# P0 数据在位门 (r100 反脚本模板 + geoip mmdb): 服务起来了但通道降级 =
+# 半死不活 — 健康门必须核验装载证据, 不只端口应答 (178 1.0.7 教训:
+# 三面 200 全绿, 反脚本通道与 geoip 实际全盲)。
+# r100: pack 端点直接逼 hub 装载 (惰性) — 功能级断言。
+# geoip: mmdb 装载也是惰性且 classify_ip 对回环提前返回 (e2e 客户端恒
+#   127.0.0.1 → 永不触发 lookup) — 功能探针在本环境不可达, 改钉文件
+#   在位 (gr.env 已显式钉路径); 装载链由 gr-probe-core 单测覆盖
+#   (net_enrich data_dir 候选 → 打开随包 dbip)。
+sleep 1
+R100_STATUS=$(curl -s -m 5 -o /dev/null -w '%{http_code}' \
+  "http://127.0.0.1:${PROBE_PORT}/v1/r100/pack/R00_spotcheck.js" || true)
+if [[ "$R100_STATUS" != "200" ]]; then
+  echo "boot_stack: r100 pack endpoint=$R100_STATUS (P0 data missing? expect 200)" >&2
+  boot_diagnose
+  stop_stack
+  exit 1
+fi
+for _f in "$ROOT/data/r100_templates.json" "$ROOT/data/geo/dbip-asn-lite.mmdb" "$ROOT/data/geo/dbip-country-lite.mmdb"; do
+  if [[ ! -s "$_f" ]]; then
+    echo "boot_stack: P0 data file missing/empty: $_f" >&2
+    stop_stack
+    exit 1
+  fi
+done
 
 # --- 5. bootstrap 凭据 (console 随机路径; AdminHub 落 data/admin/ 子目录) ---
 BOOT=""

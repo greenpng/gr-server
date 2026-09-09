@@ -245,6 +245,8 @@ fn candidate_template_paths(static_dir: Option<&Path>) -> Vec<PathBuf> {
             .join("../../../data/r100_templates.json"),
     );
     out.push(PathBuf::from("/opt/green-v5/data/r100_templates.json"));
+    // greenpng 安装布局 (1.0.8+ data_tree): /opt/greenpng/data/ — 同型候选
+    out.push(PathBuf::from("/opt/greenpng/data/r100_templates.json"));
     // De-dupe while preserving order
     let mut seen = std::collections::HashSet::new();
     out.retain(|p| {

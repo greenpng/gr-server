@@ -6,6 +6,8 @@
 #   2. 管理面板未认证 {console}/api/me                 → 401
 #   3. 探测面健康  :probe/v1/health                    → 200
 #   4. 业务面会话  POST /v1/session/open (唯一 vt)     → ok/business_state
+#   5. P0 数据树在位 (1.0.8+ data_tree): r100 模板 + geoip mmdb
+#      (反脚本通道与 ASN/country 富化的运行时数据 — 178 1.0.7 曾整组缺失)
 #
 # 用法: bash test/smoke_install.sh [--prefix /opt/greenpng] [--admin-port 28680] [--probe-port 28765]
 set -euo pipefail
@@ -66,6 +68,19 @@ if echo "$BODY" | grep -q 'business_state' || echo "$BODY" | grep -q '"ok":true'
 else
   echo "FAIL  business session open -> $BODY"; fail=$((fail+1))
 fi
+
+# 5. P0 数据树在位 (r100 pack 端点功能探针 + geoip 文件在位)
+GOT=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$PROBE/v1/r100/pack/R00_spotcheck.js")
+check "r100 pack endpoint (data_tree r100_templates)" "200" "$GOT"
+for _f in "$PREFIX/data/r100_templates.json" "$PREFIX/data/geo/dbip-asn-lite.mmdb" "$PREFIX/data/geo/dbip-country-lite.mmdb"; do
+  if [[ -s "$_f" ]]; then
+    echo "PASS  data_tree file present: ${_f#$PREFIX/}"
+    pass=$((pass+1))
+  else
+    echo "FAIL  data_tree file missing/empty: $_f"
+    fail=$((fail+1))
+  fi
+done
 
 echo "SMOKE pass=$pass fail=$fail"
 [[ "$fail" == "0" ]]

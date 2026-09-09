@@ -161,7 +161,10 @@ if m.get("cli") is not None:
 # Whole-bundle (greenpng 1.0.0+): fe_tree/admin_tree signed when present.
 # spec_tree joins in 1.0.2+ (must mirror the Rust canonical body exactly or
 # verification of new manifests fails; old manifests without it are unaffected).
-for k in ("fe_tree", "admin_tree", "spec_tree"):
+# data_tree joins in 1.0.8+ (r100 模板 + geoip mmdb) — 同型。注意: 1.0.7 及
+# 更早的本脚本副本不含此键, 无法验 1.0.8+ 清单 → 1.0.8 必须先经新
+# install.sh (raw main) 落地新 updater, 之后 runtime OTA 恢复。
+for k in ("fe_tree", "admin_tree", "spec_tree", "data_tree"):
     if m.get(k) is not None:
         t = m[k] or {}
         entry = {"files": t.get("files") or {}}
@@ -336,6 +339,33 @@ PY
   echo "[runtime-ota] spec tree installed from bundle"
 else
   echo "[runtime-ota] spec_tree not in bundle (pre-1.0.2) — keeping existing $INSTALL_ROOT/spec"
+fi
+
+# data: 1.0.8+ 整包带 data_tree (r100 模板 + geoip mmdb)。验树后 overlay 落
+# $INSTALL_ROOT/data — 该目录承载运行期状态 (admin bootstrap /
+# auto_upgrade_state), 只覆盖产品文件, 永不整树删除 (与 spec 换树不同型)。
+if [[ -n "$BUNDLE" && -d "$BUNDLE/data" ]] && python3 -c "import json,sys; sys.exit(0 if (json.load(open('$TMP/manifest.json')).get('data_tree') or {}).get('files') else 1)"; then
+  python3 - "$BUNDLE" "$TMP/manifest.json" <<'PY'
+import hashlib, json, pathlib, sys
+bundle = pathlib.Path(sys.argv[1])
+man = json.load(open(sys.argv[2]))
+tree = (man.get("data_tree") or {}).get("files") or {}
+root = bundle / "data"
+bad = [rel for rel, want in tree.items()
+       if not (root / rel).is_file() or hashlib.sha256((root / rel).read_bytes()).hexdigest() != want]
+if bad:
+    raise SystemExit(f"data_tree sha mismatch: {bad[:3]}")
+print(f"data_tree: {len(tree)} files verified")
+PY
+  [[ $? -eq 0 ]] || { echo "bundle data_tree verification failed" >&2; exit 1; }
+  mkdir -p "$INSTALL_ROOT/data/geo"
+  [[ -f "$BUNDLE/data/r100_templates.json" ]] && install -m 0644 "$BUNDLE/data/r100_templates.json" "$INSTALL_ROOT/data/r100_templates.json"
+  for _m in dbip-asn-lite.mmdb dbip-country-lite.mmdb; do
+    [[ -f "$BUNDLE/data/geo/$_m" ]] && install -m 0644 "$BUNDLE/data/geo/$_m" "$INSTALL_ROOT/data/geo/$_m"
+  done
+  echo "[runtime-ota] data tree installed (overlay onto $INSTALL_ROOT/data)"
+else
+  echo "[runtime-ota] data_tree not in bundle (pre-1.0.8) — keeping existing $INSTALL_ROOT/data"
 fi
 
 # Point OTA module channel at this tag (panel still installs so separately).

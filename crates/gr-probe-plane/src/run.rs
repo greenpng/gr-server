@@ -443,6 +443,7 @@ fn push_analyze_worker(
     analyze_runs: &Arc<AtomicU64>,
     seq: &Arc<std::sync::atomic::AtomicU64>,
     registry: &mut Vec<AnalyzeWorkerHandle>,
+    wakeup: Option<Arc<tokio::sync::Notify>>,
 ) {
     let id = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let cancel = Arc::new(AtomicBool::new(false));
@@ -450,8 +451,9 @@ fn push_analyze_worker(
     let store = store.clone();
     let runs = analyze_runs.clone();
     let cancel_task = cancel.clone();
+    let wakeup_task = wakeup.clone();
     let done = rt.spawn(async move {
-        analyze_worker_loop(store, soft_v2_ready, wid, runs, cancel_task).await;
+        analyze_worker_loop(store, soft_v2_ready, wid, runs, cancel_task, wakeup_task).await;
     });
     registry.push(AnalyzeWorkerHandle { cancel, done });
 }
@@ -845,6 +847,21 @@ pub fn run_with(args: Args) {
         let registry: Arc<std::sync::Mutex<Vec<AnalyzeWorkerHandle>>> =
             Arc::new(std::sync::Mutex::new(Vec::new()));
         let analyze_seq = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        // P2: LISTEN/NOTIFY 唤醒 (PG only — db_url 非空 ⇔ postgres 后端)。
+        // 调度臂 due<1s 时 pg_notify(analyze_wakeup), worker 空闲由通知打断,
+        // 空轮询退避只作兜底 — 空转 claim 风暴与 worker 数解耦。
+        // 专用连接 (不占业务池), 断线 2s 自愈重连。
+        let analyze_wakeup: Option<Arc<tokio::sync::Notify>> = if db_url.trim().is_empty() {
+            None
+        } else {
+            let n = Arc::new(tokio::sync::Notify::new());
+            let n2 = n.clone();
+            gr_probe_store::spawn_analyze_wakeup_listener(
+                db_url.trim(),
+                Box::new(move || n2.notify_one()),
+            );
+            Some(n)
+        };
         {
             let mut reg = registry.lock().unwrap_or_else(|p| p.into_inner());
             for _ in 0..n {
@@ -856,10 +873,14 @@ pub fn run_with(args: Args) {
                     &analyze_runs,
                     &analyze_seq,
                     &mut reg,
+                    analyze_wakeup.clone(),
                 );
             }
         }
         // Supervisor: reconcile live workers vs target every 2s.
+        // P2 兼职: 队列超限观测告警 (30s 采样 — 原死背压门 G-P0-6 从未接入
+        // 调度热路径, 现语义明确为观测) + 僵尸任务收割 (10min 一次 —
+        // 已终态却反复重臂的 pending 残臂, 178 实测 3.4k 行最老 3.5h)。
         {
             let sup_registry = registry.clone();
             let sup_target = analyze_workers_target.clone();
@@ -869,9 +890,13 @@ pub fn run_with(args: Args) {
             let sup_base = worker_id.clone();
             let sup_seq = analyze_seq.clone();
             let sup_rt = rt_handle.clone();
+            let sup_wakeup = analyze_wakeup.clone();
             rt_handle.spawn(async move {
+                let mut tick: u32 = 0;
+                let mut over_warned = false;
                 loop {
                     tokio::time::sleep(Duration::from_secs(2)).await;
+                    tick = tick.wrapping_add(1);
                     let target = sup_target
                         .load(std::sync::atomic::Ordering::Relaxed)
                         .max(1);
@@ -897,6 +922,7 @@ pub fn run_with(args: Args) {
                                 &sup_runs,
                                 &sup_seq,
                                 &mut reg,
+                                sup_wakeup.clone(),
                             );
                         }
                         info!(
@@ -916,6 +942,38 @@ pub fn run_with(args: Args) {
                         info!(
                             "analyze supervisor retiring {retired} workers (live={live} target={target})"
                         );
+                    }
+                    // P2 队列超限: 只观测告警不阻塞 (去抖 — 恢复到限内才允许再告警)。
+                    if tick % 15 == 0 {
+                        match sup_store.pending_analyze_job_count() {
+                            Ok(p) => {
+                                let qmax = gr_probe_store::analyze_queue_max();
+                                if p > qmax {
+                                    if !over_warned {
+                                        over_warned = true;
+                                        warn!(
+                                            "analyze queue over soft cap: pending={p} cap={qmax} live={live} (tune GR_ANALYZE_QUEUE_MAX / GR_ANALYZE_CLAIM_BATCH / panel workers)"
+                                        );
+                                    }
+                                } else {
+                                    over_warned = false;
+                                }
+                            }
+                            Err(e) => log::debug!("pending count poll: {e}"),
+                        }
+                    }
+                    // P2 僵尸收割: 每 10min 一次, DELETE 放阻塞池 (首轮可能清数千行)。
+                    if tick % 300 == 0 {
+                        let st = sup_store.clone();
+                        let _ = tokio::task::spawn_blocking(move || {
+                            match st.reap_stale_analyze_jobs(7_200_000) {
+                                Ok(n) if n > 0 => info!(
+                                    "analyze reaper deleted {n} stale zombie jobs (2h, terminal-result pending arms)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => warn!("analyze reaper failed: {e}"),
+                            }
+                        });
                     }
                 }
             });

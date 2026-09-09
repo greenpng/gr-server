@@ -35,27 +35,34 @@ fn mmdb_holders() -> &'static Mutex<MmdbHolders> {
 }
 
 fn load_mmdb_from_env() -> MmdbHolders {
-    let workspace_data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../data/geo");
+    // P0 运行时数据 (greenpng 1.0.8+ data_tree 随包分发): 解析顺序 —
+    //   1. env GR_GEOIP_ASN_MMDB / GR_GEOIP_COUNTRY_MMDB (显式覆盖)
+    //   2. GR_DATA_DIR/geo/dbip-*.mmdb (安装器 .env → systemd EnvironmentFile;
+    //      开发仓 = 仓根 data/geo)
+    //   3. cwd data/geo + 可执行文件相对 ../data/geo (无 env 姿态兜底)
+    // 旧实现只有编译期 CARGO_MANIFEST_DIR 回退 — 安装机 (/opt/greenpng) 上
+    // 该路径不存在, geoip 恒空 (178 实测 country/asn null 根因)。
+    let data_geo_dir = || -> Option<PathBuf> {
+        for base in data_dir_candidates() {
+            let p = base.join("geo");
+            if p.join("dbip-asn-lite.mmdb").is_file() || p.join("dbip-country-lite.mmdb").is_file()
+            {
+                return Some(p);
+            }
+        }
+        None
+    };
+    let geo = data_geo_dir();
     let asn_path = gr_abi::env::get("GEOIP_ASN_MMDB")
         .filter(|s| !s.trim().is_empty())
         .or_else(|| {
-            let p = workspace_data.join("dbip-asn-lite.mmdb");
-            if p.is_file() {
-                Some(p.display().to_string())
-            } else {
-                None
-            }
+            geo.as_ref().map(|p| p.join("dbip-asn-lite.mmdb").display().to_string())
         });
     let country_path = gr_abi::env::get("GEOIP_COUNTRY_MMDB")
         .filter(|s| !s.trim().is_empty())
         .or_else(|| {
             // Legacy alias: GEOIP_MMDB accepted (GR_/GR_/GR_ precedence inside get).
-            let p = workspace_data.join("dbip-country-lite.mmdb");
-            if p.is_file() {
-                Some(p.display().to_string())
-            } else {
-                None
-            }
+            geo.as_ref().map(|p| p.join("dbip-country-lite.mmdb").display().to_string())
         });
     let asn = asn_path.and_then(|p| match Reader::open_readfile(&p) {
         Ok(r) => {
@@ -77,7 +84,29 @@ fn load_mmdb_from_env() -> MmdbHolders {
             None
         }
     });
+    if asn.is_none() && country.is_none() {
+        eprintln!("[net_enrich] no geoip mmdb found (env GR_GEOIP_*_MMDB / data_dir geo/ both empty) — ASN/country 富化退内置启发式");
+    }
     MmdbHolders { asn, country }
+}
+
+/// Candidate `data/` roots for runtime product data (geoip mmdb etc.).
+/// Order: GR_DATA_DIR → cwd `data` → exe-dir relative `../data` (安装布局
+/// bin/ + data/) → 编译期 workspace data/ (开发机)。
+fn data_dir_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(d) = gr_abi::env::get("DATA_DIR").filter(|s| !s.trim().is_empty()) {
+        out.push(PathBuf::from(d));
+    }
+    out.push(PathBuf::from("data"));
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(bin_dir) = exe.parent() {
+            out.push(bin_dir.join("../data"));
+            out.push(bin_dir.join("data"));
+        }
+    }
+    out.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../data"));
+    out
 }
 
 /// Enrich fields when ASN/country still empty.
@@ -505,6 +534,41 @@ mod tests {
         if t.source.starts_with("mmdb") {
             assert!(t.country.is_some() || t.asn.is_some(), "{t:?}");
         }
+    }
+
+    /// P0 (greenpng 1.0.8+ data_tree): 随包 dbip mmdb 经 data_dir 候选链
+    /// (无 env 显式覆盖) 必须可真实打开 — 候选含编译期仓路径, dev 树与
+    /// 公开扁平树 (crates/gr-probe-core → ../../../data/geo) 均在位。
+    /// 装载链硬门: 178 1.0.7 曾因仅编译期单路径且安装机不存在而恒空
+    /// (country/asn null 根因), 此测试防止数据树再被裁掉。
+    #[test]
+    fn shipped_mmdb_loads_via_data_dir_candidates() {
+        let geo = data_dir_candidates()
+            .into_iter()
+            .map(|b| b.join("geo"))
+            .find(|p| p.join("dbip-asn-lite.mmdb").is_file());
+        let Some(geo) = geo else {
+            panic!(
+                "data/geo/dbip-asn-lite.mmdb not found via candidates {:?}",
+                data_dir_candidates()
+            );
+        };
+        let asn = Reader::open_readfile(geo.join("dbip-asn-lite.mmdb"));
+        let country = Reader::open_readfile(geo.join("dbip-country-lite.mmdb"));
+        assert!(asn.is_ok(), "asn mmdb must open ({:?}): {:?}", geo, asn.err());
+        assert!(
+            country.is_ok(),
+            "country mmdb must open ({:?}): {:?}",
+            geo,
+            country.err()
+        );
+        // 真实查一次公网 IP — 8.8.8.8 应命中 (dbip lite 覆盖)
+        let tags = lookup_mmdb("8.8.8.8".parse().unwrap());
+        let t = tags.expect("mmdb lookup for 8.8.8.8");
+        assert!(
+            t.country.is_some() || t.asn.is_some(),
+            "dbip lite must enrich 8.8.8.8"
+        );
     }
 
     #[test]
