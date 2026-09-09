@@ -447,10 +447,13 @@ jobs:
 
   publish:
     # Gate B 全绿才发版: tag v<VERSION> 打在与打包相同的 commit; 已有 tag 拒绝覆盖。
+    # 发版策略 (2026-09-09): 测试全绿即自动发版, 不挂 production environment
+    # 审批门 — 曾挂 required_reviewers 导致 publish waiting 等人工点击
+    # (v1.0.8 run 34340575912)。审计走 run log + Release + provenance;
+    # 环境侧 required_reviewers 规则也已清除 (幂等: 两处都不再依赖)。
     needs: [prepare, gate-b]
     if: inputs.publish
     runs-on: ubuntu-24.04
-    environment: production
     permissions:
       contents: write
     steps:
