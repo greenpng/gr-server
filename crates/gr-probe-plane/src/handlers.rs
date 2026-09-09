@@ -3524,6 +3524,12 @@ pub fn ingest_plain_body(
                     .or_insert_with(|| json!(gen));
             }
             let (ip, _src) = apply_authoritative_client_ip(fo, headers);
+            // Write-time geo enrichment (MMDB + builtin heuristics): fills
+            // server_asn / server_country / network_class only when absent.
+            // Same hook the gateway B8 path applies; without it the main
+            // sealed-ingest source stored client IPs with zero geo (178:
+            // 52k/6h rows country/asn 0%).
+            gr_probe_core::enrich_fields_if_empty(fo, ip.as_deref());
             client_ip = ip;
         }
     }
