@@ -3,7 +3,8 @@
 use clap::{Parser, Subcommand};
 use gr_admin::AdminHub;
 use gr_ota::{
-    artifact_sign_message, generate_signing_keypair, manifest_sign_message, release_cert_message,
+    artifact_sign_message, generate_signing_keypair, manifest_sign_message, manifest_sign_message_data,
+    release_cert_message,
     sign_bytes, verify_manifest_chain, OtaConfig, OtaEngine,
 };
 use gr_abi::{sha256_hex, ModuleArtifact, ReleaseManifest};
@@ -434,11 +435,26 @@ fn main() -> anyhow::Result<()> {
                 man.release_cert = Some(release_cert.clone());
             }
             man.sig = None;
+            man.sig_data = None;
+            // Legacy body (frozen 1.0.7 key set, no data_tree): what 1.0.7-era
+            // verifiers — the panel OTA runtime path in the 1.0.7 binary on
+            // 178 — rebuild and check as `sig`.
             let msg = manifest_sign_message(&man).map_err(|e| anyhow::anyhow!(e))?;
             man.sig = Some(sign_bytes(&sk, &msg));
+            // Extended body (+ data_tree) → `sig_data`: root coverage of the
+            // shipped product data files (1.0.8+). Only emitted when the
+            // manifest actually carries a data_tree.
+            if man.data_tree.is_some() {
+                let msg_data = manifest_sign_message_data(&man)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                man.sig_data = Some(sign_bytes(&sk, &msg_data));
+            }
             std::fs::write(&manifest, serde_json::to_string_pretty(&man)?)?;
             println!("signed_manifest={}", manifest.display());
             println!("sig={}", man.sig.as_deref().unwrap_or(""));
+            if let Some(sd) = man.sig_data.as_deref() {
+                println!("sig_data={sd}");
+            }
         }
     }
     Ok(())

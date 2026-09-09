@@ -47,6 +47,17 @@ elif [[ -d "$ROOT/probe/fe" ]]; then
 else
   echo "[multiarch] cannot locate probe/fe" >&2; exit 1
 fi
+# P0 运行时数据 (data_tree) 布局可移植: 开发仓在仓根 data/ (02-probe-analysis
+# 无 data/), 扁平发行仓同样在仓根 data/ — 两布局都是 $ROOT/data; 留
+# $AREA/data 优先分支以兼容未来归位。缺件即死 (与 sync 在位断言同防线)。
+if [[ -f "$AREA/data/r100_templates.json" ]]; then
+  DATA_SRC="$AREA/data"
+elif [[ -f "$ROOT/data/r100_templates.json" ]]; then
+  DATA_SRC="$ROOT/data"
+else
+  echo "[multiarch] FAIL: cannot locate r100_templates.json (tried $AREA/data and $ROOT/data)" >&2
+  exit 1
+fi
 
 need_cross=0
 for a in $TARGETS; do
@@ -180,13 +191,13 @@ PY
   # 缺件即死, 与 sync 在位断言同防线)
   rm -rf "$bd/data"
   mkdir -p "$bd/data/geo"
-  [[ -f "$AREA/data/r100_templates.json" ]] \
+  [[ -f "$DATA_SRC/r100_templates.json" ]] \
     || { echo "[release] FAIL: data/r100_templates.json missing (arch $arch)" >&2; exit 1; }
-  cp -f "$AREA/data/r100_templates.json" "$bd/data/r100_templates.json"
+  cp -f "$DATA_SRC/r100_templates.json" "$bd/data/r100_templates.json"
   for m in dbip-asn-lite.mmdb dbip-country-lite.mmdb; do
-    [[ -f "$AREA/data/geo/$m" ]] \
+    [[ -f "$DATA_SRC/geo/$m" ]] \
       || { echo "[release] FAIL: data/geo/$m missing (arch $arch)" >&2; exit 1; }
-    cp -f "$AREA/data/geo/$m" "$bd/data/geo/$m"
+    cp -f "$DATA_SRC/geo/$m" "$bd/data/geo/$m"
   done
   if [[ -f "$ROOT/keys/ota_ed25519.pk" ]]; then
     cp -f "$ROOT/keys/ota_ed25519.pk" "$bd/ota_ed25519.pk"

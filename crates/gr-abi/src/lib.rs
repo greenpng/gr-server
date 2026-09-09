@@ -177,8 +177,13 @@ pub struct ReleaseManifest {
     /// sha256 (greenpng 1.0.8+). Covers `data/r100_templates.json` (探测
     /// 反脚本通道模板) + `data/geo/dbip-*.mmdb` (ASN/country 富化) —
     /// analyze/ingest 运行时数据。Overlay-installed onto $PREFIX/data
-    /// (该目录同时承载运行期状态, 永不整树删除)。1.0.7- 安装器镜像无此
-    /// 键: 1.0.8+ 整包需新 install.sh 安装 (旧 updater 验签体不含此键)。
+    /// (该目录同时承载运行期状态, 永不整树删除)。
+    ///
+    /// Signing: data_tree is NOT part of the legacy canonical body (`sig`) —
+    /// that body is frozen at the 1.0.7 key set so 1.0.7-era verifiers (the
+    /// panel OTA runtime path inside the 1.0.7 binary on 178) keep accepting
+    /// newer manifests. Root coverage of data_tree rides the separate
+    /// `sig_data` signature (required whenever data_tree is present).
     #[serde(default)]
     pub data_tree: Option<TreeManifest>,
     /// CLI binary integrity (P1-4). The `gr-cli` helper is downloaded by
@@ -190,8 +195,17 @@ pub struct ReleaseManifest {
     #[serde(default)]
     pub cli: Option<RuntimeManifest>,
     /// ed25519 signature over canonical body (optional at parse; verified by ota when present / required in prod).
+    /// FROZEN at the 1.0.7 key set (no data_tree) so 1.0.7-era verifiers —
+    /// including the panel OTA runtime path in the 1.0.7 binary on 178 —
+    /// accept 1.0.8+ manifests byte-identically.
     #[serde(default)]
     pub sig: Option<String>,
+    /// ed25519 signature over the extended body = legacy body + data_tree
+    /// (greenpng 1.0.8+). Required whenever `data_tree` is present; absent
+    /// (and irrelevant) on legacy manifests. Unknown field to 1.0.7 parsers,
+    /// which simply ignore it.
+    #[serde(default)]
+    pub sig_data: Option<String>,
     /// Per-release random build id (P0-1). Differs on every build; services
     /// embed the same id so a patch from a previous release cannot be reused.
     #[serde(default)]

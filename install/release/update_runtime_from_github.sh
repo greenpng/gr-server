@@ -140,7 +140,12 @@ PY
   fi
 
   # Independent root verification of the in-bundle manifest (canonical body).
-  python3 - "$TMP/manifest.json" "$TMP/manifest-body" "$TMP/manifest.sig" <<'PY'
+  # LEGACY body — frozen at the 1.0.7 key set (NO data_tree): 1.0.7-era
+  # verifiers (panel OTA runtime path inside the 1.0.7 binary on 178, old
+  # copies of this script) rebuild these exact bytes as `sig`. data_tree
+  # (1.0.8+) rides the SEPARATE `sig_data` signature verified below — that
+  # is what keeps panel OTA upgrades from 1.0.7 working.
+  python3 - "$TMP/manifest.json" "$TMP/manifest-body" "$TMP/manifest.sig" "$TMP/manifest-data-body" "$TMP/manifest-data.sig" <<'PY'
 import base64, json, sys
 m = json.load(open(sys.argv[1]))
 body = {
@@ -161,10 +166,9 @@ if m.get("cli") is not None:
 # Whole-bundle (greenpng 1.0.0+): fe_tree/admin_tree signed when present.
 # spec_tree joins in 1.0.2+ (must mirror the Rust canonical body exactly or
 # verification of new manifests fails; old manifests without it are unaffected).
-# data_tree joins in 1.0.8+ (r100 模板 + geoip mmdb) — 同型。注意: 1.0.7 及
-# 更早的本脚本副本不含此键, 无法验 1.0.8+ 清单 → 1.0.8 必须先经新
-# install.sh (raw main) 落地新 updater, 之后 runtime OTA 恢复。
-for k in ("fe_tree", "admin_tree", "spec_tree", "data_tree"):
+# data_tree does NOT join this body (1.0.8+): the legacy body must stay
+# byte-identical to what 1.0.7-era mirrors compute — it rides `sig_data`.
+for k in ("fe_tree", "admin_tree", "spec_tree"):
     if m.get(k) is not None:
         t = m[k] or {}
         entry = {"files": t.get("files") or {}}
@@ -176,6 +180,20 @@ if not m.get("sig"):
 open(sys.argv[2], "wb").write(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
 s = m["sig"].replace("-", "+").replace("_", "/")
 open(sys.argv[3], "wb").write(base64.b64decode(s + "=" * (-len(s) % 4)))
+# EXTENDED body (+ data_tree) → `sig_data` (1.0.8+): required whenever the
+# manifest carries a data_tree; absent (file left unwritten) on legacy
+# manifests, which skip the extra openssl check below.
+if m.get("data_tree") is not None:
+    t = m["data_tree"] or {}
+    entry = {"files": t.get("files") or {}}
+    if t.get("epoch") is not None:
+        entry["epoch"] = t["epoch"]
+    body["data_tree"] = entry
+    if not m.get("sig_data"):
+        raise SystemExit("manifest data_tree present but sig_data missing")
+    open(sys.argv[4], "wb").write(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
+    sd = m["sig_data"].replace("-", "+").replace("_", "/")
+    open(sys.argv[5], "wb").write(base64.b64decode(sd + "=" * (-len(sd) % 4)))
 PY
   python3 - "$TMP/ota_ed25519.pk" "$TMP/ota-root.der" <<'PY'
 import sys
@@ -188,6 +206,13 @@ PY
   openssl pkeyutl -verify -pubin -inkey "$TMP/ota-root.pem" -rawin \
     -in "$TMP/manifest-body" -sigfile "$TMP/manifest.sig" >/dev/null 2>&1 \
     || { echo "manifest root signature verification failed" >&2; exit 1; }
+  # data_tree 双签名 (1.0.8+): data_tree 走 sig_data (root 钥对扩展体签名)。
+  if [[ -s "$TMP/manifest-data-body" ]]; then
+    openssl pkeyutl -verify -pubin -inkey "$TMP/ota-root.pem" -rawin \
+      -in "$TMP/manifest-data-body" -sigfile "$TMP/manifest-data.sig" >/dev/null 2>&1 \
+      || { echo "manifest data_tree signature (sig_data) verification failed" >&2; exit 1; }
+    echo "[runtime-ota] manifest data_tree signature (sig_data) verified"
+  fi
   echo "[runtime-ota] manifest root signature verified"
   # 产品/版本断言: 签名体绑定 product, 但消费方必须显式拒绝他线 manifest
   PROD="$(manifest_val '["product"]')"

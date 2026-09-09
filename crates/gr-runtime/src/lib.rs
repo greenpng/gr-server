@@ -115,6 +115,23 @@ impl Runtime {
         rt.refresh_live_config()?;
         // Load any active modules already on disk
         let _ = rt.registry.load_active_tree(&rt.cfg.modules_dir);
+        // P0 (178 panel OTA, 1.0.8): the 1.0.7 binary's `install-runtime`
+        // swaps only `bin/gr-service` — its code cannot know about data_tree.
+        // Its bundle fetch leaves the verified 1.0.8 bundle staged under
+        // `data/ota_staging/bundle/`; on the new binary's first boot we
+        // overlay missing/changed product data files from it so a panel OTA
+        // upgrade lands r100 templates + geoip without host-side scripts.
+        if !rt.cfg.pubkey.is_empty() {
+            let staging = rt.cfg.data_dir.join("ota_staging").join("bundle");
+            match bootstrap_data_tree_from_staging(&staging, &rt.cfg.pubkey, &rt.cfg.data_dir) {
+                Ok(v) if !v.is_empty() => tracing::info!(
+                    files = ?v,
+                    "boot data bootstrap: product data files installed from staged release bundle"
+                ),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "boot data bootstrap skipped"),
+            }
+        }
         Ok(rt)
     }
 
@@ -495,6 +512,7 @@ impl Runtime {
         // One engine for the whole flow: bundle releases resolve manifest +
         // assets from the verified extracted bundle tree.
         let mut eng = self.ota_engine();
+        let mut fetched_man: Option<gr_abi::ReleaseManifest> = None;
         match eng.fetch_manifest_blocking() {
             Ok(man) => {
                 if let Err(e) = eng.write_release_binding(&man) {
@@ -506,6 +524,7 @@ impl Runtime {
                 if let Some(h) = man.runtime.sha256.clone() {
                     expect_sha = Some(h);
                 }
+                fetched_man = Some(man);
             }
             Err(e) => {
                 let prod = gr_abi::env::get("DEPLOY_ENV")
@@ -620,6 +639,23 @@ impl Runtime {
         std::fs::rename(&install_tmp, &dest).map_err(|e| e.to_string())?;
         let _ = std::fs::write(install_root.join("VERSION"), ver.as_bytes());
         let _ = std::fs::write(rel_dir.join("sha256"), format!("{got_sha}\n"));
+        // data_tree (1.0.8+): a panel runtime OTA must land the product data
+        // files (r100 templates + geoip mmdb) too, not just the binary — read
+        // them straight from the verified extracted bundle (the manifest chain
+        // incl. `sig_data` was checked by fetch_manifest_blocking). 1.0.7-era
+        // panels never reach this code (old binary runs during their upgrade);
+        // that transition is closed by the boot-time staging bootstrap.
+        let mut data_installed: Vec<String> = Vec::new();
+        let mut data_error: Option<String> = None;
+        if let (Some(bd), Some(man)) = (eng.bundle_dir.as_ref(), fetched_man.as_ref()) {
+            match overlay_data_tree(bd, man, &install_root.join("data")) {
+                Ok(v) => data_installed = v,
+                Err(e) => {
+                    tracing::warn!(error = %e, "data_tree overlay failed (boot bootstrap retries)");
+                    data_error = Some(e);
+                }
+            }
+        }
         let mut restarted = false;
         let mut restart_note = String::new();
         if restart {
@@ -691,6 +727,8 @@ fi
             "bytes": bytes.len(),
             "sha256": got_sha,
             "sha_verified": expect_sha.is_some(),
+            "data_installed": data_installed,
+            "data_error": data_error,
             "restart_requested": restart,
             "restarted": restarted,
             "restart_required": restart && !restarted,
@@ -1089,6 +1127,129 @@ fi
     }
 }
 
+/// P0 (178 panel OTA, 1.0.8): scan the OTA bundle staging area
+/// (`<data_dir>/ota_staging/bundle`) for an extracted whole-bundle release
+/// whose manifest carries a `data_tree`, verify the full chain against the
+/// root pubkey (incl. the extended-body `sig_data`), and overlay the
+/// declared product data files into `dest_data`.
+///
+/// Why this exists: a 1.0.7 panel `install-runtime` (the code that RUNS
+/// during the 1.0.7 → 1.0.8 upgrade) stages and verifies the whole bundle
+/// but installs only the runtime binary — it predates data_tree. This
+/// bootstrap runs inside the NEW binary on its first boot after that swap,
+/// closing the gap without any host-side script. Never deletes files (the
+/// data dir also holds runtime state); never performs network I/O.
+pub fn bootstrap_data_tree_from_staging(
+    staging_bundle: &std::path::Path,
+    pubkey: &[u8],
+    dest_data: &std::path::Path,
+) -> Result<Vec<String>, String> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    let entries = match std::fs::read_dir(staging_bundle) {
+        Ok(rd) => rd,
+        Err(e) => return Err(format!("staging dir {}: {e}", staging_bundle.display())),
+    };
+    for ent in entries.flatten() {
+        let Ok(ty) = ent.file_type() else { continue };
+        if !ty.is_dir() {
+            continue;
+        }
+        let d = ent.path();
+        // fetch_bundle_blocking extracts tars to `<stem>.d/<top-dir>/…`;
+        // bundle_tree_root resolves the single-top-dir shape. Also accept a
+        // flat extraction (manifest directly inside).
+        if d.join("manifest.json").is_file() {
+            candidates.push(d);
+        } else {
+            let root = gr_ota::bundle_tree_root(&d);
+            if root.join("manifest.json").is_file() {
+                candidates.push(root);
+            }
+        }
+    }
+    // Newest first: repeated OTAs leave several staged versions.
+    candidates.sort_by_key(|p| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    });
+    candidates.reverse();
+    if candidates.is_empty() {
+        return Err("no staged bundle manifest under ota_staging/bundle".into());
+    }
+    let mut last_err = String::from("no usable staged bundle manifest");
+    for root in candidates {
+        let parsed = std::fs::read_to_string(root.join("manifest.json"))
+            .map_err(|e| format!("staged manifest read: {e}"))
+            .and_then(|s| {
+                serde_json::from_str::<gr_abi::ReleaseManifest>(&s)
+                    .map_err(|e| format!("staged manifest parse: {e}"))
+            });
+        let man = match parsed {
+            Ok(m) => m,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        if man.data_tree.is_none() {
+            last_err = "staged manifest has no data_tree (pre-1.0.8 bundle)".into();
+            continue;
+        }
+        if let Err(e) = gr_ota::verify_manifest_chain(pubkey, &man) {
+            last_err = format!("staged manifest chain: {e}");
+            continue;
+        }
+        return overlay_data_tree(&root, &man, dest_data);
+    }
+    Err(last_err)
+}
+
+/// Overlay the manifest-declared product data files from a VERIFIED bundle
+/// tree into `dest_data`. Only writes files that are missing locally or
+/// whose sha256 differs from the signed manifest entry (self-healing on
+/// every boot); never deletes anything. Source bytes are re-verified against
+/// the manifest hashes before copying — callers must have verified the
+/// manifest chain (legacy `sig` + `sig_data`) beforehand.
+pub fn overlay_data_tree(
+    bundle_root: &std::path::Path,
+    man: &gr_abi::ReleaseManifest,
+    dest_data: &std::path::Path,
+) -> Result<Vec<String>, String> {
+    let Some(tree) = &man.data_tree else {
+        return Ok(Vec::new());
+    };
+    let mut installed = Vec::new();
+    for (rel, want) in &tree.files {
+        if rel.contains("..") || rel.starts_with('/') || rel.contains('\\') {
+            return Err(format!("data_tree bad relative path: {rel}"));
+        }
+        let src = bundle_root.join("data").join(rel);
+        let src_bytes =
+            std::fs::read(&src).map_err(|e| format!("bundle data file {rel}: {e}"))?;
+        let got = gr_abi::sha256_hex(&src_bytes);
+        if got != want.to_ascii_lowercase() && got != *want {
+            return Err(format!("data_tree sha mismatch: {rel}"));
+        }
+        let dest = dest_data.join(rel);
+        let needs_write = match std::fs::read(&dest) {
+            Ok(cur) => gr_abi::sha256_hex(&cur) != got,
+            Err(_) => true,
+        };
+        if needs_write {
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&dest, &src_bytes).map_err(|e| format!("install {rel}: {e}"))?;
+            installed.push(rel.clone());
+        }
+    }
+    Ok(installed)
+}
+
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let t = SystemTime::now()
@@ -1280,4 +1441,199 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
         // skip symlinks intentionally
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod data_bootstrap_tests {
+    use super::*;
+
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "gr_rt_data_{}_{}_{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|x| x.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// Build a staged whole-bundle layout exactly like the one the 1.0.7
+    /// panel `install-runtime` leaves behind: `…/bundle/<name>.d/<top>/`
+    /// with manifest.json + data files, signed with a fresh root key.
+
+    #[test]
+    fn boot_bootstrap_installs_missing_and_preserves_state() {
+        let (root_sk, root_vk) = gr_ota::generate_signing_keypair();
+        let base = tmp_dir("boot");
+        let staging = base.join("ota_staging").join("bundle");
+        let extracted = staging.join("greenpng-1.0.8-x86_64.d");
+        let root = extracted.join("greenpng-1.0.8-x86_64");
+        let bdata = root.join("data");
+        std::fs::create_dir_all(bdata.join("geo")).unwrap();
+        let r100 = b"r100 template bytes";
+        let mmdb = b"fake mmdb bytes";
+        std::fs::write(bdata.join("r100_templates.json"), r100).unwrap();
+        std::fs::write(bdata.join("geo/dbip-country-lite.mmdb"), mmdb).unwrap();
+
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "r100_templates.json".to_string(),
+            gr_abi::sha256_hex(r100),
+        );
+        files.insert(
+            "geo/dbip-country-lite.mmdb".to_string(),
+            gr_abi::sha256_hex(mmdb),
+        );
+        let mut man = gr_abi::ReleaseManifest {
+            product: "greenpng".into(),
+            channel: "stable".into(),
+            arch: Some("x86_64".into()),
+            triple: Some("x86_64-linux-gnu".into()),
+            build_id: Some("boot-bs-1".into()),
+            release_pubkey: None,
+            release_cert: None,
+            runtime: gr_abi::RuntimeManifest {
+                version: "1.0.8".into(),
+                abi: 1,
+                asset: Some("bin/gr-service".into()),
+                sha256: None,
+            },
+            modules: vec![],
+            fe: None,
+            fe_tree: None,
+            admin_tree: None,
+            spec_tree: None,
+            data_tree: Some(gr_abi::TreeManifest { epoch: None, files }),
+            sig_data: None,
+            cli: None,
+            sig: None,
+        };
+        man.sig = Some(gr_ota::sign_bytes(
+            &root_sk,
+            &gr_ota::manifest_sign_message(&man).unwrap(),
+        ));
+        man.sig_data = Some(gr_ota::sign_bytes(
+            &root_sk,
+            &gr_ota::manifest_sign_message_data(&man).unwrap(),
+        ));
+        std::fs::write(
+            root.join("manifest.json"),
+            serde_json::to_string_pretty(&man).unwrap(),
+        )
+        .unwrap();
+
+        // Destination data dir pre-holds runtime state that must survive.
+        let dest = base.join("data");
+        std::fs::create_dir_all(dest.join("admin")).unwrap();
+        std::fs::write(dest.join("admin/bootstrap.json"), b"{\"state\":true}").unwrap();
+
+        let installed =
+            bootstrap_data_tree_from_staging(&staging, root_vk.as_bytes(), &dest).unwrap();
+        assert_eq!(
+            installed,
+            vec![
+                "geo/dbip-country-lite.mmdb".to_string(),
+                "r100_templates.json".to_string()
+            ],
+            "both P0 data files installed (BTreeMap order)"
+        );
+        assert_eq!(
+            std::fs::read(dest.join("r100_templates.json")).unwrap(),
+            r100.to_vec()
+        );
+        assert_eq!(
+            std::fs::read(dest.join("geo/dbip-country-lite.mmdb")).unwrap(),
+            mmdb.to_vec()
+        );
+        assert!(
+            dest.join("admin/bootstrap.json").is_file(),
+            "runtime state must never be touched"
+        );
+
+        // Idempotent: second boot rewrites nothing.
+        let again =
+            bootstrap_data_tree_from_staging(&staging, root_vk.as_bytes(), &dest).unwrap();
+        assert!(again.is_empty(), "no rewrites when sha matches: {again:?}");
+
+        // Self-healing: local tamper is repaired from the verified bundle.
+        std::fs::write(dest.join("r100_templates.json"), b"tampered local").unwrap();
+        let healed =
+            bootstrap_data_tree_from_staging(&staging, root_vk.as_bytes(), &dest).unwrap();
+        assert_eq!(healed, vec!["r100_templates.json".to_string()]);
+        assert_eq!(
+            std::fs::read(dest.join("r100_templates.json")).unwrap(),
+            r100.to_vec()
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn boot_bootstrap_rejects_unsigned_and_tampered_staging() {
+        let (root_sk, root_vk) = gr_ota::generate_signing_keypair();
+        let base = tmp_dir("reject");
+        let staging = base.join("ota_staging").join("bundle");
+        let extracted = staging.join("greenpng-1.0.8-x86_64.d");
+        let root = extracted.join("greenpng-1.0.8-x86_64");
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        let payload = b"payload";
+        std::fs::write(root.join("data/r100_templates.json"), payload).unwrap();
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "r100_templates.json".to_string(),
+            gr_abi::sha256_hex(payload),
+        );
+        let mut man = gr_abi::ReleaseManifest {
+            product: "greenpng".into(),
+            channel: "stable".into(),
+            arch: None,
+            triple: None,
+            build_id: Some("boot-bs-2".into()),
+            release_pubkey: None,
+            release_cert: None,
+            runtime: gr_abi::RuntimeManifest {
+                version: "1.0.8".into(),
+                abi: 1,
+                asset: None,
+                sha256: None,
+            },
+            modules: vec![],
+            fe: None,
+            fe_tree: None,
+            admin_tree: None,
+            spec_tree: None,
+            data_tree: Some(gr_abi::TreeManifest { epoch: None, files }),
+            sig_data: None,
+            cli: None,
+            sig: None,
+        };
+        man.sig = Some(gr_ota::sign_bytes(
+            &root_sk,
+            &gr_ota::manifest_sign_message(&man).unwrap(),
+        ));
+        // deliberately NO sig_data → chain must reject (data_tree unsigned)
+        std::fs::write(
+            root.join("manifest.json"),
+            serde_json::to_string_pretty(&man).unwrap(),
+        )
+        .unwrap();
+        let dest = base.join("data");
+        std::fs::create_dir_all(&dest).unwrap();
+        let err =
+            bootstrap_data_tree_from_staging(&staging, root_vk.as_bytes(), &dest).unwrap_err();
+        assert!(err.contains("sig_data"), "must demand sig_data: {err}");
+        assert!(!dest.join("r100_templates.json").is_file());
+
+        // Wrong root key → chain fails, nothing installed.
+        let (_, other_vk) = gr_ota::generate_signing_keypair();
+        let err2 =
+            bootstrap_data_tree_from_staging(&staging, other_vk.as_bytes(), &dest).unwrap_err();
+        assert!(err2.contains("chain") || err2.contains("sig"), "chain rejected: {err2}");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

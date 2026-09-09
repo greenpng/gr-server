@@ -29,6 +29,17 @@ else
   echo "[release] cannot locate probe/fe (tried 02-probe-analysis/probe/fe and probe/fe)" >&2
   exit 1
 fi
+# P0 运行时数据 (data_tree) 布局可移植: 开发仓在仓根 data/ (02-probe-analysis
+# 无 data/), 扁平发行仓同样在仓根 data/ — 两布局都是 $ROOT/data; 留
+# $AREA/data 优先分支以兼容未来归位。缺件即死 (与 sync 在位断言同防线)。
+if [[ -f "$AREA/data/r100_templates.json" ]]; then
+  DATA_SRC="$AREA/data"
+elif [[ -f "$ROOT/data/r100_templates.json" ]]; then
+  DATA_SRC="$ROOT/data"
+else
+  echo "[release] FAIL: cannot locate r100_templates.json (tried $AREA/data and $ROOT/data)" >&2
+  exit 1
+fi
 VERSION="$(cat VERSION | tr -d '[:space:]')"
 OUT="$ROOT/dist/release-$VERSION"
 mkdir -p "$OUT" keys
@@ -196,20 +207,22 @@ cp -a "$AREA/spec" "$BUNDLE_DIR/spec"
 # 178 1.0.7 实测缺这组: r100_templates.json 缺 → r_spotcheck_complete 永假 →
 # coverage 永不 complete → FE 重探风暴 (gap_t_retry 22k+) + analyze_jobs 19k
 # 积压 + 反脚本通道全盲; dbip mmdb 缺 → country/asn null (geoip 加载器只有
-# 编译期路径回退, 安装机恒空)。随包分发并进签名清单 (data_tree, 1.0.8+)。
+# 编译期路径回退, 安装机恒空)。随包分发并进清单 (data_tree, 1.0.8+) —
+# data_tree 不进 legacy `sig` 体 (冻结在 1.0.7 键集, 让 178 的 1.0.7 面板
+# OTA 验签通过), root 签名覆盖走 `sig_data` (gr-cli sign-manifest 双签)。
 # 只装产品文件 (r100_templates.json + geo/*.mmdb) — 目标 $PREFIX/data 同时
 # 承载运行期状态 (admin bootstrap 等), 安装侧 overlay 不整树删除。
 # 缺件即死 (34321110575: 空 data_tree 过打包 → Gate A 验树断言拦截;
 # 与 sync 的在位断言同防线)。
 rm -rf "$BUNDLE_DIR/data"
 mkdir -p "$BUNDLE_DIR/data/geo"
-[[ -f "$AREA/data/r100_templates.json" ]] \
+[[ -f "$DATA_SRC/r100_templates.json" ]] \
   || { echo "[release] FAIL: data/r100_templates.json missing (anti-script channel)" >&2; exit 1; }
-cp -f "$AREA/data/r100_templates.json" "$BUNDLE_DIR/data/r100_templates.json"
+cp -f "$DATA_SRC/r100_templates.json" "$BUNDLE_DIR/data/r100_templates.json"
 for m in dbip-asn-lite.mmdb dbip-country-lite.mmdb; do
-  [[ -f "$AREA/data/geo/$m" ]] \
+  [[ -f "$DATA_SRC/geo/$m" ]] \
     || { echo "[release] FAIL: data/geo/$m missing (geoip enrichment)" >&2; exit 1; }
-  cp -f "$AREA/data/geo/$m" "$BUNDLE_DIR/data/geo/$m"
+  cp -f "$DATA_SRC/geo/$m" "$BUNDLE_DIR/data/geo/$m"
 done
 
 # ---- root public key ----
