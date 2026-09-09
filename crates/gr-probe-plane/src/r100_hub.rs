@@ -78,14 +78,49 @@ impl R100Hub {
             source: Arc::new(RwLock::new(source)),
         };
 
+        // File catalog is the pack-inventory source of truth. Snapshot it before
+        // the Redis hot-store branch can overwrite the in-memory catalog.
+        let file_catalog = hub.catalog.read().map(|c| c.clone()).ok();
+
         // Prefer Redis as hot store when configured: pull if non-empty, else seed from file.
         if hub.redis_url.is_some() {
             match hub.try_load_from_redis() {
                 Ok(n) if n > 0 => {
-                    if let Ok(mut s) = hub.source.write() {
-                        *s = format!("redis:{n}_packs");
+                    match redis_action(
+                        file_catalog.as_ref().map(|c| c.pack_count()).unwrap_or(0),
+                        n,
+                    ) {
+                        RedisAction::UseRedis => {
+                            if let Ok(mut s) = hub.source.write() {
+                                *s = format!("redis:{n}_packs");
+                            }
+                            info!("r100 hub loaded {n} packs from redis");
+                        }
+                        // 178 实测: 共享 Redis 里包键被部分消耗后 (100→11),
+                        // 旧逻辑把内存目录降级为残余快照且永不补种 →
+                        // random.js 只在 11 包池里转, 直到下次重启才自愈。
+                        // 残余 < 文件全量: 内存恢复文件全量, Redis 从文件补种。
+                        RedisAction::TopUpFromFile => {
+                            if let Some(full) = file_catalog.clone() {
+                                if let Ok(mut c) = hub.catalog.write() {
+                                    *c = full;
+                                }
+                            }
+                            match hub.seed_redis_from_memory() {
+                                Ok(seeded) => {
+                                    if let Ok(mut s) = hub.source.write() {
+                                        *s = format!("redis_topped_up:{n}->{seeded}");
+                                    }
+                                    info!(
+                                        "r100 redis partially drained (redis={n} < file) — reseeded {seeded} packs from file catalog"
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!("r100 redis top-up failed (redis={n}): {e}")
+                                }
+                            }
+                        }
                     }
-                    info!("r100 hub loaded {n} packs from redis");
                 }
                 Ok(_) | Err(_) => {
                     if let Err(e) = hub.seed_redis_from_memory() {
@@ -355,6 +390,24 @@ fn parse_redis_bulk_json(resp: &str) -> Result<Option<Value>, String> {
     Ok(None)
 }
 
+/// Redis hot-store vs file-catalog decision at hub boot.
+/// Pure so the partial-drain policy is unit-testable without a live Redis.
+enum RedisAction {
+    /// Redis snapshot is complete (>= file catalog): use it as-is.
+    UseRedis,
+    /// Redis partially drained (< file catalog): restore the full file catalog
+    /// in memory and reseed Redis from it. (178: pool stuck at 11/100.)
+    TopUpFromFile,
+}
+
+fn redis_action(file_packs: usize, redis_packs: usize) -> RedisAction {
+    if redis_packs < file_packs {
+        RedisAction::TopUpFromFile
+    } else {
+        RedisAction::UseRedis
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,5 +433,17 @@ mod tests {
         assert_eq!((h.as_str(), p), ("redis", 6379));
         assert_eq!(d, 3);
         assert_eq!(pw.as_deref(), Some("sekret"));
+    }
+
+    #[test]
+    fn redis_partial_drain_tops_up_from_file() {
+        // Complete redis snapshot wins (no churn).
+        assert!(matches!(redis_action(100, 100), RedisAction::UseRedis));
+        assert!(matches!(redis_action(100, 120), RedisAction::UseRedis));
+        // Partially drained (178: 100→11) must restore from file, never shrink.
+        assert!(matches!(redis_action(100, 11), RedisAction::TopUpFromFile));
+        assert!(matches!(redis_action(100, 1), RedisAction::TopUpFromFile));
+        // No file catalog (0) → whatever redis has is the best snapshot.
+        assert!(matches!(redis_action(0, 11), RedisAction::UseRedis));
     }
 }
