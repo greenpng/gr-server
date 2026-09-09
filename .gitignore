@@ -13,8 +13,16 @@ secrets.env
 guard.env
 
 # 数据与本地状态
+# 产品根 data/ 例外 (1.0.8+ data_tree 随包分发的运行时数据: r100 反脚本
+# 模板 + geoip dbip mmdb) — 与开发仓 .gitignore 同款再包含惯用法;
+# 其余 **/data/ (e2e 运行期快照等) 保持忽略。
 /data/
 **/data/
+!/data/
+!/data/README.md
+!/data/r100_templates.json
+!/data/geo/
+!/data/geo/*.mmdb
 /reports/
 *.sqlite*
 OPAQUE_MAP.json
