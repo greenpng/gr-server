@@ -3,10 +3,10 @@
 # 与既有两门互补 (测源码不能代替测包, 测包不能代替测行为):
 #   Gate A  = 源码能编/契约过/预打包树合法 (每次 push, 双架构)
 #   Gate B  = 发布资产 sh/docker 安装+升级+回滚 (发版时, release.yml 内)
-#   fulltest = 源码构建起来的「活栈」上的行为面: 管理面板/设置生效/高并发/冷热交换
+#   fulltest = 源码构建起来的「活栈」上的行为面: 管理面板/设置生效/高并发/冷热交换/OTA 稳定性
 #              (每次 push 到 main 自动 + 每周一例行 + 手动; dispatch/schedule 额外跑 install-smoke)
 #
-# 触发策略: push main = 行为三件 (panel/load/hotcold, debug 构建, ~15min);
+# 触发策略: push main = 行为四件 (panel/load/hotcold/ota, debug 构建, ~20min);
 #           workflow_dispatch / schedule = 加 install-smoke (预打包→install.sh→冒烟→升级)。
 # 架构: 仅 x86_64 — 行为与架构无关, 编译/打包架构覆盖归 Gate A/B。
 name: fulltest
@@ -133,6 +133,37 @@ jobs:
         with:
           name: fulltest-hotcold
           path: ${{ runner.temp }}/gr-e2e/*.log
+          if-no-files-found: ignore
+
+  ota:
+    # 多轮面板 OTA 稳定性 (每次 push main 自动跑 — 178 v1.0.8 生产升级实测的
+    # 并发解包/换二进制竞争、data overlay 双通道、重启自举、降级回滚全部回归化;
+    # install-time 权限产品化的行为面断言)。fixture 自足: 本地 http 资产 +
+    # lab 根钥双签整包, 不依赖外部 release。
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with: { name: e2e-bin, path: target/debug }
+      - run: chmod +x target/debug/gr-service target/debug/gr-cli
+      - name: boot stack + multi-cycle OTA stability
+        run: |
+          set -euo pipefail
+          bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e"
+          bash install/test/e2e/ota_stability.sh "$RUNNER_TEMP/gr-e2e/stack.env"
+      - name: teardown
+        if: always()
+        run: bash install/test/e2e/boot_stack.sh --dir "$RUNNER_TEMP/gr-e2e" --stop || true
+      - name: upload evidence
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: fulltest-ota
+          path: |
+            ${{ runner.temp }}/gr-e2e/*.log
+            ${{ runner.temp }}/gr-e2e/ota-*.json
           if-no-files-found: ignore
 
   install-smoke:

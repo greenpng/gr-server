@@ -5,6 +5,7 @@ use gr_abi::{sha256_hex, ModuleArtifact, ModuleMeta, ReleaseManifest, RUNTIME_AB
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Normalize uname / rustc arch labels to release index keys.
 pub fn normalize_host_arch(arch: &str) -> String {
@@ -123,6 +124,26 @@ pub fn safe_extract_tar_gz(tgz: &Path, dest: &Path) -> Result<(), String> {
         return Err(format!("tar extract failed: {status}"));
     }
     Ok(())
+}
+
+/// Monotonic per-process sequence for extraction stage dirs. Combined with
+/// the pid it makes every concurrent extraction unique: the panel OTA call
+/// and the auto-apply hot loop run in the SAME process and used to collide
+/// on a pid-only stage name (one caller's `remove_dir_all` deleted the
+/// other's in-flight tar → "tar exit 2" on 178, 2026-09-09).
+static EXTRACT_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Stale extraction-stage cutoff: any `{stem}.extract-*` dir older than this
+/// is garbage from a crashed/killed extraction (completion = rename into
+/// `{stem}.d`, so leftover stages never become valid).
+const EXTRACT_STAGE_STALE: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Layout-agnostic completion marker for an extracted bundle: the manifest
+/// sits at the top for flat archives, or inside the single top-level
+/// `greenpng-<ver>-<arch>/` directory for nested ones. `bundle_tree_root`
+/// resolves either shape, so this accepts both.
+fn extraction_complete(dir: &Path) -> bool {
+    bundle_tree_root(dir).join("manifest.json").is_file()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -660,10 +681,25 @@ impl OtaEngine {
             .clone()
             .unwrap_or_else(|| std::env::temp_dir().join("gr-ota-bundle"));
         fs::create_dir_all(&cache)?;
+        // Unique per-call suffix (pid + seq + nanos) shared by the download
+        // temp file and the extraction stage dir: concurrent callers in the
+        // same process (panel manual call + auto-apply hot loop) and other
+        // processes sharing this cache dir must never touch each other's
+        // in-flight files.
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let uniq = format!(
+            "{}-{now_nanos}-{}",
+            std::process::id(),
+            EXTRACT_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
         let stem = name.trim_end_matches(".tar.gz");
         let extracted = cache.join(format!("{stem}.d"));
-        // Reuse a complete extraction (manifest present = complete marker).
-        if extracted.join("manifest.json").is_file() {
+        // Reuse a complete extraction (manifest present = complete marker,
+        // flat or nested layout).
+        if extraction_complete(&extracted) {
             let root = bundle_tree_root(&extracted);
             self.bundle_dir = Some(root.clone());
             return Ok(Some(root));
@@ -690,14 +726,59 @@ impl OtaEngine {
                     "bundle sha256 mismatch: got {got} expect {expect_sha} ({name})"
                 )));
             }
-            fs::write(&tgz, &bytes)?;
+            // Atomic publish: a plain fs::write would truncate the archive
+            // while a concurrent reader hashes it; write to a unique temp and
+            // rename over (same filesystem, atomic on Linux).
+            let tgz_tmp = cache.join(format!("{name}.dl-{uniq}"));
+            fs::write(&tgz_tmp, &bytes)?;
+            let _ = fs::rename(&tgz_tmp, &tgz);
         }
-        let stage = cache.join(format!("{stem}.extract-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&stage);
+        let stage = cache.join(format!("{stem}.extract-{uniq}"));
+        // Best-effort sweep of stages abandoned by crashed extractions.
+        if let Ok(rd) = fs::read_dir(&cache) {
+            for ent in rd.flatten() {
+                let stale = ent
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|n| n.starts_with(&format!("{stem}.extract-")))
+                    && ent
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age > EXTRACT_STAGE_STALE);
+                if stale {
+                    let _ = fs::remove_dir_all(ent.path());
+                }
+            }
+        }
         fs::create_dir_all(&stage)?;
         safe_extract_tar_gz(&tgz, &stage).map_err(OtaError::Other)?;
-        let _ = fs::remove_dir_all(&extracted);
-        fs::rename(&stage, &extracted)?;
+        // Publish with race tolerance. rename(dir → existing non-empty dir)
+        // fails with ENOTEMPTY; completion is marked by the manifest inside
+        // `extracted`, so a failed rename with a complete target means another
+        // caller won and our own stage is redundant garbage. An incomplete
+        // target is a crashed leftover: replace it, then re-check for a late
+        // winner before surfacing the error.
+        match fs::rename(&stage, &extracted) {
+            Ok(()) => {}
+            Err(_) if extraction_complete(&extracted) => {
+                let _ = fs::remove_dir_all(&stage);
+            }
+            Err(_) => {
+                let _ = fs::remove_dir_all(&extracted);
+                match fs::rename(&stage, &extracted) {
+                    Ok(()) => {}
+                    Err(_) if extraction_complete(&extracted) => {
+                        let _ = fs::remove_dir_all(&stage);
+                    }
+                    Err(e) => {
+                        let _ = fs::remove_dir_all(&stage);
+                        return Err(OtaError::Io(e));
+                    }
+                }
+            }
+        }
         let root = bundle_tree_root(&extracted);
         self.bundle_dir = Some(root.clone());
         Ok(Some(root))
@@ -1770,5 +1851,121 @@ mod tests {
         legacy.sig = Some(sign_bytes(&root_sk, &manifest_sign_message(&legacy).unwrap()));
         verify_manifest_chain(root_vk.as_bytes(), &legacy).unwrap();
         verify_manifest_sig_data(root_vk.as_bytes(), &legacy).unwrap();
+    }
+
+    #[test]
+    fn concurrent_fetch_bundle_extraction_is_race_free() {
+        // Regression (178, 2026-09-09): the panel OTA call and the auto-apply
+        // hot loop run in the SAME process and collided on a pid-only
+        // extraction stage name — one caller's cleanup deleted the other's
+        // in-flight tar ("tar exit 2"). N threads fetching the same bundle
+        // through one shared cache dir must all succeed, see the same
+        // complete tree, and leave no leftover stage dirs.
+        use std::io::{Read as _, Write as _};
+        use std::net::TcpListener;
+        use std::sync::Arc;
+
+        let tmp = std::env::temp_dir().join(format!(
+            "gr-ota-race-{}-{}",
+            std::process::id(),
+            EXTRACT_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let root = tmp.join("rel");
+        let top = "greenpng-9.9.9-x86_64";
+        let tree = root.join(top);
+        fs::create_dir_all(&tree).unwrap();
+        fs::write(tree.join("manifest.json"), r#"{"product":"greenpng"}"#).unwrap();
+        fs::write(tree.join("payload.bin"), vec![7u8; 4096]).unwrap();
+        let tgz = root.join(format!("{top}.tar.gz"));
+        let st = std::process::Command::new("tar")
+            .arg("-czf")
+            .arg(&tgz)
+            .arg("-C")
+            .arg(&root)
+            .arg(top)
+            .status()
+            .unwrap();
+        assert!(st.success(), "fixture tar build failed");
+        let sha = gr_abi::sha256_hex(&fs::read(&tgz).unwrap());
+        // Point every arch alias at the same host-independent bundle so the
+        // test exercises the bundle path on any runner arch.
+        let idx = serde_json::json!({
+            "architectures": {
+                "x86_64": {"bundle": format!("{top}.tar.gz"), "bundle_sha256": sha},
+                "aarch64": {"bundle": format!("{top}.tar.gz"), "bundle_sha256": sha},
+            }
+        });
+        fs::write(root.join("manifest-index.json"), idx.to_string()).unwrap();
+
+        // Minimal one-shot HTTP file server for the release root.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let srv_root = Arc::new(root.clone());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { break };
+                let srv_root = srv_root.clone();
+                std::thread::spawn(move || {
+                    let mut buf = [0u8; 4096];
+                    let _ = s.read(&mut buf);
+                    let req = String::from_utf8_lossy(&buf);
+                    let path = req
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or("/")
+                        .trim_start_matches('/');
+                    let body = fs::read(srv_root.join(path)).unwrap_or_default();
+                    let hdr = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = s.write_all(hdr.as_bytes());
+                    let _ = s.write_all(&body);
+                });
+            }
+        });
+
+        let cache = tmp.join("cache");
+        let base = format!("http://127.0.0.1:{port}");
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let cfg = OtaConfig {
+                release_base_url: base.clone(),
+                modules_dir: tmp.join("modules"),
+                pubkey_bytes: vec![0u8; 32],
+                release_key: None,
+                bundle_cache: Some(cache.clone()),
+            };
+            handles.push(std::thread::spawn(move || {
+                let mut eng = OtaEngine::new(cfg);
+                let bundle_root = eng.fetch_bundle_blocking().unwrap().unwrap();
+                let manifest =
+                    fs::read_to_string(bundle_root.join("manifest.json")).unwrap();
+                (bundle_root, manifest)
+            }));
+        }
+        let mut roots = Vec::new();
+        for h in handles {
+            let (r, m) = h.join().expect("concurrent fetch thread panicked");
+            assert_eq!(m, r#"{"product":"greenpng"}"#);
+            roots.push(r);
+        }
+        assert!(
+            roots.iter().all(|r| *r == roots[0]),
+            "concurrent callers saw different bundle roots"
+        );
+        assert!(roots[0].join("payload.bin").is_file());
+        // Completed cycle must not leave extraction stage garbage behind.
+        let leftovers: Vec<_> = fs::read_dir(&cache)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_str().unwrap_or("").contains(".extract-"))
+            .map(|e| e.file_name())
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "leftover extraction stages: {leftovers:?}"
+        );
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

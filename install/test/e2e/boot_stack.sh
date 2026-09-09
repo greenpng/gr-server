@@ -194,6 +194,9 @@ GR_RATE_LIMIT_RESULT_PER_MIN=2400
 GR_R100_TEMPLATES=$ROOT/data/r100_templates.json
 GR_GEOIP_ASN_MMDB=$ROOT/data/geo/dbip-asn-lite.mmdb
 GR_GEOIP_COUNTRY_MMDB=$ROOT/data/geo/dbip-country-lite.mmdb
+# 面板 install-runtime 的安装根: e2e 栈的运行二进制在 target/debug (exe 父目录
+# 解析会指到工作区根) — 显式钉到 $E2E_DIR/install, OTA 稳定性件在此断言落地。
+GR_INSTALL_ROOT=$E2E_DIR/install
 EOF
 
 # 冷热短旋钮 (--hotcold): 默认 L1 30m / L3 7d / 窗 24h → 分钟级可观测

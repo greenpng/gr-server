@@ -12,10 +12,25 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist {PREFIX}/fe
+# Self-OTA (panel install-runtime / full-upgrade) runs as THIS service user:
+#   - {PREFIX}/bin    : swap gr-service + versioned slots + .bak rollback copies
+#     (178 v1.0.8 panel OTA hit EROFS os error 30 without it)
+#   - {PREFIX}/VERSION: stamped by the runtime swap (decorative, panel status
+#     is authoritative, but kept accurate; file is created by install.sh)
+#   - {PREFIX}/fe     : probe plane writes fe/OPAQUE_MAP.json at boot
+#     (without it every opaque asset 404s)
+#   - data/log/modules/dist: runtime state trees
+# Everything else stays read-only under ProtectSystem=strict.
+ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist {PREFIX}/fe {PREFIX}/bin {PREFIX}/VERSION
 ExecStart={PREFIX}/bin/gr-service
 Restart=always
 RestartSec=3
+# Self-OTA restart: the verified runtime swap schedules `systemctl restart`
+# from a detached child that then runs the health gate and rolls back to the
+# .bak copy on failure. KillMode=process lets that child survive the stop of
+# the main process (KillMode=control-group would kill the health gate with
+# it). systemd may log a benign "left-over process" note on the next start.
+KillMode=process
 KillSignal=SIGTERM
 TimeoutStopSec=15
 

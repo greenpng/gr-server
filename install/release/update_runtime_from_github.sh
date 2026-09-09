@@ -414,20 +414,28 @@ PYENV
   fi
 fi
 
-# 属主修正: 本脚本常以 root 跑, cp -a 换入的 fe/spec 树会保持 root 属主,
+# 属主修正: 本脚本常以 root 跑, cp -a / install 换入的树会保持 root 属主,
 # 而服务进程跑在专用用户下 (User=greenpng) → 写不了 fe/OPAQUE_MAP.json →
-# /dist/<hash>.min.js 全部 404, 收集器包加载失败 (v1.0.2 178 实测回归)。
+# /dist/<hash>.min.js 全部 404, 收集器包加载失败 (v1.0.2 178 实测回归);
+# bin/releases/<v>/ 与 gr-service.bak.* 若留 root 属主, 下一次服务用户发起的
+# 面板 OTA (install-runtime 写版本槽 + .bak 回滚副本) 直接 EACCES
+# (v1.0.8 178 实测 os error 13) → bin 整树递归归还服务用户。
 # systemd 部署时把换入的树/文件归还服务用户。
 if [[ "$(id -u)" == "0" && -d "$INSTALL_ROOT" ]]; then
   SVC_USER="$(systemctl show greenpng -p User --value 2>/dev/null || true)"
   SVC_GROUP="$(systemctl show greenpng -p Group --value 2>/dev/null || true)"
   if [[ -n "$SVC_USER" && "$SVC_USER" != "root" && "$SVC_USER" != "0" ]]; then
     [[ -z "$SVC_GROUP" || "$SVC_GROUP" == "root" ]] && SVC_GROUP="$SVC_USER"
+    chown -R "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/bin" 2>/dev/null || true
     chown -R "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/fe" 2>/dev/null || true
     [[ -d "$INSTALL_ROOT/spec" ]] && chown -R "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/spec" 2>/dev/null || true
-    chown "$SVC_USER:$SVC_GROUP" \
-      "$INSTALL_ROOT/bin/gr-service" "$INSTALL_ROOT/bin/gr-cli" \
-      "$INSTALL_ROOT/VERSION" 2>/dev/null || true
+    chown "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/VERSION" 2>/dev/null || true
+    # data overlay 产品文件 (r100 模板 / geoip mmdb): root 落的文件归还服务
+    # 用户, 之后 boot 自举 / 幂等重装才能以服务身份覆写。
+    chown "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/data/r100_templates.json" 2>/dev/null || true
+    for _m in dbip-asn-lite.mmdb dbip-country-lite.mmdb; do
+      chown "$SVC_USER:$SVC_GROUP" "$INSTALL_ROOT/data/geo/$_m" 2>/dev/null || true
+    done
     # Module OTA trees: root-run `gr-cli module update` writes modules/staging,
     # modules/versions/<m>/<v> and modules/active markers; the service user must
     # own them or the next service-user CLI/panel OTA run fails with io EACCES
@@ -441,7 +449,7 @@ if [[ "$(id -u)" == "0" && -d "$INSTALL_ROOT" ]]; then
     # gr-cli whole-bundle cache (temp-dir default). A root-run CLI leaves it
     # root-owned and blocks every later service-user module update. Best-effort.
     [[ -d /tmp/gr-ota-bundle ]] && chown -R "$SVC_USER:$SVC_GROUP" /tmp/gr-ota-bundle 2>/dev/null || true
-    echo "[runtime-ota] installed trees chowned → $SVC_USER (fe/spec/bin/modules/dist/cache)"
+    echo "[runtime-ota] installed trees chowned → $SVC_USER (bin/fe/spec/data/modules/dist/VERSION/cache)"
   fi
 fi
 
