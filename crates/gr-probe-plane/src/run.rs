@@ -1032,11 +1032,21 @@ pub fn run_with(args: Args) {
     }
     server.bootstrap();
 
-    // SNI multi-cert map (P-V2)
+    // SNI multi-cert map (P-V2): panel-minted per-domain certs live in
+    // <data_dir>/sni-map.json. Absent file is the NORMAL state until the panel
+    // mints per-domain certs (default GR_TLS_CERT/KEY serves every SNI) —
+    // info, not warn. 178 实测: 每次启动都为这个未铸造的文件告警, 纯噪音。
     if !args.sni_map.is_empty() {
-        match sni_map::load_sni_map(&args.sni_map) {
-            Ok(n) => info!("SNI map ready n={n}"),
-            Err(e) => warn!("sni-map load failed: {e}"),
+        if std::path::Path::new(&args.sni_map).is_file() {
+            match sni_map::load_sni_map(&args.sni_map) {
+                Ok(n) => info!("SNI map ready n={n}"),
+                Err(e) => warn!("sni-map load failed: {e}"),
+            }
+        } else {
+            info!(
+                "sni-map absent ({}), default cert serves all SNI",
+                args.sni_map
+            );
         }
     }
 

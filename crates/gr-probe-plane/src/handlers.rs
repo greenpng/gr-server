@@ -5972,9 +5972,16 @@ pub fn gateway_early(st: &AppState, headers: &HashMap<String, String>, body: Gat
         None,
     )
     .ok();
-    let cf_map = gr_probe_core::extract_cf_edge_fields(headers);
-    let mut cf_obs_id = Value::Null;
+    let mut cf_map = gr_probe_core::extract_cf_edge_fields(headers);
     let cf_edge_present = !cf_map.is_empty();
+    if cf_edge_present {
+        // 与 B8 主行同一挂钩: 只补空 (MMDB/内置启发式), 不覆盖 cf-* 头。
+        // 仅在真有 CF 边缘证据时补 — 无条件补会把空 map 变非空, 凭空
+        // 制造 cloudflare 观察行。178 实测: 该子观察行此前无任何 server_* 字段
+        // (main/worker:d1 已由封签 ingest 挂钩覆盖)。
+        gr_probe_core::enrich_fields_if_empty(&mut cf_map, client_ip.as_deref());
+    }
+    let mut cf_obs_id = Value::Null;
     if cf_edge_present {
         let mut cf_payload = json!({
             "fields": Value::Object(cf_map.clone()),
