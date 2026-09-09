@@ -160,7 +160,14 @@ pub fn classify_ip(ip_s: Option<&str>) -> NetTags {
             ..Default::default()
         };
     };
-    let Ok(ip) = raw.parse::<IpAddr>() else {
+    // iss/opus5 05-S-4: the only persisted IP form is the network mask
+    // ("1.2.3.0/24", "2001:db8:abcd::/48"). Strip the prefix suffix and
+    // classify the network base — the base shares the /24 or /48, so MMDB
+    // country/ASN answers are identical to the full address. Without this
+    // every ingest-path lookup was parse_fail (178: gateway asn 0%, main
+    // 0% geo) even with MMDB on disk.
+    let base = raw.split('/').next().unwrap_or(raw).trim();
+    let Ok(ip) = base.parse::<IpAddr>() else {
         return NetTags {
             network_class: Some("invalid".into()),
             source: "parse_fail",
@@ -516,6 +523,27 @@ mod tests {
     }
 
     #[test]
+    fn masked_network_form_classifies() {
+        // iss/opus5 05-S-4: ingest persists "base/NN" masked IPs; classify must
+        // see through the suffix instead of parse_fail (178 geo-null root cause).
+        let t = classify_ip(Some("10.0.0.0/24"));
+        assert_eq!(t.network_class.as_deref(), Some("private"));
+        assert_ne!(t.source, "parse_fail");
+        let t2 = classify_ip(Some("127.0.0.0/24"));
+        assert_eq!(t2.network_class.as_deref(), Some("loopback"));
+        // Masked public network behaves like its unmasked representative.
+        let m = classify_ip(Some("8.8.8.0/24"));
+        let u = classify_ip(Some("8.8.8.8"));
+        assert_eq!(m.network_class, u.network_class);
+        if u.source.starts_with("mmdb") {
+            assert!(m.source.starts_with("mmdb"));
+        }
+        // v6 /48 mask
+        let v6 = classify_ip(Some("2001:db8:abcd::/48"));
+        assert_ne!(v6.source, "parse_fail");
+    }
+
+    #[test]
     fn enrich_writes_once() {
         let mut m = Map::new();
         enrich_fields_if_empty(&mut m, Some("127.0.0.1"));
@@ -523,6 +551,10 @@ mod tests {
         m.insert("server_asn".into(), json!("AS123"));
         enrich_fields_if_empty(&mut m, Some("8.8.8.8"));
         assert_eq!(m.get("server_asn").and_then(|v| v.as_str()), Some("AS123"));
+        // Masked form still enriches (the only persisted shape).
+        let mut m2 = Map::new();
+        enrich_fields_if_empty(&mut m2, Some("127.0.0.0/24"));
+        assert!(m2.get("server_network_class").is_some());
     }
 
     #[test]
