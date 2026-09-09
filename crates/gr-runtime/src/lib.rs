@@ -401,7 +401,20 @@ impl Runtime {
             static_dir.to_path_buf()
         };
         // Stage into versioned dir then atomic rename of `fe/` when possible.
-        let stage_root = tmp_dir.join(format!("extract-{}", std::process::id()));
+        // Unique per call (pid + seq + nanos): concurrent callers in this
+        // process (manual install-fe + full-upgrade + auto-apply hot loop)
+        // used to share the pid-only name and delete each other's in-flight
+        // extraction — same race class as the gr-ota bundle stage fix.
+        static FE_STAGE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let fe_now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let stage_root = tmp_dir.join(format!(
+            "extract-{}-{fe_now_nanos}-{}",
+            std::process::id(),
+            FE_STAGE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&stage_root);
         std::fs::create_dir_all(&stage_root).map_err(|e| e.to_string())?;
         gr_ota::safe_extract_tar_gz(&tgz, &stage_root)?;
@@ -621,11 +634,38 @@ impl Runtime {
         }
         // Linux: cannot open-write a running executable (ETXTBSY). Write sibling then rename
         // so the new inode replaces the path while the old mapping stays alive until restart.
+        // Unique per call (pid + seq + nanos): concurrent callers in this process (panel
+        // manual call + auto-apply hot loop + full-upgrade) used to share the pid-only
+        // name and could corrupt each other's staged copy before the rename — same race
+        // class as the gr-ota extract-stage collision (178 v1.0.8 concurrent OTA).
+        static SWAP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let now_nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
         let install_tmp = bin_dir.join(format!(
-            ".gr-service.new.{}",
-            std::process::id()
+            ".gr-service.new.{}-{now_nanos}-{}",
+            std::process::id(),
+            SWAP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
-        let _ = std::fs::remove_file(&install_tmp);
+        // Best-effort sweep of swap temps abandoned by failed calls.
+        if let Ok(rd) = std::fs::read_dir(&bin_dir) {
+            for ent in rd.flatten() {
+                let stale = ent
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|n| n.starts_with(".gr-service.new."))
+                    && ent
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age > std::time::Duration::from_secs(600));
+                if stale {
+                    let _ = std::fs::remove_file(ent.path());
+                }
+            }
+        }
         std::fs::copy(&staged, &install_tmp).map_err(|e| e.to_string())?;
         #[cfg(unix)]
         {

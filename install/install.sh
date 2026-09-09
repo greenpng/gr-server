@@ -206,6 +206,10 @@ trap 'rm -rf "$TMP"' EXIT
 # log/ 必须随树一并创建: systemd 单元 ReadWritePaths={PREFIX}/log 在
 # ProtectSystem=strict 命名空间下要求目录先存在, 否则 pre-exec 即 226/NAMESPACE 崩溃。
 mkdir -p "$PREFIX/bin" "$PREFIX/modules" "$PREFIX/data" "$PREFIX/dist/release-$VERSION" "$PREFIX/log"
+# VERSION 文件随装即写: updater / auto_upgrade_check 以它为默认版本源, 且
+# systemd ReadWritePaths={PREFIX}/VERSION 引用的路径必须先于单元启动存在
+# (systemd 对缺失的 ReadWritePaths 项会建目录而非文件)。
+printf '%s\n' "$VERSION" > "$PREFIX/VERSION"
 
 # ---------- 整包制: index → bundle sha → 安全解包 → 内部 manifest ----------
 # 信任顺序: 先取顶层公钥(指纹钉死) → 校验整包 sha(index) → 解包 → 用公钥
@@ -601,6 +605,11 @@ if [[ "$NO_SYSTEMD" != "1" ]] && have_sudo; then
   # 内嵌内容必须与 install/systemd/greenpng.service 保持一致。
   # ReadWritePaths 必须含 {PREFIX}/fe: probe plane 启动时向 fe/OPAQUE_MAP.json
   # 写哈希→逻辑文件反查表 (ProtectSystem=strict 下不可写 = opaque 资产全 404)。
+  # {PREFIX}/bin + {PREFIX}/VERSION: 面板自 OTA (install-runtime/full-upgrade)
+  # 以服务用户跑 — 换 bin/gr-service、写 .bak 回滚副本、盖 VERSION 都在
+  # ProtectSystem=strict 下需要显式授权 (178 v1.0.8 实测缺 bin → EROFS
+  # os error 30)。KillMode=process: 自 OTA 重启由分离子进程做健康门 +
+  # .bak 回滚, 不能随主进程一同被杀 (control-group 会连健康门一起杀)。
   if [[ -f "$SCRIPT_DIR/systemd/greenpng.service" ]]; then
     cp "$SCRIPT_DIR/systemd/greenpng.service" "$TMP/greenpng.service"
   else
@@ -619,10 +628,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist {PREFIX}/fe
+ReadWritePaths={PREFIX}/data {PREFIX}/log {PREFIX}/modules {PREFIX}/dist {PREFIX}/fe {PREFIX}/bin {PREFIX}/VERSION
 ExecStart={PREFIX}/bin/gr-service
 Restart=always
 RestartSec=3
+KillMode=process
 KillSignal=SIGTERM
 TimeoutStopSec=15
 
@@ -637,6 +647,36 @@ UNIT
     sudo sh -c "install -m 0644 \"$TMP/greenpng.service\" /etc/systemd/system/greenpng.service && systemctl daemon-reload && systemctl enable greenpng && systemctl restart greenpng"
   fi
   say "systemd service greenpng enabled"
+
+  # ---------- 面板自 OTA 权限 (polkit): 服务用户只被授权重启/查自己的单元 ----------
+  # 面板 install-runtime 换完验签二进制后要 `systemctl restart greenpng`
+  # (分离子进程做健康门 + .bak 回滚)。ProtectSystem/NoNewPrivileges 不影响
+  # D-Bus 授权, 但默认 polkit 策略要求管理员密码 → 无人值守自 OTA 卡死
+  # (178 v1.0.8 实测)。本规则只放行 greenpng 用户对本单元的 manage-units,
+  # 不授予任何其他动作; 无 polkit 的环境 (容器/部分 runner) 跳过并提示。
+  # 单元引用的 ReadWritePaths 已含 bin/VERSION → 重启即进入可自升级状态。
+  cat > "$TMP/49-greenpng-self-ota.rules" <<'POLKIT'
+// greenpng self-OTA: the service user restarts its own unit after a
+// signature-verified runtime swap (health-gated, .bak rollback on fail).
+// Scope is strictly this unit — no other actions are granted.
+polkit.addRule(function(action, subject) {
+    if (subject.user == "greenpng" &&
+        action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "greenpng.service") {
+        return polkit.Result.YES;
+    }
+});
+POLKIT
+  if [[ -d /etc/polkit-1/rules.d ]] || sudo sh -c 'mkdir -p /etc/polkit-1/rules.d' 2>/dev/null; then
+    if [[ -n "${SUDO_PASS:-}" ]]; then
+      printf '%s\n' "$SUDO_PASS" | sudo -S sh -c "install -m 0644 -o root -g root '$TMP/49-greenpng-self-ota.rules' /etc/polkit-1/rules.d/49-greenpng-self-ota.rules" >/dev/null
+    else
+      sudo sh -c "install -m 0644 -o root -g root '$TMP/49-greenpng-self-ota.rules' /etc/polkit-1/rules.d/49-greenpng-self-ota.rules"
+    fi
+    say "polkit rule installed: greenpng user may restart greenpng.service (panel self-OTA)"
+  else
+    say "WARNING: no polkit rules.d — panel self-OTA restart needs manual systemctl authorization"
+  fi
 
   # ---------- 无人值守自动升级 (iss/ota-unattended-auto-upgrade-design L3) ----------
   # sbin 脚本必须 root 属主: 定时器以 root 执行它们, 绝不能让服务用户可写
