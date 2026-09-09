@@ -93,9 +93,11 @@ fn verify_tree(man: &ReleaseManifest, root: &Path, root_pk: &[u8]) {
     }
 
     // fe_tree + admin_tree + spec_tree + data_tree: per-file sha of the
-    // expanded dirs (typed fields — part of the signed canonical body on
-    // whole-bundle releases; spec_tree joins in 1.0.2+, data_tree in 1.0.8+,
-    // older bundles legitimately lack them)
+    // expanded dirs. fe/admin/spec trees are part of the legacy signed
+    // canonical body (whole-bundle releases; spec_tree joins in 1.0.2+);
+    // data_tree (1.0.8+) rides the separate `sig_data` extended-body
+    // signature — enforced inside verify_manifest_chain above. Older
+    // bundles legitimately lack any of them.
     for (label, tree, sub) in [
         ("fe_tree", &man.fe_tree, "fe"),
         ("admin_tree", &man.admin_tree, "admin"),

@@ -245,13 +245,16 @@ pub fn verify_release_cert(
 }
 
 /// Full-chain verification for a release manifest: root sig on the manifest
-/// body, and — when the manifest carries a release key — its certificate.
-/// Returns the verified release key (if any) for artifact verification.
+/// body (legacy `sig`, frozen key set), the extended-body `sig_data` when a
+/// data_tree is present, and — when the manifest carries a release key — its
+/// certificate. Returns the verified release key (if any) for artifact
+/// verification.
 pub fn verify_manifest_chain(
     root_pubkey: &[u8],
     man: &ReleaseManifest,
 ) -> Result<Option<ed25519_dalek::VerifyingKey>, OtaError> {
     verify_manifest_sig(root_pubkey, man)?;
+    verify_manifest_sig_data(root_pubkey, man)?;
     if man.release_pubkey.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
         Ok(Some(verify_release_cert(root_pubkey, man)?))
     } else {
@@ -281,12 +284,49 @@ pub fn verify_artifact_sig_chain(
 }
 
 /// Canonical body for manifest signature (excludes `sig` field).
+///
+/// LEGACY body — frozen at the 1.0.7 key set (`fe_tree`/`admin_tree`/
+/// `spec_tree`, never `data_tree`). 1.0.7-era verifiers (panel OTA runtime
+/// path inside the 1.0.7 binary on 178, old updater mirrors) rebuild these
+/// exact bytes, so any new key here would break panel OTA upgrades from
+/// 1.0.7. New manifest fields that must stay root-signed join the EXTENDED
+/// body (`manifest_sign_message_data` + `sig_data`) instead.
 pub fn manifest_sign_message(m: &ReleaseManifest) -> Result<Vec<u8>, OtaError> {
     // Deterministic JSON without sig. Built as an ordered map (serde_json Map
     // sorts keys) so the bytes match the Python mirror in install.sh /
     // update_runtime_from_github.sh. `cli` is included ONLY when present, so
     // bodies of legacy manifests (no cli) stay byte-identical and their
     // existing signatures keep verifying.
+    let map = manifest_sign_map(m);
+    Ok(serde_json::to_vec(&serde_json::Value::Object(map))?)
+}
+
+/// Extended body = legacy body + `data_tree` (greenpng 1.0.8+). Signed as
+/// `sig_data`; required whenever the manifest carries a data_tree. Keeps the
+/// root-key coverage over shipped product data files (r100 templates + geoip
+/// mmdb) WITHOUT changing the legacy `sig` body 1.0.7 verifiers compute.
+pub fn manifest_sign_message_data(m: &ReleaseManifest) -> Result<Vec<u8>, OtaError> {
+    let mut map = manifest_sign_map(m);
+    if let Some(t) = &m.data_tree {
+        let mut obj = serde_json::Map::new();
+        if let Some(epoch) = &t.epoch {
+            obj.insert("epoch".into(), serde_json::json!(epoch));
+        }
+        obj.insert(
+            "files".into(),
+            serde_json::to_value(&t.files).expect("tree files serialize"),
+        );
+        map.insert("data_tree".into(), serde_json::Value::Object(obj));
+    } else {
+        map.remove("data_tree");
+    }
+    Ok(serde_json::to_vec(&serde_json::Value::Object(map))?)
+}
+
+/// Shared map builder for both bodies (single source of truth for the
+/// legacy key set). Never contains `data_tree` — the extended body adds it
+/// in `manifest_sign_message_data`.
+fn manifest_sign_map(m: &ReleaseManifest) -> serde_json::Map<String, serde_json::Value> {
     let mut map = serde_json::Map::new();
     map.insert("product".into(), serde_json::json!(m.product));
     map.insert("channel".into(), serde_json::json!(m.channel));
@@ -312,15 +352,13 @@ pub fn manifest_sign_message(m: &ReleaseManifest) -> Result<Vec<u8>, OtaError> {
     // Included ONLY when present so legacy manifest bodies stay byte-identical.
     // spec_tree joins in 1.0.2+ (install.sh / updater Python mirrors iterate
     // the same key list and also include it only when present).
-    // data_tree joins in 1.0.8+ (r100 templates + geoip mmdb — analyze 运行时
-    // 数据, 同 spec 先例)。1.0.7 及更早的安装器/升级器镜像不含此键 →
-    // 1.0.8+ 整包必须用新 install.sh (raw main) 安装; 面板 runtime OTA 在
-    // 新 updater 落地后恢复。
+    // data_tree does NOT join the legacy body (1.0.8+): 1.0.7-era mirrors
+    // (panel OTA runtime verify inside the 1.0.7 binary, old updaters) cannot
+    // see it — it rides `sig_data` instead (manifest_sign_message_data).
     for (key, tree) in [
         ("fe_tree", &m.fe_tree),
         ("admin_tree", &m.admin_tree),
         ("spec_tree", &m.spec_tree),
-        ("data_tree", &m.data_tree),
     ] {
         if let Some(t) = tree {
             let mut obj = serde_json::Map::new();
@@ -360,7 +398,7 @@ pub fn manifest_sign_message(m: &ReleaseManifest) -> Result<Vec<u8>, OtaError> {
             // intentionally omit per-module sig from manifest body (verified separately)
         })).collect::<Vec<_>>()),
     );
-    Ok(serde_json::to_vec(&serde_json::Value::Object(map))?)
+    map
 }
 
 pub fn verify_manifest_sig(pubkey: &[u8], m: &ReleaseManifest) -> Result<(), OtaError> {
@@ -368,6 +406,21 @@ pub fn verify_manifest_sig(pubkey: &[u8], m: &ReleaseManifest) -> Result<(), Ota
         return Err(OtaError::Other("manifest sig missing".into()));
     };
     verify_bytes(pubkey, &manifest_sign_message(m)?, sig)
+}
+
+/// Verify the extended-body (`sig_data`) signature. Required whenever the
+/// manifest carries a data_tree; no-op pass for manifests without one.
+pub fn verify_manifest_sig_data(pubkey: &[u8], m: &ReleaseManifest) -> Result<(), OtaError> {
+    if m.data_tree.is_none() {
+        return Ok(()); // legacy manifest: nothing to check
+    }
+    let Some(sig) = m.sig_data.as_ref().filter(|s| !s.is_empty()) else {
+        return Err(OtaError::Other(
+            "manifest data_tree present but sig_data missing (1.0.8+ releases must double-sign)"
+                .into(),
+        ));
+    };
+    verify_bytes(pubkey, &manifest_sign_message_data(m)?, sig)
 }
 
 pub fn verify_file_sha256(path: &Path, expect_hex: &str) -> Result<(), OtaError> {
@@ -1077,6 +1130,7 @@ mod tests {
             admin_tree: None,
             spec_tree: None,
             data_tree: None,
+            sig_data: None,
             cli: None,
             sig: None,
             modules: vec![
@@ -1114,6 +1168,7 @@ mod tests {
             admin_tree: None,
             spec_tree: None,
             data_tree: None,
+            sig_data: None,
             cli: None,
             sig: None,
             modules: vec![art("identity", "7.0.1"), art("identity", "7.0.2")],
@@ -1238,6 +1293,7 @@ mod tests {
             admin_tree: None,
             spec_tree: None,
             data_tree: None,
+            sig_data: None,
             sig: None,
             build_id: None,
             release_pubkey: None,
@@ -1273,6 +1329,7 @@ mod tests {
             admin_tree: None,
             spec_tree: None,
             data_tree: None,
+            sig_data: None,
             cli: None,
             sig: None,
             build_id: None,
@@ -1327,6 +1384,7 @@ mod tests {
             admin_tree: None,
             spec_tree: None,
             data_tree: None,
+            sig_data: None,
             cli: None,
             sig: None,
             build_id: None,
@@ -1401,6 +1459,7 @@ mod tests {
             admin_tree: None,
             spec_tree: None,
             data_tree: None,
+            sig_data: None,
             cli: None,
             sig: None,
             build_id: Some(build_id.into()),
@@ -1526,6 +1585,7 @@ mod tests {
             admin_tree: None,
             spec_tree: None,
             data_tree: None,
+            sig_data: None,
             cli: None,
             sig: Some(sign_bytes(&root_sk, &manifest_sign_message(&ReleaseManifest {
                 product: "green-v6".into(),
@@ -1544,6 +1604,7 @@ mod tests {
                 admin_tree: None,
                 spec_tree: None,
             data_tree: None,
+            sig_data: None,
                 cli: None,
                 sig: None,
                 build_id: Some(build_id.into()),
@@ -1596,5 +1657,118 @@ mod tests {
         assert!(eng2.verify_active_modules().is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn data_tree_fixture() -> gr_abi::TreeManifest {
+        let mut files = std::collections::BTreeMap::new();
+        files.insert("r100_templates.json".to_string(), "aa".repeat(32));
+        files.insert(
+            "geo/dbip-country-lite.mmdb".to_string(),
+            "bb".repeat(32),
+        );
+        gr_abi::TreeManifest {
+            epoch: Some("1.0.8".into()),
+            files,
+        }
+    }
+
+    fn dual_sign_man(data_tree: Option<gr_abi::TreeManifest>) -> ReleaseManifest {
+        let (root_sk, _root_vk) = generate_signing_keypair();
+        let mut m = ReleaseManifest {
+            product: "greenpng".into(),
+            channel: "stable".into(),
+            arch: Some("x86_64".into()),
+            triple: Some("x86_64-linux-gnu".into()),
+            build_id: Some("dual-1".into()),
+            release_pubkey: None,
+            release_cert: None,
+            runtime: gr_abi::RuntimeManifest {
+                version: "1.0.8".into(),
+                abi: RUNTIME_ABI,
+                asset: Some("bin/gr-service".into()),
+                sha256: Some("cc".repeat(32)),
+            },
+            modules: vec![],
+            fe: None,
+            fe_tree: None,
+            admin_tree: None,
+            spec_tree: None,
+            data_tree,
+            sig_data: None,
+            cli: None,
+            sig: None,
+        };
+        m.sig = Some(sign_bytes(&root_sk, &manifest_sign_message(&m).unwrap()));
+        if m.data_tree.is_some() {
+            m.sig_data =
+                Some(sign_bytes(&root_sk, &manifest_sign_message_data(&m).unwrap()));
+        }
+        m
+    }
+
+    #[test]
+    fn data_tree_rides_sig_data_not_legacy_body() {
+        // The legacy `sig` body is FROZEN at the 1.0.7 key set: a manifest
+        // with data_tree must serialize to the SAME legacy bytes as one
+        // without it — this is what lets the 1.0.7 binary on 178 (panel OTA
+        // runtime verify) accept 1.0.8+ manifests unchanged.
+        let with_data = dual_sign_man(Some(data_tree_fixture()));
+        let mut without = with_data.clone();
+        without.data_tree = None;
+        without.sig_data = None;
+        assert_eq!(
+            manifest_sign_message(&with_data).unwrap(),
+            manifest_sign_message(&without).unwrap(),
+            "legacy body must exclude data_tree (byte-identical to 1.0.7 mirror)"
+        );
+        // Extended body carries it.
+        let ext = manifest_sign_message_data(&with_data).unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&ext).unwrap();
+        assert_eq!(j["data_tree"]["epoch"], "1.0.8");
+        assert_eq!(j["data_tree"]["files"]["r100_templates.json"], "aa".repeat(32));
+        assert_eq!(
+            j["data_tree"]["files"]["geo/dbip-country-lite.mmdb"],
+            "bb".repeat(32)
+        );
+        // Without data_tree the extended body degenerates to the legacy body.
+        assert_eq!(
+            manifest_sign_message_data(&without).unwrap(),
+            manifest_sign_message(&without).unwrap()
+        );
+    }
+
+    #[test]
+    fn data_tree_chain_requires_and_checks_sig_data() {
+        let (root_sk, root_vk) = generate_signing_keypair();
+        let mut m = dual_sign_man(Some(data_tree_fixture()));
+        // re-sign with THIS test's root key
+        m.sig = Some(sign_bytes(&root_sk, &manifest_sign_message(&m).unwrap()));
+        m.sig_data = Some(sign_bytes(&root_sk, &manifest_sign_message_data(&m).unwrap()));
+
+        // Full chain verifies (legacy sig + sig_data).
+        verify_manifest_chain(root_vk.as_bytes(), &m).unwrap();
+
+        // data_tree present but sig_data missing → chain must reject.
+        let mut missing = m.clone();
+        missing.sig_data = None;
+        assert!(verify_manifest_chain(root_vk.as_bytes(), &missing).is_err());
+        assert!(verify_manifest_sig_data(root_vk.as_bytes(), &missing).is_err());
+
+        // Tampered data_tree entry: legacy sig still passes (body frozen),
+        // but sig_data must catch it — this is exactly the window sig_data
+        // closes.
+        let mut tampered = m.clone();
+        tampered.data_tree.as_mut().unwrap().files
+            .insert("r100_templates.json".to_string(), "dd".repeat(32));
+        assert!(verify_manifest_sig(root_vk.as_bytes(), &tampered).is_ok());
+        assert!(verify_manifest_sig_data(root_vk.as_bytes(), &tampered).is_err());
+        assert!(verify_manifest_chain(root_vk.as_bytes(), &tampered).is_err());
+
+        // Legacy manifest (no data_tree, no sig_data) still verifies.
+        let legacy = dual_sign_man(None);
+        let mut legacy = legacy;
+        legacy.sig = Some(sign_bytes(&root_sk, &manifest_sign_message(&legacy).unwrap()));
+        verify_manifest_chain(root_vk.as_bytes(), &legacy).unwrap();
+        verify_manifest_sig_data(root_vk.as_bytes(), &legacy).unwrap();
     }
 }

@@ -324,7 +324,11 @@ say "bundle root public key matches pin"
 
 # Verify the manifest root signature before invoking any downloaded helper.
 # The canonical body mirrors gr-ota::manifest_sign_message.
-python3 - "$TMP/manifest.json" "$TMP/manifest-body" "$TMP/manifest.sig" <<'PY'
+# LEGACY body — frozen at the 1.0.7 key set (NO data_tree): 1.0.7-era
+# verifiers (the panel OTA runtime path inside the 1.0.7 binary on 178,
+# old updater mirrors) rebuild these exact bytes and check them as `sig`.
+# data_tree (1.0.8+) rides the SEPARATE `sig_data` signature below.
+python3 - "$TMP/manifest.json" "$TMP/manifest-body" "$TMP/manifest.sig" "$TMP/manifest-data-body" "$TMP/manifest-data.sig" <<'PY'
 import base64, json, sys
 m = json.load(open(sys.argv[1]))
 body = {
@@ -343,10 +347,11 @@ body = {
 if m.get("cli") is not None:
     body["cli"] = {k: m["cli"].get(k) for k in ("version", "abi", "asset", "sha256")}
 # Whole-bundle (greenpng 1.0.0+): fe_tree/admin_tree signed when present.
-# spec_tree (1.0.1+): analyze 运行时依赖随包分发并签名; v1.0.0 包无此项 →
-# 安装侧走 $PREFIX/spec 既有目录或告警 (向后兼容)。
-# data_tree (1.0.8+): r100 模板 + geoip mmdb (P0 运行时数据) — 同型。
-for k in ("fe_tree", "admin_tree", "spec_tree", "data_tree"):
+# spec_tree joins in 1.0.1+ (analyze 运行时依赖随包分发并签名; v1.0.0 包无此项 →
+# 安装侧走 $PREFIX/spec 既有目录或告警 (向后兼容))。
+# data_tree does NOT join this body (1.0.8+): the legacy body must stay
+# byte-identical to what 1.0.7-era mirrors compute — it rides `sig_data`.
+for k in ("fe_tree", "admin_tree", "spec_tree"):
     if m.get(k) is not None:
         t = m[k] or {}
         entry = {"files": t.get("files") or {}}
@@ -358,6 +363,20 @@ if not m.get("sig"):
 open(sys.argv[2], "wb").write(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
 s = m["sig"].replace("-", "+").replace("_", "/")
 open(sys.argv[3], "wb").write(base64.b64decode(s + "=" * (-len(s) % 4)))
+# EXTENDED body (+ data_tree) → `sig_data` (1.0.8+): required whenever the
+# manifest carries a data_tree; absent (file left unwritten) on legacy
+# manifests, which skip the extra openssl check below.
+if m.get("data_tree") is not None:
+    t = m["data_tree"] or {}
+    entry = {"files": t.get("files") or {}}
+    if t.get("epoch") is not None:
+        entry["epoch"] = t["epoch"]
+    body["data_tree"] = entry
+    if not m.get("sig_data"):
+        raise SystemExit("manifest data_tree present but sig_data missing")
+    open(sys.argv[4], "wb").write(json.dumps(body, sort_keys=True, separators=(",", ":")).encode())
+    sd = m["sig_data"].replace("-", "+").replace("_", "/")
+    open(sys.argv[5], "wb").write(base64.b64decode(sd + "=" * (-len(sd) % 4)))
 PY
 python3 - "$TMP/ota_ed25519.pk" "$TMP/ota-root.der" <<'PY'
 import sys
@@ -370,6 +389,13 @@ openssl pkey -pubin -inform DER -in "$TMP/ota-root.der" -out "$TMP/ota-root.pem"
 openssl pkeyutl -verify -pubin -inkey "$TMP/ota-root.pem" -rawin \
   -in "$TMP/manifest-body" -sigfile "$TMP/manifest.sig" >/dev/null 2>&1 \
   || die "manifest root signature verification failed"
+# data_tree 双签名 (1.0.8+): data_tree 走 sig_data (root 钥对扩展体签名)。
+if [[ -s "$TMP/manifest-data-body" ]]; then
+  openssl pkeyutl -verify -pubin -inkey "$TMP/ota-root.pem" -rawin \
+    -in "$TMP/manifest-data-body" -sigfile "$TMP/manifest-data.sig" >/dev/null 2>&1 \
+    || die "manifest data_tree signature (sig_data) verification failed"
+  say "manifest data_tree signature (sig_data) verified"
+fi
 "$TMP/gr-cli" verify-manifest --manifest "$TMP/manifest.json" --pubkey "$TMP/ota_ed25519.pk" \
   --modules-dir "$PREFIX/modules" >/dev/null
 
