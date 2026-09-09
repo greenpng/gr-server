@@ -1,4 +1,4 @@
- /* greenpng race pack | 1.0.7 */
+ /* greenpng race pack | 1.0.8 */
 
 /* ---- gr.fe_impl.js ---- */
 /**
