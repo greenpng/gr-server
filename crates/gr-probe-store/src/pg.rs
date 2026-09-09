@@ -809,6 +809,40 @@ impl PgStore {
         let result = result.clone();
         self.run(move |c| save_analysis_inner(c, &session_id, &result))
     }
+    /// P2 peer 轻量投影 (见 peer_assoc_fields_inner)。
+    pub fn peer_assoc_fields(
+        &self,
+        session_ids: &[String],
+        keys: &[&str],
+    ) -> Result<Value, StoreError> {
+        let ids = session_ids.to_vec();
+        let keys: Vec<String> = keys.iter().map(|s| s.to_string()).collect();
+        self.run(move |c| {
+            let ks: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+            peer_assoc_fields_inner(c, &ids, &ks)
+        })
+    }
+    /// P2 单事务写回 (见 save_analysis_bundle_inner)。
+    pub fn save_analysis_bundle(
+        &self,
+        session_id: &str,
+        result: &Value,
+        bundle: &crate::AnalysisBundleMeta,
+        worker_id: &str,
+    ) -> Result<i64, StoreError> {
+        self.require_active_session(session_id)?;
+        let session_id = session_id.to_string();
+        let result = result.clone();
+        let bundle = bundle.clone();
+        let worker_id = worker_id.to_string();
+        self.run(move |c| {
+            save_analysis_bundle_inner(c, &session_id, &result, &bundle, &worker_id)
+        })
+    }
+    /// P2 僵尸收割 (见 reap_stale_analyze_jobs_inner)。
+    pub fn reap_stale_analyze_jobs(&self, stale_ms: i64) -> Result<i64, StoreError> {
+        self.run(move |c| reap_stale_analyze_jobs_inner(c, stale_ms))
+    }
 
     pub fn force_session_times(
         &self,
@@ -4177,6 +4211,11 @@ fn schedule_analyze_inner(
         &[&session_id, &due, &now],
     )
     .map_err(|e| StoreError::Msg(e.to_string()))?;
+    // P2 队列唤醒: due 已在眼前(<1s)的臂立刻 NOTIFY, LISTEN 的 worker 即时取活;
+    // 远期 due(深化窗)不叫醒, 由轮询兜底接。空队列轮询风暴因此可放宽退避。
+    if due <= now + 1_000 {
+        let _ = c.execute("SELECT pg_notify('analyze_wakeup', $1)", &[&session_id]);
+    }
     Ok(())
 }
 
@@ -4267,6 +4306,327 @@ fn pending_analyze_job_count_inner(c: &mut Client) -> Result<i64, StoreError> {
     Ok(row.get(0))
 }
 
+/// P2 peer 轻量投影: 一次往返取全部 peer 的批次 (与 build_evidence 同源 —
+/// probe_batches LEFT JOIN probe_cold, payload_z 为真值源, b.payload_json
+/// legacy 兜底), 键过滤后瘦合并 — 取代 resolve_multi_session_peers 里
+/// 最多 12 次 build_evidence (每次 2 查询 + 全量合并机件) 只为提 ~29 个
+/// 关联键的旧路径。合并走同一 merge_batch_with_id, 键级语义与全量一致。
+fn peer_assoc_fields_inner(
+    c: &mut Client,
+    session_ids: &[String],
+    keys: &[&str],
+) -> Result<Value, StoreError> {
+    if session_ids.is_empty() {
+        return Ok(json!({}));
+    }
+    let rows = c
+        .query(
+            "SELECT b.session_id, b.batch_id, b.source, c.payload_z, b.payload_json
+             FROM probe_batches b
+             LEFT JOIN probe_cold c
+               ON c.session_id = b.session_id
+              AND c.batch_id = b.batch_id
+              AND c.source = b.source
+             WHERE b.session_id = ANY($1)
+             ORDER BY b.created_ms ASC",
+            &[&session_ids],
+        )
+        .map_err(|e| StoreError::Msg(e.to_string()))?;
+    struct PeerAcc {
+        fields: Map<String, Value>,
+        fbs: Map<String, Value>,
+        gw: Map<String, Value>,
+        cf: Map<String, Value>,
+    }
+    let mut peers: std::collections::BTreeMap<String, PeerAcc> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        let sid: String = row.get(0);
+        let batch_id: String = row.get(1);
+        let source: String = row.get(2);
+        let payload_z: Option<Vec<u8>> = row.get(3);
+        let payload_json_s: String = row.get(4);
+        let payload: Value = payload_z
+            .as_deref()
+            .filter(|z| !z.is_empty())
+            .and_then(|z| crate::decompress_json_payload(z).ok())
+            .or_else(|| {
+                if payload_json_s.is_empty() {
+                    None
+                } else {
+                    serde_json::from_str(&payload_json_s).ok()
+                }
+            })
+            .unwrap_or(json!({}));
+        let mut pf = payload_fields(&payload);
+        pf.retain(|k, _| keys.contains(&k.as_str()));
+        let acc = peers.entry(sid).or_insert_with(|| PeerAcc {
+            fields: Map::new(),
+            fbs: Map::new(),
+            gw: Map::new(),
+            cf: Map::new(),
+        });
+        let base_src = source.split(':').next().unwrap_or(source.as_str()).to_string();
+        crate::evidence_merge::merge_batch_with_id(
+            &base_src,
+            Some(batch_id.as_str()),
+            pf,
+            &mut acc.fields,
+            &mut acc.fbs,
+            &mut acc.gw,
+            &mut acc.cf,
+        );
+    }
+    let mut out = Map::new();
+    for (sid, acc) in peers {
+        if !acc.fields.is_empty() {
+            out.insert(sid, Value::Object(acc.fields));
+        }
+    }
+    Ok(Value::Object(out))
+}
+
+/// P2 单事务写回: analysis_results 落库 + 剪枝 + 查询表物化 + meta 合并 +
+/// 任务收尾同一事务、一次 commit。meta 自 FOR UPDATE 锁定行读出后内存合并,
+/// 消掉旧 save→persist_brain_control→merge_mask→ticket 的 3-4 次独立
+/// 读改写往返与 2-3 次 commit。查询表(纯派生数据)失败仅告警不回滚 — 主写
+/// 必须落地, 下次分析自会重建物化行 (保持旧 best-effort 语义不劣化)。
+fn save_analysis_bundle_inner(
+    c: &mut Client,
+    session_id: &str,
+    result: &Value,
+    bundle: &crate::AnalysisBundleMeta,
+    worker_id: &str,
+) -> Result<i64, StoreError> {
+    let slim = crate::slim_analysis_result_for_storage(result);
+    let s = crate::encode_analysis_result_json(&slim).map_err(StoreError::Msg)?;
+    let mut sc = crate::analysis_report_scalars(result);
+    let ts = now_ms();
+    let mut last_err = String::new();
+    for attempt in 0..5 {
+        let mut tx = c
+            .transaction()
+            .map_err(|e| StoreError::Msg(format!("analysis tx begin: {e}")))?;
+        let sess_row = tx
+            .query_opt(
+                "SELECT client_ip, visitor_terminal_id, meta_json FROM sessions WHERE session_id=$1 FOR UPDATE",
+                &[&session_id],
+            )
+            .map_err(|e| StoreError::Msg(e.to_string()))?;
+        let mut vt: Option<String> = None;
+        let mut prior_meta = json!({});
+        if let Some(r) = sess_row {
+            let sess_ip: Option<String> = r.get(0);
+            vt = r.get(1);
+            let meta_s: String = r.get(2);
+            prior_meta = serde_json::from_str(&meta_s).unwrap_or(json!({}));
+            if sc.client_ip.is_none() {
+                sc.client_ip = sess_ip;
+            }
+            let need_site = sc.site_id.is_none();
+            let need_inject = sc.inject_path.is_none();
+            if (need_site || need_inject) && prior_meta.is_object() {
+                if let Some(meta) = prior_meta.as_object() {
+                    if need_site {
+                        sc.site_id = meta
+                            .get("site_id")
+                            .or_else(|| meta.get("siteId"))
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string());
+                    }
+                    if need_inject {
+                        sc.inject_path = meta
+                            .get("inject_path")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string());
+                    }
+                }
+            }
+        }
+        let next: i64 = tx
+            .query_one(
+                "SELECT COALESCE(MAX(rev), 0) + 1 FROM analysis_results WHERE session_id=$1",
+                &[&session_id],
+            )
+            .map_err(|e| StoreError::Msg(e.to_string()))?
+            .get(0);
+        match tx.exec(
+            "INSERT INTO analysis_results(session_id, rev, result_json, created_ms,
+                real_band, device_id, bot_verdict, device_confidence, client_ip,
+                device_tier, collision_risk, product_version, digest_path, residual_entropy_ok,
+                site_id, product_action)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
+            &[
+                &session_id,
+                &next,
+                &s,
+                &ts,
+                &sc.real_band,
+                &sc.device_id,
+                &sc.bot_verdict,
+                &sc.device_confidence,
+                &sc.client_ip,
+                &sc.device_tier,
+                &sc.collision_risk,
+                &sc.product_version,
+                &sc.digest_path,
+                &sc.residual_entropy_ok,
+                &sc.site_id,
+                &sc.product_action,
+            ],
+        ) {
+            Ok(_) => {
+                let keep = crate::analysis_history_keep();
+                if next > keep {
+                    let min_keep = next - keep;
+                    let _ = tx.exec(
+                        "DELETE FROM analysis_results WHERE session_id=$1 AND rev <= $2",
+                        &[&session_id, &min_keep],
+                    );
+                }
+                // 查询表物化 (派生数据): 失败告警不回滚主写。
+                if let Err(e) = upsert_query_tables_after_analysis(
+                    &mut tx,
+                    session_id,
+                    next,
+                    ts,
+                    &sc,
+                    vt.as_deref(),
+                ) {
+                    log::warn!("gr-store: upsert_query_tables (in bundle tx): {e}");
+                }
+                // meta 单次合并: 掩码/票据/brain 补丁在锁定行上原地合成。
+                let patch = crate::assemble_bundle_meta_patch(bundle, next, &prior_meta);
+                if !patch.is_empty() {
+                    let mut merged = prior_meta.clone();
+                    if let Some(obj) = merged.as_object_mut() {
+                        for (k, v) in patch {
+                            obj.insert(k, v);
+                        }
+                    }
+                    if let Ok(merged_s) = serde_json::to_string(&merged) {
+                        let _ = tx.exec(
+                            "UPDATE sessions SET updated_ms=$2, meta_json=$3 WHERE session_id=$1",
+                            &[&session_id, &ts, &merged_s],
+                        );
+                    }
+                }
+                // 任务收尾 (原 complete_analyze_job 两往返并入): 租约属我 →
+                // due 已到删行; due 在未来(晚到批次重臂) → 归还 pending。
+                if let Ok(Some(r)) = tx.query_opt(
+                    "SELECT due_ms, locked_by FROM analyze_jobs WHERE session_id=$1",
+                    &[&session_id],
+                ) {
+                    let due_ms: i64 = r.get(0);
+                    let locked_by: String = r.get(1);
+                    if locked_by == worker_id || locked_by.is_empty() {
+                        if due_ms > ts {
+                            let _ = tx.exec(
+                                "UPDATE analyze_jobs SET locked_until=0, locked_by='', status='pending', updated_ms=$1
+                                 WHERE session_id=$2",
+                                &[&ts, &session_id],
+                            );
+                        } else {
+                            let _ = tx.exec(
+                                "DELETE FROM analyze_jobs WHERE session_id=$1",
+                                &[&session_id],
+                            );
+                        }
+                    }
+                }
+                tx.commit()
+                    .map_err(|e| StoreError::Msg(format!("analysis tx commit: {e}")))?;
+                return Ok(next);
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                let _ = tx.rollback();
+                let is_dup = msg.contains("analysis_results_pkey")
+                    || msg.contains("duplicate key")
+                    || msg.contains("23505");
+                if is_dup && attempt + 1 < 5 {
+                    last_err = msg;
+                    std::thread::sleep(std::time::Duration::from_millis(5 + attempt as u64 * 10));
+                    continue;
+                }
+                return Err(StoreError::Msg(msg));
+            }
+        }
+    }
+    Err(StoreError::Msg(format!(
+        "analysis_results rev race exhausted retries: {last_err}"
+    )))
+}
+
+/// P2 僵尸收割: 已有终态结果(analysis_latest)且任务臂 2h 无租约活动的
+/// pending 行 — incomplete 周期反复重臂的残臂 (178 实测 3.4k 已终态挂起行)。
+/// 晚到批次近期重臂的任务 updated_ms 新鲜, 不受影响。
+fn reap_stale_analyze_jobs_inner(c: &mut Client, stale_ms: i64) -> Result<i64, StoreError> {
+    let cut = now_ms() - stale_ms.max(60_000);
+    let n = c
+        .execute(
+            "DELETE FROM analyze_jobs j
+             WHERE j.status='pending' AND j.updated_ms < $1
+               AND EXISTS (
+                 SELECT 1 FROM analysis_latest a
+                 WHERE a.session_id = j.session_id AND a.created_ms < $1
+               )",
+            &[&cut],
+        )
+        .map_err(|e| StoreError::Msg(e.to_string()))?;
+    Ok(n as i64)
+}
+
+/// P2 队列唤醒监听: 专用连接 LISTEN analyze_wakeup (调度臂 due<1s 时
+/// pg_notify)。worker 空闲退避由通知打断, 空轮询只作兜底 — 多 worker
+/// 空转 claim 风暴随 worker 数线性放大的问题就此解耦。断线 2s 重连。
+pub fn spawn_analyze_wakeup_listener(dsn: &str, on_wake: Box<dyn Fn() + Send + Sync>) {
+    let dsn = dsn.to_string();
+    let spawned = std::thread::Builder::new()
+        .name("gr-analyze-wakeup".into())
+        .spawn(move || loop {
+            let cfg = match dsn.parse::<postgres::Config>() {
+                Ok(c) => c,
+                Err(e) => {
+                    log::warn!("analyze wakeup dsn parse failed: {e}");
+                    return;
+                }
+            };
+            match cfg.connect(postgres::NoTls) {
+                Ok(mut client) => {
+                    if let Err(e) = client.batch_execute("LISTEN analyze_wakeup") {
+                        log::warn!("analyze wakeup LISTEN failed: {e}");
+                    } else {
+                        log::info!("analyze wakeup listener connected");
+                    }
+                    let mut notifications = client.notifications();
+                    // postgres 0.19 通知 API: timeout_iter (FallibleIterator)。
+                    // Ok(None)=超时无通知继续等; Err=连接死亡 → 外层重连。
+                    use fallible_iterator::FallibleIterator;
+                    loop {
+                        let mut it =
+                            notifications.timeout_iter(std::time::Duration::from_secs(60));
+                        match it.next() {
+                            Ok(Some(_)) => on_wake(),
+                            Ok(None) => continue,
+                            Err(_) => break,
+                        }
+                    }
+                    log::warn!("analyze wakeup listener lost connection; reconnecting in 2s");
+                }
+                Err(e) => {
+                    log::warn!("analyze wakeup listener connect failed: {e}");
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        });
+    if let Err(e) = spawned {
+        log::warn!("analyze wakeup listener spawn failed: {e}");
+    }
+}
+
 fn analyze_queue_stats_inner(c: &mut Client) -> Result<Value, StoreError> {
     let now = now_ms();
     let row = c
@@ -4288,7 +4648,7 @@ fn analyze_queue_stats_inner(c: &mut Client) -> Result<Value, StoreError> {
         "oldest_lag_ms": row.get::<_, i64>(3).max(0),
         "debounce_ms": ANALYZE_DEBOUNCE_MS,
         "lock_ms": ANALYZE_LOCK_MS,
-        "claim_batch": crate::ANALYZE_CLAIM_BATCH,
+        "claim_batch": crate::analyze_claim_batch(),
         "idle_poll_ms_min": idle_min,
         "idle_poll_ms_max": idle_max,
         "backend": "postgres",
@@ -4593,9 +4953,38 @@ fn save_analysis_inner(
     )))
 }
 
+/// Executor abstraction: query-table upserts run identically on a pooled
+/// `Client` and inside the writeback-bundle `Transaction` (P2 单事务写回).
+/// Signature mirrors `postgres`' own heterogeneous `&[&(dyn ToSql + Sync)]`.
+trait PgExec {
+    fn exec(
+        &mut self,
+        stmt: &str,
+        params: &[&(dyn postgres::types::ToSql + Sync)],
+    ) -> Result<u64, postgres::Error>;
+}
+impl PgExec for Client {
+    fn exec(
+        &mut self,
+        stmt: &str,
+        params: &[&(dyn postgres::types::ToSql + Sync)],
+    ) -> Result<u64, postgres::Error> {
+        postgres::Client::execute(self, stmt, params)
+    }
+}
+impl PgExec for postgres::Transaction<'_> {
+    fn exec(
+        &mut self,
+        stmt: &str,
+        params: &[&(dyn postgres::types::ToSql + Sync)],
+    ) -> Result<u64, postgres::Error> {
+        postgres::Transaction::execute(self, stmt, params)
+    }
+}
+
 /// P0–P2: materialize latest analysis + device master + binder index (no TOAST).
-fn upsert_query_tables_after_analysis(
-    c: &mut Client,
+fn upsert_query_tables_after_analysis<E: PgExec>(
+    c: &mut E,
     session_id: &str,
     rev: i64,
     ts: i64,
@@ -4612,7 +5001,7 @@ fn upsert_query_tables_after_analysis(
     let vt_s = vt.map(|s| s.to_string());
     // NOTE: `analysis_latest.product_action` is created in ensure_schema() at startup.
     // Never run DDL on the analysis hot path (ACCESS EXCLUSIVE lock per analyze).
-    c.execute(
+    c.exec(
         r#"
 INSERT INTO analysis_latest(
   session_id, rev, created_ms, device_id, device_tier, device_prefix,
@@ -4720,7 +5109,7 @@ WHERE analysis_latest.rev <= EXCLUDED.rev
 
     // Separate update keeps historical installs stable if product_action column lags.
     if let Some(ref act) = sc.product_action {
-        let _ = c.execute(
+        let _ = c.exec(
             "UPDATE analysis_latest SET product_action=$1 WHERE session_id=$2",
             &[act, &session_id],
         );
@@ -4728,7 +5117,7 @@ WHERE analysis_latest.rev <= EXCLUDED.rev
 
     if let Some(did) = sc.device_id.as_ref().filter(|s| !s.is_empty()) {
         // devices master
-        c.execute(
+        c.exec(
             r#"
 INSERT INTO devices(
   device_id, first_seen_ms, last_seen_ms, tier_last, collision_risk_last,
@@ -4765,7 +5154,7 @@ ON CONFLICT (device_id) DO UPDATE SET
         .map_err(|e| StoreError::Msg(format!("devices upsert: {e}")))?;
 
         let ins = c
-            .execute(
+            .exec(
                 r#"
 INSERT INTO device_sessions(device_id, session_id, created_ms, client_ip, visitor_terminal_id, device_tier)
 VALUES ($1,$2,$3,$4,$5,$6)
@@ -4783,7 +5172,7 @@ ON CONFLICT (device_id, session_id) DO NOTHING
             .map_err(|e| StoreError::Msg(format!("device_sessions: {e}")))?;
         if ins > 0 {
             // Refresh counts from membership (accurate, still cheap vs full JSON)
-            c.execute(
+            c.exec(
                 r#"
 UPDATE devices d SET
   session_count = (SELECT count(*) FROM device_sessions ds WHERE ds.device_id = d.device_id),
@@ -4808,7 +5197,7 @@ WHERE d.device_id = $1
             if key.is_empty() {
                 continue;
             }
-            let _ = c.execute(
+            let _ = c.exec(
                 r#"
 INSERT INTO device_index_keys(tenant_id, binder_key, device_id)
 VALUES ($1,$2,$3)
@@ -4825,7 +5214,7 @@ ON CONFLICT (tenant_id, binder_key, device_id) DO NOTHING
             "updated_ms": ts,
         })
         .to_string();
-        let _ = c.execute(
+        let _ = c.exec(
             r#"
 INSERT INTO device_index_devices(tenant_id, device_id, binder_obs_json, updated_ms)
 VALUES ($1,$2,$3,$4)

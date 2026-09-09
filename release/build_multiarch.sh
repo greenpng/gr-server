@@ -175,6 +175,14 @@ PY
   # spec (analyze 运行时数据, 1.0.2+ 进签名清单; 与 build_and_publish.sh 同型)
   rm -rf "$bd/spec"
   cp -a "$AREA/spec" "$bd/spec"
+  # data (P0 运行时数据: r100 反脚本模板 + geoip mmdb, 1.0.8+ data_tree;
+  # 与 build_and_publish.sh 同型 — 只装产品文件, 安装侧 overlay 不删运行态)
+  rm -rf "$bd/data"
+  mkdir -p "$bd/data/geo"
+  [[ -f "$AREA/data/r100_templates.json" ]] && cp -f "$AREA/data/r100_templates.json" "$bd/data/r100_templates.json" || echo "[release] WARN: data/r100_templates.json missing (arch $arch)" >&2
+  for m in dbip-asn-lite.mmdb dbip-country-lite.mmdb; do
+    [[ -f "$AREA/data/geo/$m" ]] && cp -f "$AREA/data/geo/$m" "$bd/data/geo/$m" || echo "[release] WARN: data/geo/$m missing (arch $arch)" >&2
+  done
   if [[ -f "$ROOT/keys/ota_ed25519.pk" ]]; then
     cp -f "$ROOT/keys/ota_ed25519.pk" "$bd/ota_ed25519.pk"
   elif [[ -f "$ROOT/keys/ota_ed25519.pub" ]]; then
@@ -219,6 +227,7 @@ man = {
     "fe_tree": {"epoch": version, "files": tree_files(bd / "fe")},
     "admin_tree": {"files": tree_files(bd / "admin")},
     "spec_tree": {"files": tree_files(bd / "spec")},
+    "data_tree": {"files": tree_files(bd / "data")},
     "modules": mods,
 }
 man = {k: v for k, v in man.items() if v is not None}

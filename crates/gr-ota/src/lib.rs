@@ -312,10 +312,15 @@ pub fn manifest_sign_message(m: &ReleaseManifest) -> Result<Vec<u8>, OtaError> {
     // Included ONLY when present so legacy manifest bodies stay byte-identical.
     // spec_tree joins in 1.0.2+ (install.sh / updater Python mirrors iterate
     // the same key list and also include it only when present).
+    // data_tree joins in 1.0.8+ (r100 templates + geoip mmdb — analyze 运行时
+    // 数据, 同 spec 先例)。1.0.7 及更早的安装器/升级器镜像不含此键 →
+    // 1.0.8+ 整包必须用新 install.sh (raw main) 安装; 面板 runtime OTA 在
+    // 新 updater 落地后恢复。
     for (key, tree) in [
         ("fe_tree", &m.fe_tree),
         ("admin_tree", &m.admin_tree),
         ("spec_tree", &m.spec_tree),
+        ("data_tree", &m.data_tree),
     ] {
         if let Some(t) = tree {
             let mut obj = serde_json::Map::new();
@@ -1071,6 +1076,7 @@ mod tests {
             fe_tree: None,
             admin_tree: None,
             spec_tree: None,
+            data_tree: None,
             cli: None,
             sig: None,
             modules: vec![
@@ -1107,6 +1113,7 @@ mod tests {
             fe_tree: None,
             admin_tree: None,
             spec_tree: None,
+            data_tree: None,
             cli: None,
             sig: None,
             modules: vec![art("identity", "7.0.1"), art("identity", "7.0.2")],
@@ -1230,6 +1237,7 @@ mod tests {
             fe_tree: None,
             admin_tree: None,
             spec_tree: None,
+            data_tree: None,
             sig: None,
             build_id: None,
             release_pubkey: None,
@@ -1264,6 +1272,7 @@ mod tests {
             fe_tree: None,
             admin_tree: None,
             spec_tree: None,
+            data_tree: None,
             cli: None,
             sig: None,
             build_id: None,
@@ -1317,6 +1326,7 @@ mod tests {
             fe_tree: None,
             admin_tree: None,
             spec_tree: None,
+            data_tree: None,
             cli: None,
             sig: None,
             build_id: None,
@@ -1390,6 +1400,7 @@ mod tests {
             fe_tree: None,
             admin_tree: None,
             spec_tree: None,
+            data_tree: None,
             cli: None,
             sig: None,
             build_id: Some(build_id.into()),
@@ -1514,6 +1525,7 @@ mod tests {
             fe_tree: None,
             admin_tree: None,
             spec_tree: None,
+            data_tree: None,
             cli: None,
             sig: Some(sign_bytes(&root_sk, &manifest_sign_message(&ReleaseManifest {
                 product: "green-v6".into(),
@@ -1531,6 +1543,7 @@ mod tests {
                 fe_tree: None,
                 admin_tree: None,
                 spec_tree: None,
+            data_tree: None,
                 cli: None,
                 sig: None,
                 build_id: Some(build_id.into()),

@@ -39,6 +39,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 pub use pg::PgStore;
+pub use pg::spawn_analyze_wakeup_listener;
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -229,10 +230,78 @@ pub fn analyze_idle_poll_ms_range() -> (u64, u64) {
     (min, max)
 }
 /// Max pending analyze jobs before backpressure (G-P0-6). Override via `GR_ANALYZE_QUEUE_MAX`.
+/// P2: 该门不再接入调度热路径 (178 实测 19k pending 时硬拒新臂会停摆分析);
+/// 改由 supervisor 收割器作观测告警 — 超限 WARN 而非阻塞。
 pub fn analyze_queue_max() -> i64 {
     gr_abi::env::get("ANALYZE_QUEUE_MAX")
         .and_then(|s| s.parse().ok())
         .unwrap_or(512)
+}
+
+/// P2: 单轮 claim 批量 (原常量 4, SQL 已支持 32)。Override `GR_ANALYZE_CLAIM_BATCH`。
+pub fn analyze_claim_batch() -> usize {
+    gr_abi::env::get("ANALYZE_CLAIM_BATCH")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(ANALYZE_CLAIM_BATCH)
+        .clamp(1, 32)
+}
+
+/// P2 单事务写回的 meta 补丁输入 (worker 路径)。brain 片段自 result 提取
+/// (plane 侧纯函数), analysis_rev / plan_epoch 单调性由装配函数在锁定行上定。
+#[derive(Debug, Clone, Default)]
+pub struct AnalysisBundleMeta {
+    pub analyzed_mask_v1: Option<Value>,
+    pub session_ticket: Option<Value>,
+    /// persist_brain_control 的 control_persist 片段 (belief/missions/…) + stop_reason/plan_version
+    pub brain_pieces: Map<String, Value>,
+    pub brain_plan_epoch: Option<i64>,
+    /// 本轮 battle_log (装配函数在 prior 上滚动 battle_log_history, cap 32)
+    pub battle_log: Option<Value>,
+}
+
+/// 纯装配: 旧路径 (merge mask → persist_brain_control → ticket merge) 三次
+/// 读改写的合成结果, 与逐次 merge 语义等价 (后写覆盖同键; plan_epoch 单调;
+/// battle_log_history 滚动 cap 32)。
+pub fn assemble_bundle_meta_patch(
+    bundle: &AnalysisBundleMeta,
+    rev: i64,
+    prior_meta: &Value,
+) -> Map<String, Value> {
+    let mut patch = Map::new();
+    if let Some(m) = &bundle.analyzed_mask_v1 {
+        patch.insert("analyzed_mask_v1".into(), m.clone());
+    }
+    if let Some(t) = &bundle.session_ticket {
+        patch.insert("session_ticket".into(), t.clone());
+        patch.insert("skip_session_probe".into(), json!(true));
+    }
+    // 旧 persist_brain_control 无条件带 analysis_rev — 保持标记语义
+    patch.insert("analysis_rev".into(), json!(rev));
+    let prior_pe = prior_meta
+        .get("plan_epoch")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    // 单调 plan_epoch; 兜底链末端 = 本次 rev (旧路径同款 fallback)
+    let pe = bundle.brain_plan_epoch.unwrap_or(rev);
+    if pe >= prior_pe {
+        patch.insert("plan_epoch".into(), json!(pe));
+    }
+    for (k, v) in &bundle.brain_pieces {
+        patch.insert(k.clone(), v.clone());
+    }
+    if let Some(bl) = &bundle.battle_log {
+        let mut hist = prior_meta
+            .get("battle_log_history")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        hist.push(bl.clone());
+        if hist.len() > 32 {
+            hist = hist.split_off(hist.len() - 32);
+        }
+        patch.insert("battle_log_history".into(), json!(hist));
+    }
+    patch
 }
 
 pub(crate) fn now_ms() -> i64 {
@@ -1666,6 +1735,52 @@ impl Store {
         match &self.backend {
             Backend::Sqlite(s) => s.pending_analyze_job_count(),
             Backend::Postgres(s) => s.pending_analyze_job_count(),
+        }
+    }
+
+    /// P2 peer 轻量投影: {session_id: {assoc 键…}} (见后端实现)。
+    pub fn peer_assoc_fields(
+        &self,
+        session_ids: &[String],
+        keys: &[&str],
+    ) -> Result<Value, StoreError> {
+        match &self.backend {
+            Backend::Sqlite(s) => s.peer_assoc_fields(session_ids, keys),
+            Backend::Postgres(s) => s.peer_assoc_fields(session_ids, keys),
+        }
+    }
+
+    /// P2 单事务写回 (worker 热路径)。velocity 记录与 save_analysis 外观对齐。
+    pub fn save_analysis_bundle(
+        &self,
+        session_id: &str,
+        result: &Value,
+        bundle: &AnalysisBundleMeta,
+        worker_id: &str,
+    ) -> Result<i64, StoreError> {
+        let rev = match &self.backend {
+            Backend::Sqlite(s) => s.save_analysis_bundle(session_id, result, bundle, worker_id)?,
+            Backend::Postgres(s) => s.save_analysis_bundle(session_id, result, bundle, worker_id)?,
+        };
+        let sc = analysis_report_scalars(result);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let _ = self.velocity_record(
+            session_id,
+            sc.device_id.as_deref(),
+            sc.client_ip.as_deref(),
+            now,
+        );
+        Ok(rev)
+    }
+
+    /// P2 僵尸收割 (supervisor 周期调用)。
+    pub fn reap_stale_analyze_jobs(&self, stale_ms: i64) -> Result<i64, StoreError> {
+        match &self.backend {
+            Backend::Sqlite(s) => s.reap_stale_analyze_jobs(stale_ms),
+            Backend::Postgres(s) => s.reap_stale_analyze_jobs(stale_ms),
         }
     }
 
@@ -3654,6 +3769,93 @@ impl SqliteStore {
         }))
     }
 
+    /// P2 peer 轻量投影 (sqlite: 逐 peer 查 probe_batches, 键过滤瘦合并 —
+    /// 与 PG 投影同语义; lab 路径, 往返非关键)。
+    fn peer_assoc_fields(
+        &self,
+        session_ids: &[String],
+        keys: &[&str],
+    ) -> Result<Value, StoreError> {
+        let conn = self.conn.lock().map_err(|e| StoreError::Msg(e.to_string()))?;
+        let mut out = Map::new();
+        for sid in session_ids {
+            let mut stmt = conn.prepare(
+                "SELECT batch_id, source, payload_json FROM probe_batches
+                 WHERE session_id=?1 ORDER BY created_ms ASC",
+            )?;
+            let rows = stmt.query_map(params![sid], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?;
+            let mut fields = Map::new();
+            let mut fbs = Map::new();
+            let mut gw = Map::new();
+            let mut cf = Map::new();
+            for row in rows {
+                let (batch_id, source, payload_s) = row?;
+                let payload: Value = match serde_json::from_str(&payload_s) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let mut pf = Self::payload_fields(&payload);
+                pf.retain(|k, _| keys.contains(&k.as_str()));
+                if pf.is_empty() {
+                    continue;
+                }
+                let base_src = source.split(':').next().unwrap_or(source.as_str()).to_string();
+                evidence_merge::merge_batch_with_id(
+                    &base_src,
+                    Some(batch_id.as_str()),
+                    pf,
+                    &mut fields,
+                    &mut fbs,
+                    &mut gw,
+                    &mut cf,
+                );
+            }
+            if !fields.is_empty() {
+                out.insert(sid.clone(), Value::Object(fields));
+            }
+        }
+        Ok(Value::Object(out))
+    }
+    /// P2 单事务写回 (sqlite 退化为顺序执行 — save + 单次 meta 合并 + 任务
+    /// 收尾; 语义与 PG bundle 等价, 往返优化非 lab 关键路径)。
+    fn save_analysis_bundle(
+        &self,
+        session_id: &str,
+        result: &Value,
+        bundle: &AnalysisBundleMeta,
+        worker_id: &str,
+    ) -> Result<i64, StoreError> {
+        let rev = self.save_analysis(session_id, result)?;
+        if let Some(prior) = self.session_meta(session_id)? {
+            let patch = assemble_bundle_meta_patch(bundle, rev, &prior);
+            if !patch.is_empty() {
+                let _ = self.merge_session_meta(session_id, &Value::Object(patch));
+            }
+        }
+        let _ = self.complete_analyze_job(session_id, worker_id);
+        Ok(rev)
+    }
+    /// P2 僵尸收割 (sqlite 无 analysis_latest, 用 analysis_results 谓词)。
+    fn reap_stale_analyze_jobs(&self, stale_ms: i64) -> Result<i64, StoreError> {
+        let conn = self.conn.lock().map_err(|e| StoreError::Msg(e.to_string()))?;
+        let cut = now_ms() - stale_ms.max(60_000);
+        let n = conn.execute(
+            "DELETE FROM analyze_jobs
+             WHERE status='pending' AND updated_ms < ?1
+               AND EXISTS (
+                 SELECT 1 FROM analysis_results a
+                 WHERE a.session_id = analyze_jobs.session_id AND a.created_ms < ?1
+               )",
+            params![cut],
+        )?;
+        Ok(n as i64)
+    }
     fn save_analysis(&self, session_id: &str, result: &Value) -> Result<i64, StoreError> {
         self.require_active_session(session_id)?;
         let conn = self.conn.lock().map_err(|e| StoreError::Msg(e.to_string()))?;
@@ -5513,6 +5715,84 @@ fn sqlite_velocity_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// P2: assemble_bundle_meta_patch 纯装配与旧三段读改写语义等价 —
+    /// mask/ticket/brain/analysis_rev 全量合入 + skip_session_probe 联动 +
+    /// plan_epoch 单调 (降级丢弃) + battle_log_history 滚动 cap 32。
+    #[test]
+    fn assemble_bundle_meta_patch_full_parity() {
+        let mut brain = Map::new();
+        brain.insert("belief".into(), json!({"core": 1}));
+        brain.insert("plan_version".into(), json!(3));
+        let bundle = AnalysisBundleMeta {
+            analyzed_mask_v1: Some(json!({"m": 1})),
+            session_ticket: Some(json!({"t": "x"})),
+            brain_pieces: brain,
+            brain_plan_epoch: Some(7),
+            battle_log: Some(json!({"round": 1})),
+        };
+        let prior = json!({"plan_epoch": 5, "battle_log_history": []});
+        let patch = assemble_bundle_meta_patch(&bundle, 42, &prior);
+        assert_eq!(patch.get("analyzed_mask_v1"), Some(&json!({"m": 1})));
+        assert_eq!(patch.get("session_ticket"), Some(&json!({"t": "x"})));
+        assert_eq!(patch.get("skip_session_probe"), Some(&json!(true)));
+        assert_eq!(patch.get("analysis_rev"), Some(&json!(42)));
+        assert_eq!(patch.get("plan_epoch"), Some(&json!(7)));
+        assert_eq!(patch.get("belief"), Some(&json!({"core": 1})));
+        assert_eq!(
+            patch.get("battle_log_history"),
+            Some(&json!([{"round": 1}]))
+        );
+    }
+
+    #[test]
+    fn assemble_bundle_meta_patch_plan_epoch_monotone_downgrade_dropped() {
+        let bundle = AnalysisBundleMeta {
+            brain_pieces: Map::new(),
+            brain_plan_epoch: Some(3),
+            ..Default::default()
+        };
+        let prior = json!({"plan_epoch": 9});
+        let patch = assemble_bundle_meta_patch(&bundle, 10, &prior);
+        // 降级 epoch 不回写 (保留 prior 9); rev 兜底链末端仍写入
+        assert_eq!(patch.get("plan_epoch"), None);
+        assert_eq!(patch.get("analysis_rev"), Some(&json!(10)));
+    }
+
+    #[test]
+    fn assemble_bundle_meta_patch_plan_epoch_fallback_rev() {
+        // 候选缺失 → 兜底 rev (旧 persist_brain_control 同款 fallback)
+        let bundle = AnalysisBundleMeta::default();
+        let patch = assemble_bundle_meta_patch(&bundle, 15, &json!({}));
+        assert_eq!(patch.get("plan_epoch"), Some(&json!(15)));
+        assert_eq!(patch.get("analysis_rev"), Some(&json!(15)));
+    }
+
+    #[test]
+    fn assemble_bundle_meta_patch_battle_log_history_rolling_cap_32() {
+        let mut prior_hist = Vec::new();
+        for i in 0..32 {
+            prior_hist.push(json!({"round": i}));
+        }
+        let bundle = AnalysisBundleMeta {
+            battle_log: Some(json!({"round": 99})),
+            ..Default::default()
+        };
+        let prior = json!({"battle_log_history": prior_hist});
+        let patch = assemble_bundle_meta_patch(&bundle, 1, &prior);
+        let hist = patch.get("battle_log_history").unwrap().as_array().unwrap();
+        assert_eq!(hist.len(), 32);
+        // 最新在尾, 最旧 (round 0) 被挤出
+        assert_eq!(hist.first(), Some(&json!({"round": 1})));
+        assert_eq!(hist.last(), Some(&json!({"round": 99})));
+    }
+
+    #[test]
+    fn assemble_bundle_meta_patch_empty_bundle_still_marks_rev() {
+        // 旧路径 patch 恒含 analysis_rev — 空片段不丢标记
+        let patch = assemble_bundle_meta_patch(&AnalysisBundleMeta::default(), 3, &json!({}));
+        assert_eq!(patch.get("analysis_rev"), Some(&json!(3)));
+    }
+
 
     /// iss/opus5 06-P1-5: monthly per-site session counter accumulates per
     /// month bucket and per site (billing signal, soft quota).

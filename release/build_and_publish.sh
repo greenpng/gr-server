@@ -192,6 +192,28 @@ cp -a "$AREA/panel/admin-spa" "$BUNDLE_DIR/admin"
 rm -rf "$BUNDLE_DIR/spec"
 cp -a "$AREA/spec" "$BUNDLE_DIR/spec"
 
+# ---- data (P0 运行时数据: r100 反脚本模板 + geoip mmdb) ----
+# 178 1.0.7 实测缺这组: r100_templates.json 缺 → r_spotcheck_complete 永假 →
+# coverage 永不 complete → FE 重探风暴 (gap_t_retry 22k+) + analyze_jobs 19k
+# 积压 + 反脚本通道全盲; dbip mmdb 缺 → country/asn null (geoip 加载器只有
+# 编译期路径回退, 安装机恒空)。随包分发并进签名清单 (data_tree, 1.0.8+)。
+# 只装产品文件 (r100_templates.json + geo/*.mmdb) — 目标 $PREFIX/data 同时
+# 承载运行期状态 (admin bootstrap 等), 安装侧 overlay 不整树删除。
+rm -rf "$BUNDLE_DIR/data"
+mkdir -p "$BUNDLE_DIR/data/geo"
+if [[ -f "$AREA/data/r100_templates.json" ]]; then
+  cp -f "$AREA/data/r100_templates.json" "$BUNDLE_DIR/data/r100_templates.json"
+else
+  echo "[release] WARN: data/r100_templates.json missing — bundle ships without r100 templates (anti-script channel degraded)" >&2
+fi
+for m in dbip-asn-lite.mmdb dbip-country-lite.mmdb; do
+  if [[ -f "$AREA/data/geo/$m" ]]; then
+    cp -f "$AREA/data/geo/$m" "$BUNDLE_DIR/data/geo/$m"
+  else
+    echo "[release] WARN: data/geo/$m missing — geoip enrichment degraded" >&2
+  fi
+done
+
 # ---- root public key ----
 if [[ -f keys/ota_ed25519.pk ]]; then
   cp -f keys/ota_ed25519.pk "$BUNDLE_DIR/ota_ed25519.pk"
@@ -236,6 +258,7 @@ man = {
     "fe_tree": {"epoch": version, "files": tree_files(bundle_dir / "fe")},
     "admin_tree": {"files": tree_files(bundle_dir / "admin")},
     "spec_tree": {"files": tree_files(bundle_dir / "spec")},
+    "data_tree": {"files": tree_files(bundle_dir / "data")},
     "modules": mods,
 }
 print(json.dumps(man, indent=2))

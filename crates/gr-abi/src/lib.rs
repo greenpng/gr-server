@@ -173,6 +173,14 @@ pub struct ReleaseManifest {
     /// silently dropped it, so those bundles ship spec/ unsigned.
     #[serde(default)]
     pub spec_tree: Option<TreeManifest>,
+    /// Expanded product data tree inside a whole-bundle release: per-file
+    /// sha256 (greenpng 1.0.8+). Covers `data/r100_templates.json` (探测
+    /// 反脚本通道模板) + `data/geo/dbip-*.mmdb` (ASN/country 富化) —
+    /// analyze/ingest 运行时数据。Overlay-installed onto $PREFIX/data
+    /// (该目录同时承载运行期状态, 永不整树删除)。1.0.7- 安装器镜像无此
+    /// 键: 1.0.8+ 整包需新 install.sh 安装 (旧 updater 验签体不含此键)。
+    #[serde(default)]
+    pub data_tree: Option<TreeManifest>,
     /// CLI binary integrity (P1-4). The `gr-cli` helper is downloaded by
     /// installers and performs module verification + staging, so a tampered
     /// CLI could bypass every downstream check. Releases built for the

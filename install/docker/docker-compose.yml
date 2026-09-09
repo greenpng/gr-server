@@ -12,6 +12,18 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # PG 调优 (178 四维实测: 默认 shared_buffers=128MB 在 analyze 队列负载下
+    # 偏小)。保守默认 + .env 可覆写; synchronous_commit 保持 on (证据数据
+    # 持久性是产品属性, 不在默认里翻)。改 command 后 `docker compose up -d`
+    # 会以同卷重建容器, 配置即生效。
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-256MB}
+      - -c
+      - max_connections=${PG_MAX_CONNECTIONS:-200}
+      - -c
+      - synchronous_commit=${PG_SYNCHRONOUS_COMMIT:-on}
     environment:
       POSTGRES_USER: greenpng
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
