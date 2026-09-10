@@ -93,6 +93,10 @@ def main():
 
     lat_open, lat_ing, lat_res = [], [], []
     cnt = {"open_2xx": 0, "ing_ok": 0, "ing_total": 0, "res_done": 0, "s5xx": 0, "errs": []}
+    # 显式浏览器 UA: 本负载测的是「正常访客」先存后析全链路。
+    # (urllib 默认 UA "Python-urllib/x" 目前不在 robots 名单, 但显式声明
+    #  才不受名单演进影响; 1.0.10+ UA 自明爬虫会走早判快道。)
+    BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36"
 
     def one_session(i):
         vt = f"load_{int(time.time())}_{i}"
@@ -100,7 +104,7 @@ def main():
         st, body = req(f"{probe}/v1/session/open", "POST", {
             "site_id": "e2e_load", "visitor_terminal_id": vt,
             "meta": {"fe": "e2e-load"},
-        })
+        }, headers={"user-agent": BROWSER_UA})
         dt_open = time.time() - t0
         sid = ""
         try:
@@ -120,7 +124,7 @@ def main():
                         "timezone": "Asia/Shanghai", "hardware_concurrency": 8,
                         "user_agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36",
                     }},
-                })
+                }, headers={"user-agent": BROWSER_UA})
                 r["ing"].append({"status": st2, "accepted": '"accepted":true' in b2.replace(" ", "")})
                 r["dt_ing"].append(time.time() - t)
             t = time.time()

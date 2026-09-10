@@ -83,11 +83,14 @@ print(tok)' "$SITE_ID")
 [[ "$EMBED" == grst_* ]] && ok "B1b 站点列表回显 + embed_token" || bad "B1b embed_token: '$EMBED' (list: ${SITES:0:100})"
 
 VT="panel_e2e_$(date +%s)"
-OPEN=$(curl -s -m 8 -X POST "$PROBE_BASE/v1/session/open" -H 'content-type: application/json' \
+# 浏览器 UA: B1 走完整 open→ingest→analyze 行为链 (设置→行为生效)。
+# curl 默认 UA 命中 robots 快道 (1.0.10+), 会短路成早判 — 那不是本节要测的。
+BROWSER_UA='user-agent: Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36'
+OPEN=$(curl -s -m 8 -X POST "$PROBE_BASE/v1/session/open" -H 'content-type: application/json' -H "$BROWSER_UA" \
   -d "{\"site_id\":\"$SITE_ID\",\"embed_token\":\"$EMBED\",\"visitor_terminal_id\":\"$VT\",\"meta\":{\"fe\":\"e2e\"}}")
 SID=$(echo "$OPEN" | jq_get "session_id")
 [[ -n "$SID" ]] && ok "B1c 面板站点 open (token 绑定)" || bad "B1c open: ${OPEN:0:120}"
-ING=$(curl -s -m 8 -X POST "$PROBE_BASE/v1/ingest" -H 'content-type: application/json' \
+ING=$(curl -s -m 8 -X POST "$PROBE_BASE/v1/ingest" -H 'content-type: application/json' -H "$BROWSER_UA" \
   -d "{\"session_id\":\"$SID\",\"batch_id\":\"lab.e2e.B0\",\"source\":\"main\",\"embed_token\":\"$EMBED\",\"payload\":{\"fields\":{\"os_family\":\"windows\",\"form_class\":\"desktop\",\"timezone\":\"Asia/Shanghai\",\"hardware_concurrency\":8}}}")
 echo "$ING" | grep -q '"accepted" *: *true' && ok "B1d 面板站点 ingest" || bad "B1d ingest: ${ING:0:120}"
 R=""
