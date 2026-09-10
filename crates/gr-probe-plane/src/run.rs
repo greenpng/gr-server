@@ -444,6 +444,7 @@ fn push_analyze_worker(
     seq: &Arc<std::sync::atomic::AtomicU64>,
     registry: &mut Vec<AnalyzeWorkerHandle>,
     wakeup: Option<Arc<tokio::sync::Notify>>,
+    queue_depth: Option<Arc<AtomicU64>>,
 ) {
     let id = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let cancel = Arc::new(AtomicBool::new(false));
@@ -453,7 +454,16 @@ fn push_analyze_worker(
     let cancel_task = cancel.clone();
     let wakeup_task = wakeup.clone();
     let done = rt.spawn(async move {
-        analyze_worker_loop(store, soft_v2_ready, wid, runs, cancel_task, wakeup_task).await;
+        analyze_worker_loop(
+            store,
+            soft_v2_ready,
+            wid,
+            runs,
+            cancel_task,
+            wakeup_task,
+            queue_depth,
+        )
+        .await;
     });
     registry.push(AnalyzeWorkerHandle { cancel, done });
 }
@@ -807,6 +817,7 @@ pub fn run_with(args: Args) {
         analyze_workers_target: analyze_workers_target.clone(),
         admin: admin_hub,
         hot_probe: Arc::new(gr_probe_store::HotProbeCache::new()),
+        robot_sessions: Arc::new(dashmap::DashMap::new()),
         draining: Arc::new(AtomicBool::new(false)),
         boot_ms: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -847,6 +858,9 @@ pub fn run_with(args: Args) {
         let registry: Arc<std::sync::Mutex<Vec<AnalyzeWorkerHandle>>> =
             Arc::new(std::sync::Mutex::new(Vec::new()));
         let analyze_seq = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        // 1.0.10 洪水排水: supervisor 30s 采样 pending 深度写这里, worker
+        // 领取时读 — pending > 软上限即切洪水批量 (claim 4 → 16)。
+        let analyze_queue_depth = Arc::new(AtomicU64::new(0));
         // P2: LISTEN/NOTIFY 唤醒 (PG only — db_url 非空 ⇔ postgres 后端)。
         // 调度臂 due<1s 时 pg_notify(analyze_wakeup), worker 空闲由通知打断,
         // 空轮询退避只作兜底 — 空转 claim 风暴与 worker 数解耦。
@@ -874,6 +888,7 @@ pub fn run_with(args: Args) {
                     &analyze_seq,
                     &mut reg,
                     analyze_wakeup.clone(),
+                    Some(analyze_queue_depth.clone()),
                 );
             }
         }
@@ -881,6 +896,8 @@ pub fn run_with(args: Args) {
         // P2 兼职: 队列超限观测告警 (30s 采样 — 原死背压门 G-P0-6 从未接入
         // 调度热路径, 现语义明确为观测) + 僵尸任务收割 (10min 一次 —
         // 已终态却反复重臂的 pending 残臂, 178 实测 3.4k 行最老 3.5h)。
+        // 1.0.10: 采样值喂 analyze_queue_depth (洪水领取批量); 每 5min
+        // 陈臂收割 (robots 全删 + 已分析 24h 陈账)。
         {
             let sup_registry = registry.clone();
             let sup_target = analyze_workers_target.clone();
@@ -891,6 +908,7 @@ pub fn run_with(args: Args) {
             let sup_seq = analyze_seq.clone();
             let sup_rt = rt_handle.clone();
             let sup_wakeup = analyze_wakeup.clone();
+            let sup_depth = analyze_queue_depth.clone();
             rt_handle.spawn(async move {
                 let mut tick: u32 = 0;
                 let mut over_warned = false;
@@ -923,6 +941,7 @@ pub fn run_with(args: Args) {
                                 &sup_seq,
                                 &mut reg,
                                 sup_wakeup.clone(),
+                                Some(sup_depth.clone()),
                             );
                         }
                         info!(
@@ -944,9 +963,11 @@ pub fn run_with(args: Args) {
                         );
                     }
                     // P2 队列超限: 只观测告警不阻塞 (去抖 — 恢复到限内才允许再告警)。
+                    // 1.0.10: 采样值同时喂 analyze_queue_depth — worker 领取切洪水批量。
                     if tick % 15 == 0 {
                         match sup_store.pending_analyze_job_count() {
                             Ok(p) => {
+                                sup_depth.store(p.max(0) as u64, std::sync::atomic::Ordering::Relaxed);
                                 let qmax = gr_probe_store::analyze_queue_max();
                                 if p > qmax {
                                     if !over_warned {
@@ -972,6 +993,21 @@ pub fn run_with(args: Args) {
                                 ),
                                 Ok(_) => {}
                                 Err(e) => warn!("analyze reaper failed: {e}"),
+                            }
+                        });
+                    }
+                    // 1.0.10 陈臂收割: 每 5min — robots 会话的 pending 臂全删
+                    // (早判已闭环, 深探无增量) + 已分析且 24h 无租约活动的陈账臂。
+                    // 178 洪水实测: 153k pending 大头即两天累计的爬虫会话臂。
+                    if tick % 150 == 0 {
+                        let st = sup_store.clone();
+                        let _ = tokio::task::spawn_blocking(move || {
+                            match st.harvest_stale_arms(24 * 60 * 60 * 1000) {
+                                Ok(n) if n > 0 => info!(
+                                    "analyze harvest deleted {n} stale arms (robots fastlane + analyzed-idle-24h)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => warn!("analyze harvest failed: {e}"),
                             }
                         });
                     }

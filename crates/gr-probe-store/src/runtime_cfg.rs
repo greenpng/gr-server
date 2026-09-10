@@ -66,6 +66,25 @@ pub struct RuntimeCfg {
     // --- complete policy ---
     /// When true (default), commercial silicon + B10x done → cycle complete/cool.
     pub complete_on_commercial_silicon: bool,
+    // --- rate limits (panel hot; 0 = route off, seed = env) ---
+    pub rate_limit_open_per_min: i64,
+    pub rate_limit_ingest_per_min: i64,
+    pub rate_limit_analyze_per_min: i64,
+    pub rate_limit_complete_per_min: i64,
+    pub rate_limit_result_per_min: i64,
+    pub rate_limit_client_event_per_min: i64,
+    // --- flood hardening (panel hot) ---
+    /// Confirmed-robots (UA-declared crawler) fast lane: no L1 hot, no L3 cold,
+    /// no analyze arms — early slim result instead (they never reuse sessions).
+    pub robot_fastlane_enabled: bool,
+    /// L1 hot map VT cap (0 = unbounded; evict most-idle beyond cap).
+    pub hot_max_vts: i64,
+    /// Min interval between opportunistic demote/re-arm sweeps on ingest.
+    pub arm_sweep_interval_ms: i64,
+    /// Max sessions armed per demote sweep (only sessions without any result).
+    pub arm_sweep_cap: i64,
+    /// Analyze claim batch raised to this while pending > soft cap (drain mode).
+    pub analyze_claim_batch_flood: i64,
     pub sites: HashMap<String, SiteOverride>,
 }
 
@@ -106,9 +125,28 @@ impl Default for RuntimeCfg {
             upload_mid_ramp: 12,
             upload_ramp_after: 14,
             complete_on_commercial_silicon: true,
+            // Rate limits: env seed keeps pre-panel behavior identical.
+            rate_limit_open_per_min: env_i64("RATE_LIMIT_OPEN_PER_MIN", 120),
+            rate_limit_ingest_per_min: env_i64("RATE_LIMIT_INGEST_PER_MIN", 600),
+            rate_limit_analyze_per_min: env_i64("RATE_LIMIT_ANALYZE_PER_MIN", 60),
+            rate_limit_complete_per_min: env_i64("RATE_LIMIT_COMPLETE_PER_MIN", 60),
+            rate_limit_result_per_min: env_i64("RATE_LIMIT_RESULT_PER_MIN", 240),
+            rate_limit_client_event_per_min: env_i64("RATE_LIMIT_CLIENT_EVENT_PER_MIN", 60),
+            robot_fastlane_enabled: true,
+            hot_max_vts: env_i64("HOT_MAX_VTS", 8192),
+            arm_sweep_interval_ms: 15_000,
+            arm_sweep_cap: 256,
+            analyze_claim_batch_flood: 16,
             sites: HashMap::new(),
         }
     }
+}
+
+fn env_i64(key: &str, default: i64) -> i64 {
+    gr_abi::env::get(key)
+        .and_then(|s| s.trim().parse::<i64>().ok())
+        .filter(|&n| n >= 0)
+        .unwrap_or(default)
 }
 
 fn clamp(v: i64, lo: i64, hi: i64) -> i64 {
@@ -145,6 +183,18 @@ pub fn clamp_global(mut c: RuntimeCfg) -> RuntimeCfg {
     c.upload_concurrency = clamp(c.upload_concurrency, 2, 24);
     c.upload_mid_ramp = clamp(c.upload_mid_ramp, 2, 32);
     c.upload_ramp_after = clamp(c.upload_ramp_after, 4, 32);
+    // Rate limits: 0 (off) .. generous ceiling — panel-owned, PG-shared windows.
+    c.rate_limit_open_per_min = clamp(c.rate_limit_open_per_min, 0, 1_000_000);
+    c.rate_limit_ingest_per_min = clamp(c.rate_limit_ingest_per_min, 0, 1_000_000);
+    c.rate_limit_analyze_per_min = clamp(c.rate_limit_analyze_per_min, 0, 1_000_000);
+    c.rate_limit_complete_per_min = clamp(c.rate_limit_complete_per_min, 0, 1_000_000);
+    c.rate_limit_result_per_min = clamp(c.rate_limit_result_per_min, 0, 1_000_000);
+    c.rate_limit_client_event_per_min = clamp(c.rate_limit_client_event_per_min, 0, 1_000_000);
+    // Flood hardening knobs.
+    c.hot_max_vts = clamp(c.hot_max_vts, 0, 4_000_000);
+    c.arm_sweep_interval_ms = clamp(c.arm_sweep_interval_ms, 1_000, 600_000);
+    c.arm_sweep_cap = clamp(c.arm_sweep_cap, 1, 10_000);
+    c.analyze_claim_batch_flood = clamp(c.analyze_claim_batch_flood, 1, 32);
     c
 }
 
@@ -249,6 +299,26 @@ pub fn rpa_idle_analyze_ms() -> i64 {
 
 pub fn cold_purge_interval_ms() -> u64 {
     get_runtime_cfg().cold_purge_interval_ms
+}
+
+/// Flood hardening: ingest-opportunistic demote/re-arm sweep minimum interval.
+pub fn arm_sweep_interval_ms() -> i64 {
+    get_runtime_cfg().arm_sweep_interval_ms
+}
+
+/// Flood hardening: max sessions armed per demote sweep (result-less only).
+pub fn arm_sweep_cap() -> i64 {
+    get_runtime_cfg().arm_sweep_cap
+}
+
+/// Robots fast lane (UA-declared crawler sessions skip L1/L3/arms).
+pub fn robot_fastlane_enabled() -> bool {
+    get_runtime_cfg().robot_fastlane_enabled
+}
+
+/// Flood drain mode: claim batch raised while pending > soft cap.
+pub fn analyze_claim_batch_flood() -> usize {
+    get_runtime_cfg().analyze_claim_batch_flood.max(1) as usize
 }
 
 pub fn complete_on_commercial_silicon() -> bool {
@@ -356,6 +426,17 @@ pub fn global_to_json(c: &RuntimeCfg) -> Value {
         "upload_mid_ramp": c.upload_mid_ramp,
         "upload_ramp_after": c.upload_ramp_after,
         "complete_on_commercial_silicon": c.complete_on_commercial_silicon,
+        "rate_limit_open_per_min": c.rate_limit_open_per_min,
+        "rate_limit_ingest_per_min": c.rate_limit_ingest_per_min,
+        "rate_limit_analyze_per_min": c.rate_limit_analyze_per_min,
+        "rate_limit_complete_per_min": c.rate_limit_complete_per_min,
+        "rate_limit_result_per_min": c.rate_limit_result_per_min,
+        "rate_limit_client_event_per_min": c.rate_limit_client_event_per_min,
+        "robot_fastlane_enabled": c.robot_fastlane_enabled,
+        "hot_max_vts": c.hot_max_vts,
+        "arm_sweep_interval_ms": c.arm_sweep_interval_ms,
+        "arm_sweep_cap": c.arm_sweep_cap,
+        "analyze_claim_batch_flood": c.analyze_claim_batch_flood,
         "fe_retry_policy": fe_retry_policy_json(c),
         "field_help": field_help_json(),
         "clamp_notes": {
@@ -401,7 +482,18 @@ pub fn field_help_json() -> Value {
         "upload_mid_ramp": "B0 入队后 mid 并发",
         "upload_ramp_after": "首包成功后目标并发",
         "analyze_idle_upload_ms": "无新上传多久触发分析（短访问默认 20s）",
-        "complete_on_commercial_silicon": "商业硅材料+B10x 齐→关周期冷却（默认开；178 修复）"
+        "complete_on_commercial_silicon": "商业硅材料+B10x 齐→关周期冷却（默认开；178 修复）",
+        "rate_limit_open_per_min": "open 每分钟每站上限（0=不限流；共享 PG 窗口）",
+        "rate_limit_ingest_per_min": "ingest 每分钟每站上限",
+        "rate_limit_analyze_per_min": "analyze 每分钟每站上限",
+        "rate_limit_complete_per_min": "complete 每分钟每站上限",
+        "rate_limit_result_per_min": "result 每分钟每站上限",
+        "rate_limit_client_event_per_min": "client_event 每分钟每站上限",
+        "robot_fastlane_enabled": "已确认爬虫快道：不入 L1/不冷存/不挂分析臂，直接早判结果（默认开）",
+        "hot_max_vts": "L1 热图 VT 封顶（0=不封；超出按最久未活跃逐出）",
+        "arm_sweep_interval_ms": "ingest 顺带降级/挂臂扫最小间隔（防重臂风暴）",
+        "arm_sweep_cap": "每次扫臂最多新挂会话数（仅无结果会话）",
+        "analyze_claim_batch_flood": "积压超软上限时的领取批量（排水模式）"
     })
 }
 
@@ -467,11 +559,29 @@ pub fn parse_global_patch(base: &RuntimeCfg, patch: &Value) -> RuntimeCfg {
     patch_i64(&mut c.upload_concurrency, patch, "upload_concurrency");
     patch_i64(&mut c.upload_mid_ramp, patch, "upload_mid_ramp");
     patch_i64(&mut c.upload_ramp_after, patch, "upload_ramp_after");
-    if let Some(v) = patch
-        .get("complete_on_commercial_silicon")
-        .and_then(|x| x.as_bool())
-    {
+    patch_i64(&mut c.rate_limit_open_per_min, patch, "rate_limit_open_per_min");
+    patch_i64(&mut c.rate_limit_ingest_per_min, patch, "rate_limit_ingest_per_min");
+    patch_i64(&mut c.rate_limit_analyze_per_min, patch, "rate_limit_analyze_per_min");
+    patch_i64(&mut c.rate_limit_complete_per_min, patch, "rate_limit_complete_per_min");
+    patch_i64(&mut c.rate_limit_result_per_min, patch, "rate_limit_result_per_min");
+    patch_i64(
+        &mut c.rate_limit_client_event_per_min,
+        patch,
+        "rate_limit_client_event_per_min",
+    );
+    patch_i64(&mut c.hot_max_vts, patch, "hot_max_vts");
+    patch_i64(&mut c.arm_sweep_interval_ms, patch, "arm_sweep_interval_ms");
+    patch_i64(&mut c.arm_sweep_cap, patch, "arm_sweep_cap");
+    patch_i64(
+        &mut c.analyze_claim_batch_flood,
+        patch,
+        "analyze_claim_batch_flood",
+    );
+    if let Some(v) = patch.get("complete_on_commercial_silicon").and_then(|x| x.as_bool()) {
         c.complete_on_commercial_silicon = v;
+    }
+    if let Some(v) = patch.get("robot_fastlane_enabled").and_then(|x| x.as_bool()) {
+        c.robot_fastlane_enabled = v;
     }
     clamp_global(c)
 }

@@ -9,6 +9,7 @@ import Strategies from './views/Strategies.vue'
 import Integrations from './views/Integrations.vue'
 import Retention from './views/Retention.vue'
 import Workers from './views/Workers.vue'
+import Config from './views/Config.vue'
 import Modules from './views/Modules.vue'
 import Cluster from './views/Cluster.vue'
 import LoadBalance from './views/LoadBalance.vue'
@@ -34,6 +35,7 @@ const router = createRouter({
         { path: 'sdk', component: Sdk },
         { path: 'retention', component: Retention },
         { path: 'workers', component: Workers },
+        { path: 'config', component: Config },
         { path: 'modules', component: Modules },
         { path: 'cluster', component: Cluster },
         { path: 'loadbalance', component: LoadBalance },

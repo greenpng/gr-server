@@ -13,8 +13,8 @@ use gr_probe_core::{
 };
 use gr_probe_store::{
     analyze_claim_batch, analyze_idle_poll_ms_range, cold_promote_window_ms, cold_ttl_ms,
-    hot_idle_ms, timeout_matrix_json, AnalyzeDueMerge, HotProbeCache, Store, StoreError,
-    ANALYZE_DEBOUNCE_MS, ANALYZE_LOCK_MS, ANALYZE_IDLE_IMMINENT_MS,
+    hot_idle_ms, timeout_matrix_json, AnalyzeDueMerge, HotProbeCache, HotProbeEntry, Store,
+    StoreError, ANALYZE_DEBOUNCE_MS, ANALYZE_LOCK_MS, ANALYZE_IDLE_IMMINENT_MS,
 };
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -85,6 +85,10 @@ pub struct AppState {
     pub admin: Option<Arc<AdminHub>>,
     /// Hot probe materials by VTID (demote idle → probe_cold).
     pub hot_probe: Arc<HotProbeCache>,
+    /// Robots fast lane: session_ids already classified robots at open/gateway
+    /// (UA-declared crawler). Later ingests for these skip L1/L3/analyze arms.
+    /// sid → marked_ms; pruned by age when large.
+    pub robot_sessions: Arc<dashmap::DashMap<String, i64>>,
     /// Drain flag: ops sets it before a maintenance window. `/readyz` returns 503
     /// and probe data routes answer 503 while set (LB / rollout orchestration).
     pub draining: Arc<AtomicBool>,
@@ -305,25 +309,116 @@ fn apply_authoritative_client_ip(fields: &mut Map<String, Value>, headers: &Hash
 ///
 /// Call sites: opportunistic on each plain ingest (`hot_idle_ms()`), and
 /// explicit lab/ops via `ops_demote_idle`.
+///
+/// **Flood hardening (1.0.10 root-cause fix):**
+/// - Throttled: at most one sweep per `arm_sweep_interval_ms` per process —
+///   the 178 crawler flood turned per-ingest sweeps into ~520k arm-upserts/min.
+/// - Bounded + result-deduped: arms only sessions **without any analysis
+///   result** (already-analyzed sessions get their arms from the ingest path),
+///   capped at `arm_sweep_cap` per sweep, one set-based roundtrip.
+/// - Overflow stays in L1: entries beyond the cap demote on a later sweep
+///   instead of being dropped un-armed.
 fn demote_hot_to_cold(st: &AppState, idle_ms: i64) -> usize {
-    // Brain pre-cold arm: schedule analyze **before** L1 demote so the arm is tied to
-    // still-hot sessions (criterion: before hot→cold). Then demote L1 → cold write path.
-    let idle = st.hot_probe.list_idle(idle_ms);
-    for e in &idle {
-        let sid = e.session_id.as_str();
-        if !sid.is_empty() {
-            let _ = st.store.schedule_analyze_merge(
-                sid,
-                0,
-                AnalyzeDueMerge::Replace,
-            );
+    demote_hot_to_cold_opts(st, idle_ms, false)
+}
+
+fn demote_hot_to_cold_opts(st: &AppState, idle_ms: i64, force: bool) -> usize {
+    if !force {
+        // Throttle: plain ingests share one sweep slot per interval.
+        static LAST_SWEEP_MS: std::sync::atomic::AtomicI64 =
+            std::sync::atomic::AtomicI64::new(0);
+        let now = gr_probe_store::hot_now_ms();
+        let interval = gr_probe_store::arm_sweep_interval_ms().max(1_000);
+        let last = LAST_SWEEP_MS.load(std::sync::atomic::Ordering::Relaxed);
+        if now.saturating_sub(last) < interval {
+            return 0;
+        }
+        if LAST_SWEEP_MS
+            .compare_exchange(
+                last,
+                now,
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+            )
+            .is_err()
+        {
+            return 0; // another thread is sweeping
         }
     }
-    let demoted = st.hot_probe.demote_idle(idle_ms);
+    let idle = st.hot_probe.list_idle(idle_ms);
+    if idle.is_empty() {
+        // Nothing idle: still run the opportunistic cold TTL purge (cheap, bounded).
+        let cutoff = gr_probe_store::hot_now_ms() - cold_ttl_ms();
+        let _ = st.store.purge_expired_cold(cutoff);
+        return 0;
+    }
+    // Robots never need the demote arm (early-class result already stands in).
+    let cap = gr_probe_store::arm_sweep_cap().max(1) as usize;
+    let selected: Vec<&HotProbeEntry> = idle
+        .iter()
+        .filter(|e| !e.session_id.is_empty())
+        .filter(|e| !st.robot_sessions.contains_key(&e.session_id))
+        .take(cap)
+        .collect();
+    let sids: Vec<String> = selected.iter().map(|e| e.session_id.clone()).collect();
+    let armed = st
+        .store
+        .arm_analyze_if_no_result(&sids)
+        .unwrap_or(sids.len() as i64);
+    let _ = armed;
+    let demoted = if selected.len() == idle.len() {
+        st.hot_probe.demote_idle(idle_ms)
+    } else {
+        // Overflow beyond the arm budget stays hot for the next sweep.
+        let vts: Vec<String> = selected.iter().map(|e| e.visitor_terminal_id.clone()).collect();
+        st.hot_probe.demote_vts(&vts)
+    };
     // Opportunistic cold TTL purge (ignore errors — never block ingest).
     let cutoff = gr_probe_store::hot_now_ms() - cold_ttl_ms();
     let _ = st.store.purge_expired_cold(cutoff);
     demoted.len()
+}
+
+/// Robots fast lane helpers — UA-declared crawler sessions (facet=robots).
+/// Such visitors never reuse the session/VT, so deep identity probing and
+/// store-then-analyze adds nothing: skip L1 hot, skip L3 cold (no future
+/// promote), skip analyze arms, and write a one-shot early-class result.
+fn robot_fastlane_active(st: &AppState) -> bool {
+    gr_probe_store::robot_fastlane_enabled()
+}
+
+fn mark_robot_session(st: &AppState, sid: &str) {
+    if sid.is_empty() {
+        return;
+    }
+    let now = gr_probe_store::hot_now_ms();
+    st.robot_sessions.insert(sid.to_string(), now);
+    // Bounded: prune stale marks (robots never come back on the same sid).
+    if st.robot_sessions.len() > 8192 {
+        let cutoff = now - 6 * 60 * 60 * 1000;
+        st.robot_sessions.retain(|_, t| *t > cutoff);
+    }
+}
+
+fn session_is_robot(st: &AppState, sid: &str) -> bool {
+    !sid.is_empty() && st.robot_sessions.contains_key(sid)
+}
+
+/// Write the early-class result for a confirmed-robots session (idempotent —
+/// skipped when any analysis result already exists). Best-effort: never
+/// blocks the request path.
+fn try_robot_early_result(st: &AppState, sid: &str, robot_name: Option<&str>, source: &str) {
+    if !robot_fastlane_active(st) || sid.is_empty() {
+        return;
+    }
+    if let Err(e) = st.store.save_early_class_result(
+        sid,
+        robot_name,
+        source,
+        gr_probe_core::GR_PRODUCT_VERSION,
+    ) {
+        log::debug!("robot early-class result sid={sid} source={source} err={e}");
+    }
 }
 
 /// If VT is not in L1 hot, load recent non-expired L3 cold rows into L1.
@@ -2485,6 +2580,12 @@ pub fn open_session(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    // Robots fast lane (1.0.10): mark UA-declared crawler sessions at open —
+    // later FE ingests for these (headless automation) skip L1/L3/arms.
+    if robot_fastlane_active(st) && facet == "robots" {
+        mark_robot_session(st, &sid);
+        try_robot_early_result(st, &sid, robot_name_open.as_str(), "open");
+    }
     let phase = out
         .get("phase")
         .and_then(|v| v.as_str())
@@ -3552,12 +3653,19 @@ pub fn ingest_plain_body(
         body.inject_path.as_deref(),
         &claimed,
     );
-    let mut upsert = st.store.upsert_batch_with_ip(
+    // Robots fast lane: sessions classified robots at open/gateway skip the
+    // cold tier, the L1 hot tier and every analyze arm — early result stands.
+    let is_robot = robot_fastlane_active(st) && session_is_robot(st, &body.session_id);
+    if is_robot {
+        try_robot_early_result(st, &body.session_id, None, "ingest_fastlane");
+    }
+    let mut upsert = st.store.upsert_batch_with_ip_opts(
         &body.session_id,
         &body.batch_id,
         &body.source,
         &payload,
         client_ip.as_deref(),
+        is_robot,
     )?;
     // Hot tier: L1 process cache; L2/L3 dual-write already done above.
     {
@@ -3574,7 +3682,7 @@ pub fn ingest_plain_body(
             }
         }
         let mut promoted = 0usize;
-        if !vt.is_empty() {
+        if !vt.is_empty() && !is_robot {
             // New/returning VT: pull recent L3 cold into L1 before writing this batch.
             promoted = promote_cold_to_hot_if_needed(st, &vt, &body.session_id);
             st.hot_probe.upsert_batch(
@@ -3697,6 +3805,10 @@ pub fn ingest_plain_body(
     // Arms: coverage_complete → now; continuous upload → IdleReset (+60s quiet);
     // no first result yet → min(idle 60s, first_upload+180s); pre-cold/explicit separate.
     let brain_analyze_armed = if !upsert_ok {
+        false
+    } else if is_robot {
+        // Robots fast lane: the early-class result already closed this session —
+        // deep identity analysis of a UA-declared crawler adds nothing.
         false
     } else if b8_only_skip && !explicit_analyze {
         false
@@ -4984,7 +5096,7 @@ pub fn ops_demote_idle(st: &AppState, query: &HashMap<String, String>) -> AppRes
         .unwrap_or_else(hot_idle_ms)
         .max(0);
     let before = st.hot_probe.len_hot();
-    let demoted = demote_hot_to_cold(st, idle_ms);
+    let demoted = demote_hot_to_cold_opts(st, idle_ms, true);
     let after = st.hot_probe.len_hot();
     Ok(json!({
         "ok": true,
@@ -4994,6 +5106,32 @@ pub fn ops_demote_idle(st: &AppState, query: &HashMap<String, String>) -> AppRes
         "hot_after": after,
         "cold_ttl_ms": cold_ttl_ms(),
         "note": "L1 demote only; L2 batches + L3 cold dual-write on ingest. Re-ingest re-warms L1; promote-from-cold if L1 miss.",
+    }))
+}
+
+/// 1.0.10 陈臂收割 (ops 触发版 — supervisor 每 5min 也会自动跑)。
+/// Query: `idle_ms` (default 24h) — 已分析且超过该时长无租约活动的 pending 臂
+/// + robots 会话的全部 pending 臂 (无时限: 爬虫判定粘性, 深探无增量)。
+pub fn ops_harvest_arms(st: &AppState, query: &HashMap<String, String>) -> AppResult {
+    let idle_ms = query
+        .get("idle_ms")
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(24 * 60 * 60 * 1000)
+        .max(60_000);
+    let pending_before = st.store.pending_analyze_job_count().unwrap_or(-1);
+    let deleted = st.store.harvest_stale_arms(idle_ms)?;
+    let pending_after = st.store.pending_analyze_job_count().unwrap_or(-1);
+    Ok(json!({
+        "ok": true,
+        "idle_ms": idle_ms,
+        "deleted": deleted,
+        "pending_before": pending_before,
+        "pending_after": pending_after,
+        "rules": [
+            "robots sessions: all pending arms (early-class result already closed them)",
+            "analyzed sessions: pending arms idle > idle_ms"
+        ],
+        "note": "supervisor auto-runs this every 5min; this endpoint forces a sweep",
     }))
 }
 
@@ -5545,6 +5683,14 @@ pub fn gateway_early(st: &AppState, headers: &HashMap<String, String>, body: Gat
         .and_then(|v| v.as_str())
         .ok_or_else(|| ApiError(500, "missing session_id".into()))?
         .to_string();
+    // Robots fast lane (1.0.10 root fix): UA-declared crawler — the verdict is
+    // already final at the edge. No L1 hot, no L3 cold, no analyze arms; write
+    // the early-class result and let the session expire by inactivity.
+    let is_robot = robot_fastlane_active(st) && facet == "robots";
+    if is_robot {
+        mark_robot_session(st, &sid);
+        try_robot_early_result(st, &sid, robot_name_gw.as_str(), "gateway_early");
+    }
     let mut fields = if body.fields.is_object() {
         body.fields.clone()
     } else {
@@ -5954,12 +6100,13 @@ pub fn gateway_early(st: &AppState, headers: &HashMap<String, String>, body: Gat
     // Also expose protocol fingerprints on evidence.gateway_fields for xsrc
     // Store merges dual-fire B8 (CDN join + edge TCP enrich) on re-upsert.
     let gateway_fields = fields.clone();
-    let upsert = st.store.upsert_batch_with_ip(
+    let upsert = st.store.upsert_batch_with_ip_opts(
         &sid,
         "B8_gateway",
         "gateway",
         &payload,
         client_ip.as_deref(),
+        is_robot,
     )?;
     let gw_obs = append_observation_event(
         st,
@@ -6022,7 +6169,7 @@ pub fn gateway_early(st: &AppState, headers: &HashMap<String, String>, body: Gat
             cf_obs_id = o.get("observation_id").cloned().unwrap_or(Value::Null);
         }
     }
-    if !vt_id.is_empty() {
+    if !vt_id.is_empty() && !is_robot {
         let _ = promote_cold_to_hot_if_needed(st, &vt_id, &sid);
         st.hot_probe.upsert_batch(
             &vt_id,
@@ -6755,7 +6902,14 @@ pub fn pixel_hit(
     let _ = st
         .store
         .open_session(Some(sid.clone()), Some(vt_id.clone()), Some(meta));
-    let _ = st.store.upsert_batch(
+    // Robots fast lane: crawler-UA pixel hits get the early result and skip
+    // the cold tier (no future promote value — robots mint fresh sessions).
+    let is_robot = robot_fastlane_active(st) && facet == "robots";
+    if is_robot {
+        mark_robot_session(st, &sid);
+        try_robot_early_result(st, &sid, robot_name_px.as_str(), "pixel");
+    }
+    let _ = st.store.upsert_batch_with_ip_opts(
         &sid,
         "B_ops_hit",
         "main",
@@ -6769,6 +6923,8 @@ pub fn pixel_hit(
                 "qs": q
             }
         }),
+        None,
+        is_robot,
     );
     if !site_id.is_empty() {
         let biz = st.admin.as_ref().map(|a| a.biz.clone());
@@ -9258,6 +9414,7 @@ pub async fn analyze_worker_loop(
     analyze_runs: Arc<AtomicU64>,
     cancel: Arc<AtomicBool>,
     wakeup: Option<Arc<tokio::sync::Notify>>,
+    queue_depth: Option<Arc<AtomicU64>>,
 ) {
     log::info!("analyze worker started worker_id={worker_id}");
     let (idle_min, idle_max) = analyze_idle_poll_ms_range();
@@ -9269,9 +9426,25 @@ pub async fn analyze_worker_loop(
             log::info!("analyze worker stopping (scaled down) worker_id={worker_id}");
             return;
         }
+        // Flood drain mode (1.0.10): pending > soft cap → raise the claim
+        // batch so each roundtrip drains 4× the jobs (178 flood measured
+        // ~110 jobs/min at batch 4 with 4 workers; claim was not the
+        // bottleneck but roundtrips scale linearly with backlog here).
+        let base_batch = gr_probe_store::analyze_claim_batch();
+        let flood_batch = gr_probe_store::analyze_claim_batch_flood();
+        let depth = queue_depth
+            .as_ref()
+            .map(|d| d.load(Ordering::Relaxed))
+            .unwrap_or(0);
+        let qmax = gr_probe_store::analyze_queue_max().max(1) as u64;
+        let claim_limit = if depth > qmax && flood_batch > base_batch {
+            flood_batch
+        } else {
+            base_batch
+        };
         let claimed = match store.claim_due_analyze_jobs(
             &worker_id,
-            gr_probe_store::analyze_claim_batch(),
+            claim_limit,
             ANALYZE_LOCK_MS,
         ) {
             Ok(c) => c,

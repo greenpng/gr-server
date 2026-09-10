@@ -101,6 +101,10 @@ pub fn router(
         )
         .route(&format!("{c}/api/runtime/apply"), post(runtime_apply))
         .route(&format!("{c}/api/workers"), get(get_workers).post(set_workers))
+        // 1.0.10: runtime tuning config (rate limits / flood knobs / cycle+TTL)
+        // — draft save + publish (nodes apply ≤30s; publishing node immediate).
+        .route(&format!("{c}/api/config"), get(config_view).post(config_save))
+        .route(&format!("{c}/api/config/publish"), post(config_publish))
         .route(&format!("{c}/api/modules"), get(list_modules))
         .route(&format!("{c}/api/modules/activate"), post(modules_activate))
         .route(&format!("{c}/api/modules/stage"), post(modules_stage))
@@ -2895,6 +2899,54 @@ async fn get_workers(State(st): State<AppState>, headers: HeaderMap) -> Response
     match st.rt.admin.db.get_workers() {
         Ok((a, i, g)) => Json(json!({"ok":true,"analyze":a,"ingest":i,"gateway":g})).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok":false,"error":e}))).into_response(),
+    }
+}
+
+/// 1.0.10 运行时调优配置: 读视图 (global + sites + live + defaults)。
+async fn config_view(State(st): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(r) = authed(&st, &headers) {
+        return r;
+    }
+    let db = match probe_admin_db(&st) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    Json(gr_probe_plane::admin::panel_config::get_config_view(&db)).into_response()
+}
+
+/// 1.0.10 运行时调优配置: 存草稿 (patch {key: value}; publish 后生效)。
+async fn config_save(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let actor = match authed(&st, &headers) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let db = match probe_admin_db(&st) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    match gr_probe_plane::admin::panel_config::put_global(&db, &actor, &body) {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": e}))).into_response(),
+    }
+}
+
+/// 1.0.10 运行时调优配置: 发布 (版本+1; 本节点立即生效, 其余节点 ≤30s)。
+async fn config_publish(State(st): State<AppState>, headers: HeaderMap) -> Response {
+    let actor = match authed(&st, &headers) {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let db = match probe_admin_db(&st) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    match gr_probe_plane::admin::panel_config::publish(&db, &actor) {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok": false, "error": e}))).into_response(),
     }
 }
 

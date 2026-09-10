@@ -628,6 +628,19 @@ impl PgStore {
         payload: &Value,
         client_ip: Option<&str>,
     ) -> Result<Value, StoreError> {
+        self.upsert_batch_with_ip_opts(session_id, batch_id, source, payload, client_ip, false)
+    }
+
+    /// Robots fast lane: `skip_cold=true` skips L3 cold write + per-batch arm.
+    pub fn upsert_batch_with_ip_opts(
+        &self,
+        session_id: &str,
+        batch_id: &str,
+        source: &str,
+        payload: &Value,
+        client_ip: Option<&str>,
+        skip_cold: bool,
+    ) -> Result<Value, StoreError> {
         self.require_active_session(session_id)?;
         let sid = session_id.to_string();
         let batch_id = batch_id.to_string();
@@ -636,7 +649,7 @@ impl PgStore {
         let cip = client_ip.map(|s| s.to_string());
         let sid2 = sid.clone();
         let out = self.run(move |c| {
-            upsert_batch_inner(c, &sid2, &batch_id, &source, &payload, cip.as_deref())
+            upsert_batch_inner(c, &sid2, &batch_id, &source, &payload, cip.as_deref(), skip_cold)
         })?;
         // Brain-owned analyze arm applied by service after ingest (not per-batch).
         Ok(out)
@@ -842,6 +855,43 @@ impl PgStore {
     /// P2 僵尸收割 (见 reap_stale_analyze_jobs_inner)。
     pub fn reap_stale_analyze_jobs(&self, stale_ms: i64) -> Result<i64, StoreError> {
         self.run(move |c| reap_stale_analyze_jobs_inner(c, stale_ms))
+    }
+
+    /// 洪水根因修复: 集批挂臂 (只挂无结果会话, due 只前移)。
+    pub fn arm_analyze_if_no_result(&self, sids: &[String]) -> Result<i64, StoreError> {
+        if sids.is_empty() {
+            return Ok(0);
+        }
+        let sids = sids.to_vec();
+        self.run(move |c| arm_analyze_if_no_result_inner(c, &sids, now_ms()))
+    }
+
+    /// 爬虫快道: 早判结果写入 (幂等, 见 save_early_class_result_inner)。
+    pub fn save_early_class_result(
+        &self,
+        session_id: &str,
+        robot_name: Option<&str>,
+        source: &str,
+        product_version: &str,
+    ) -> Result<Value, StoreError> {
+        let session_id = session_id.to_string();
+        let robot_name = robot_name.map(|s| s.to_string());
+        let source = source.to_string();
+        let pv = product_version.to_string();
+        self.run(move |c| {
+            save_early_class_result_inner(
+                c,
+                &session_id,
+                robot_name.as_deref(),
+                &source,
+                &pv,
+            )
+        })
+    }
+
+    /// 洪水根因修复: 陈臂收割 (robots 臂 + 已分析陈账, 见 harvest_stale_arms_inner)。
+    pub fn harvest_stale_arms(&self, idle_ms: i64) -> Result<i64, StoreError> {
+        self.run(move |c| harvest_stale_arms_inner(c, idle_ms))
     }
 
     pub fn force_session_times(
@@ -2562,6 +2612,7 @@ fn upsert_batch_inner(
     source: &str,
     payload: &Value,
     client_ip: Option<&str>,
+    skip_cold: bool,
 ) -> Result<Value, StoreError> {
     let ts = now_ms();
     let mut final_payload = payload.clone();
@@ -2817,30 +2868,39 @@ fn upsert_batch_inner(
             &[&ts, &session_id, &touch_iv],
         );
     }
-    // Cold compact JSON store (always write for query path)
-    let vt: String = c
-        .query_opt(
-            "SELECT COALESCE(visitor_terminal_id,'') FROM sessions WHERE session_id=$1",
-            &[&session_id],
-        )
-        .ok()
-        .flatten()
-        .map(|r| r.get::<_, String>(0))
-        .unwrap_or_default();
-    let fields_compact = crate::compact_probe_payload(&final_payload);
-    // Bind as TEXT then cast to jsonb in SQL (portable; avoids Json wrapper deps).
-    let fields_s = serde_json::to_string(&fields_compact).unwrap_or_else(|_| "{}".into());
-    let payload_z_bytes = crate::compress_json_payload(&final_payload).unwrap_or_else(|_| {
-        serde_json::to_vec(&final_payload).unwrap_or_default()
-    });
-    // BYTEA bind: raw deflate bytes (≈½ hex TEXT).
-    let ip_bind: Option<String> = ip_owned.clone();
-    // Bind fields as text + cast in SQL (`$n::jsonb` alone confuses rust-postgres type inference).
+    // Cold compact JSON store (always write for query path).
+    // skip_cold (robots fast lane): no L3 copy, no compact/deflate CPU, no
+    // per-batch analyze arm — the early-class result already closed the session.
+    let (vt, fields_s, payload_z_bytes) = if skip_cold {
+        (String::new(), String::new(), Vec::new())
+    } else {
+        let vt: String = c
+            .query_opt(
+                "SELECT COALESCE(visitor_terminal_id,'') FROM sessions WHERE session_id=$1",
+                &[&session_id],
+            )
+            .ok()
+            .flatten()
+            .map(|r| r.get::<_, String>(0))
+            .unwrap_or_default();
+        let fields_compact = crate::compact_probe_payload(&final_payload);
+        // Bind as TEXT then cast to jsonb in SQL (portable; avoids Json wrapper deps).
+        let fields_s =
+            serde_json::to_string(&fields_compact).unwrap_or_else(|_| "{}".into());
+        let payload_z_bytes = crate::compress_json_payload(&final_payload).unwrap_or_else(|_| {
+            serde_json::to_vec(&final_payload).unwrap_or_default()
+        });
+        (vt, fields_s, payload_z_bytes)
+    };
+    // Bind as TEXT then cast to jsonb in SQL (`$n::jsonb` alone confuses rust-postgres type inference).
     // Bind payload as raw BYTEA (Vec<u8>).
     // Dual-write cold, but no-op UPDATE when compact fields + payload_z unchanged
     // (prod: ~equal n_tup_upd to n_tup_ins from always-rewrite ON CONFLICT).
-    let cold_n = c
-        .execute(
+    let ip_bind: Option<String> = ip_owned.clone();
+    let cold_n = if skip_cold {
+        Ok(0u64)
+    } else {
+        c.execute(
             "INSERT INTO probe_cold(session_id, visitor_terminal_id, batch_id, source, client_ip, fields_json, payload_z, created_ms)
              VALUES($1,$2,$3,$4,$5, CAST($6 AS text)::jsonb, $7, $8)
              ON CONFLICT(session_id, batch_id, source) DO UPDATE SET
@@ -2863,32 +2923,45 @@ fn upsert_batch_inner(
                 &payload_z_bytes,
                 &ts,
             ],
-        );
-    let (cold_written, cold_err, cold_skipped): (bool, Option<String>, bool) = match cold_n {
-        Ok(n) => (true, None, n == 0),
-        Err(e) => {
-            let _ = c.batch_execute("ROLLBACK");
-            return Ok(json!({
-                "ok": false,
-                "error": "cold_write_failed",
-                "session_id": session_id,
-                "batch_id": batch_id,
-                "source": source,
-                "client_ip": ip_owned,
-                "created_ms": ts,
-                "analyze_scheduled": false,
-                "was_insert": was_insert,
-                "same_capture": false,
-                "material_generation": client_gen,
-                "material_hash": client_ph,
-                "capture_id": client_cap,
-                "cold_written": false,
-                "cold_error": e.to_string(),
-                "durability_state": "failed",
-            }));
+        )
+    };
+    let (cold_written, cold_err, cold_skipped, cold_skip_reason): (
+        bool,
+        Option<String>,
+        bool,
+        Option<&str>,
+    ) = if skip_cold {
+        (false, None, true, Some("robot_fastlane"))
+    } else {
+        match cold_n {
+            Ok(n) => (true, None, n == 0, None),
+            Err(e) => {
+                let _ = c.batch_execute("ROLLBACK");
+                return Ok(json!({
+                    "ok": false,
+                    "error": "cold_write_failed",
+                    "session_id": session_id,
+                    "batch_id": batch_id,
+                    "source": source,
+                    "client_ip": ip_owned,
+                    "created_ms": ts,
+                    "analyze_scheduled": false,
+                    "was_insert": was_insert,
+                    "same_capture": false,
+                    "material_generation": client_gen,
+                    "material_hash": client_ph,
+                    "capture_id": client_cap,
+                    "cold_written": false,
+                    "cold_error": e.to_string(),
+                    "durability_state": "failed",
+                }));
+            }
         }
     };
-    if let Err(e) = schedule_analyze_inner(
+    let scheduled = if skip_cold {
+        // Robots fast lane: no per-batch arm — the early-class result stands in.
+        false
+    } else if let Err(e) = schedule_analyze_inner(
         c,
         session_id,
         ANALYZE_DEBOUNCE_MS,
@@ -2905,19 +2978,21 @@ fn upsert_batch_inner(
             "cold_written": cold_written,
             "durability_state": "failed",
         }));
-    }
+    } else {
+        true
+    };
     if let Err(e) = c.batch_execute("COMMIT") {
         let _ = c.batch_execute("ROLLBACK");
         return Err(StoreError::Msg(e.to_string()));
     }
-    Ok(json!({
+    let mut ack = json!({
         "ok": true,
         "session_id": session_id,
         "batch_id": batch_id,
         "source": source,
         "client_ip": ip_owned,
         "created_ms": ts,
-        "analyze_scheduled": true,
+        "analyze_scheduled": scheduled,
         "analyze_debounce_ms": ANALYZE_DEBOUNCE_MS,
         "merged": final_payload.get("merged").cloned().unwrap_or(Value::Bool(false)),
         "was_insert": was_insert,
@@ -2933,7 +3008,14 @@ fn upsert_batch_inner(
         "cold_payload_z_bytes": payload_z_bytes.len(),
         "session_touch_min_interval_ms": crate::session_touch_min_interval_ms(),
         "durability_state": "stored_durable",
-    }))
+    });
+    if let Some(reason) = cold_skip_reason {
+        if let Some(obj) = ack.as_object_mut() {
+            obj.insert("cold_skip_reason".into(), json!(reason));
+            obj.insert("robot_fastlane".into(), json!(true));
+        }
+    }
+    Ok(ack)
 }
 
 fn get_probe_cold_inner(
@@ -4116,7 +4198,7 @@ fn attach_orphan_b8_for_vt(
         obj.insert("early".into(), json!(true));
     }
     // Target must exist
-    let _ = upsert_batch_inner(c, target_sid, "B8_gateway", "gateway", &payload, None)?;
+    let _ = upsert_batch_inner(c, target_sid, "B8_gateway", "gateway", &payload, None, false)?;
     Ok(true)
 }
 
@@ -4572,6 +4654,209 @@ fn reap_stale_analyze_jobs_inner(c: &mut Client, stale_ms: i64) -> Result<i64, S
                AND EXISTS (
                  SELECT 1 FROM analysis_latest a
                  WHERE a.session_id = j.session_id AND a.created_ms < $1
+               )",
+            &[&cut],
+        )
+        .map_err(|e| StoreError::Msg(e.to_string()))?;
+    Ok(n as i64)
+}
+
+/// 洪水根因修复: 降级扫臂集批 + 结果去重。一次往返为整批会话挂臂,
+/// 且只挂"从未有过分析结果"的会话 (已分析过的会话晚到批次由 ingest
+/// 挂臂路径自行 PullEarlier, 不需要降级扫重复挂)。due 只前移不后推。
+/// 返回新挂/前移的臂数。
+fn arm_analyze_if_no_result_inner(
+    c: &mut Client,
+    sids: &[String],
+    due_ms: i64,
+) -> Result<i64, StoreError> {
+    if sids.is_empty() {
+        return Ok(0);
+    }
+    let now = now_ms();
+    let due = due_ms.max(now);
+    let n = c
+        .execute(
+            "INSERT INTO analyze_jobs(session_id, due_ms, status, locked_until, locked_by, updated_ms)
+             SELECT s.sid, $2, 'pending', 0, '', $3
+             FROM unnest($1::text[]) AS s(sid)
+             JOIN sessions ss ON ss.session_id = s.sid
+             WHERE NOT EXISTS (
+               SELECT 1 FROM analysis_latest a WHERE a.session_id = s.sid
+             )
+             ON CONFLICT (session_id) DO UPDATE SET
+               due_ms=EXCLUDED.due_ms,
+               status='pending',
+               updated_ms=EXCLUDED.updated_ms
+             WHERE analyze_jobs.status IS DISTINCT FROM 'pending'
+                OR analyze_jobs.due_ms > EXCLUDED.due_ms",
+            &[&sids, &due, &now],
+        )
+        .map_err(|e| StoreError::Msg(e.to_string()))?;
+    if n > 0 {
+        // 单次唤醒: worker 醒后按批量领取, 无需逐行 notify。
+        let _ = c.execute("SELECT pg_notify('analyze_wakeup', 'sweep')", &[]);
+    }
+    Ok(n as i64)
+}
+
+/// 爬虫快道: UA 自明爬虫会话的早判结果 (无深探必要 — 判定已在 open/gateway
+/// 得出)。幂等: 已有任何分析结果则跳过。一次事务: 结果行 + analysis_latest
+/// 物化 + 清掉该会话的 pending 臂 (若有)。
+fn save_early_class_result_inner(
+    c: &mut Client,
+    session_id: &str,
+    robot_name: Option<&str>,
+    source: &str,
+    product_version: &str,
+) -> Result<Value, StoreError> {
+    let ts = now_ms();
+    let has: bool = c
+        .query_opt(
+            "SELECT 1 FROM analysis_latest WHERE session_id=$1",
+            &[&session_id],
+        )
+        .map_err(|e| StoreError::Msg(e.to_string()))?
+        .is_some();
+    if has {
+        return Ok(json!({
+            "ok": true, "session_id": session_id, "skipped": true,
+            "reason": "result_exists",
+        }));
+    }
+    let sess = c
+        .query_opt(
+            "SELECT visitor_terminal_id, client_ip, meta_json FROM sessions WHERE session_id=$1",
+            &[&session_id],
+        )
+        .map_err(|e| StoreError::Msg(e.to_string()))?;
+    let (vt, ip, site_id, inject_path): (Option<String>, Option<String>, Option<String>, Option<String>) =
+        match sess {
+            Some(r) => {
+                let vt: Option<String> = r.get(0);
+                let ip: Option<String> = r.get(1);
+                let meta_s: String = r.get(2);
+                let meta = serde_json::from_str::<Value>(&meta_s).unwrap_or(json!({}));
+                let site = meta
+                    .get("site_id")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                let inj = meta
+                    .get("inject_path")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                (vt, ip, site, inj)
+            }
+            None => (None, None, None, None),
+        };
+    let result = json!({
+        "bot": {
+            "verdict": "robot",
+            "score": 100,
+            "flags": ["ua_robot"],
+            "robot_name": robot_name,
+            "algo": "early_class_v1",
+        },
+        "visitor_facet": "robots",
+        "robot_name": robot_name,
+        "source": source,
+        "early": true,
+        "created_ms": ts,
+    });
+    let s = serde_json::to_string(&result).map_err(|e| StoreError::Msg(e.to_string()))?;
+    let next: i64 = c
+        .query_one(
+            "SELECT COALESCE(MAX(rev), 0) + 1 FROM analysis_results WHERE session_id=$1",
+            &[&session_id],
+        )
+        .map_err(|e| StoreError::Msg(e.to_string()))?
+        .get(0);
+    let bot_verdict = Some("robot".to_string());
+    let pv = product_version.to_string();
+    c.execute(
+        "INSERT INTO analysis_results(session_id, rev, result_json, created_ms,
+            real_band, device_id, bot_verdict, device_confidence, client_ip,
+            device_tier, collision_risk, product_version, digest_path, residual_entropy_ok,
+            site_id, product_action)
+         VALUES($1,$2,$3,$4,NULL,NULL,$5,1.0,$6,NULL,NULL,$7,NULL,NULL,$8,NULL)",
+        &[
+            &session_id,
+            &next,
+            &s,
+            &ts,
+            &bot_verdict,
+            &ip,
+            &pv,
+            &site_id,
+        ],
+    )
+    .map_err(|e| StoreError::Msg(e.to_string()))?;
+    // 查询表物化 (与 upsert_query_tables_after_analysis 同表, 早判标量集)。
+    c.execute(
+        r#"
+INSERT INTO analysis_latest(
+  session_id, rev, created_ms, bot_verdict, client_ip, product_version,
+  visitor_terminal_id, site_id, inject_path
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+ON CONFLICT (session_id) DO UPDATE SET
+  rev=EXCLUDED.rev, created_ms=EXCLUDED.created_ms,
+  bot_verdict=EXCLUDED.bot_verdict, client_ip=EXCLUDED.client_ip,
+  product_version=EXCLUDED.product_version,
+  visitor_terminal_id=EXCLUDED.visitor_terminal_id,
+  site_id=EXCLUDED.site_id, inject_path=EXCLUDED.inject_path
+"#,
+        &[
+            &session_id,
+            &next,
+            &ts,
+            &bot_verdict,
+            &ip,
+            &pv,
+            &vt,
+            &site_id,
+            &inject_path,
+        ],
+    )
+    .map_err(|e| StoreError::Msg(e.to_string()))?;
+    let arms = c.execute(
+        "DELETE FROM analyze_jobs WHERE session_id=$1",
+        &[&session_id],
+    )
+    .map_err(|e| StoreError::Msg(e.to_string()))?;
+    Ok(json!({
+        "ok": true, "session_id": session_id, "rev": next,
+        "skipped": false, "arms_deleted": arms,
+        "source": source,
+    }))
+}
+
+/// 洪水根因修复: 陈臂收割。
+/// 规则1 (爬虫快道) — 会话 meta 判定 robots 的 pending 臂全部删除:
+///   UA 自明爬虫不换会话回访, 深探不增信息, 早判结果已足够。
+/// 规则2 (已分析陈账) — 有结果且 24h 无租约活动的 pending 臂:
+///   与 2h 僵尸收割互补 (那条只清 analysis_latest 终态, 这条清一切已有结果)。
+/// 返回删除行数。
+fn harvest_stale_arms_inner(c: &mut Client, idle_ms: i64) -> Result<i64, StoreError> {
+    let cut = now_ms() - idle_ms.max(60_000);
+    let n = c
+        .execute(
+            "DELETE FROM analyze_jobs j
+             WHERE j.status='pending'
+               AND (
+                 EXISTS (
+                   SELECT 1 FROM sessions s
+                   WHERE s.session_id = j.session_id
+                     AND s.meta_json LIKE '%\"visitor_facet\":\"robots\"%'
+                 )
+                 OR (
+                   j.updated_ms < $1
+                   AND EXISTS (
+                     SELECT 1 FROM analysis_latest a
+                     WHERE a.session_id = j.session_id
+                   )
+                 )
                )",
             &[&cut],
         )
