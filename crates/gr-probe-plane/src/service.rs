@@ -1159,6 +1159,12 @@ fn dispatch(
                 Err(e) => map_err(e),
             }
         }
+        ("POST", "/v1/ops/harvest_arms") | ("GET", "/v1/ops/harvest_arms") => {
+            match handlers::ops_harvest_arms(st, query) {
+                Ok(v) => Dispatch::Json(200, v),
+                Err(e) => map_err(e),
+            }
+        }
         ("POST", "/v1/ops/purge_expired_cold") | ("GET", "/v1/ops/purge_expired_cold") => {
             match handlers::ops_purge_expired_cold(st, query) {
                 Ok(v) => Dispatch::Json(200, v),

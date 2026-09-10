@@ -1,5 +1,9 @@
 //! Persistence for green-v5: SQLite (single-node) or PostgreSQL (multi-worker).
 
+// global_to_json's json! literal is large (60+ keys incl. flood knobs) — the
+// serde macro expansion needs more than the default recursion budget.
+#![recursion_limit = "256"]
+
 mod evidence_merge;
 mod hot_cold;
 mod pg;
@@ -9,17 +13,19 @@ mod write_amp;
 
 pub use hot_cold::{
     cold_doc_from_batch, cold_promote_window_ms, cold_ttl_ms, compact_probe_payload,
-    compress_json_payload, decompress_json_payload, hot_idle_ms, now_ms as hot_now_ms,
+    compress_json_payload, decompress_json_payload, hot_idle_ms, hot_max_vts, now_ms as hot_now_ms,
     timeout_matrix_json, HotProbeCache, HotProbeEntry, DEFAULT_COLD_PROMOTE_WINDOW_MS,
     DEFAULT_COLD_TTL_MS, DEFAULT_HOT_IDLE_MS,
 };
 pub use runtime_cfg::{
-    analyze_idle_upload_ms, cfg_from_stored, clamp_global, cold_purge_interval_ms,
-    complete_on_commercial_silicon, config_version, cycle_cool_ms, cycle_cool_ms_for_site,
-    cycle_incomplete_ms, cycle_incomplete_ms_for_site, effective_for_site, fe_retry_policy_json,
-    field_help_json, get_runtime_cfg, global_to_json, parse_global_patch, parse_site_override,
-    return_identity_idle_ms, rpa_idle_analyze_ms, session_hard_max_ms_rt, session_inactivity_ms_rt,
-    set_runtime_cfg, sites_to_json, RuntimeCfg, SiteOverride,
+    analyze_claim_batch_flood, analyze_idle_upload_ms, arm_sweep_cap, arm_sweep_interval_ms,
+    cfg_from_stored, clamp_global, cold_purge_interval_ms, complete_on_commercial_silicon,
+    config_version, cycle_cool_ms, cycle_cool_ms_for_site, cycle_incomplete_ms,
+    cycle_incomplete_ms_for_site, effective_for_site, fe_retry_policy_json, field_help_json,
+    get_runtime_cfg, global_to_json, parse_global_patch, parse_site_override,
+    return_identity_idle_ms, robot_fastlane_enabled, rpa_idle_analyze_ms,
+    session_hard_max_ms_rt, session_inactivity_ms_rt, set_runtime_cfg, sites_to_json, RuntimeCfg,
+    SiteOverride,
 };
 pub use write_amp::{
     analysis_history_keep, analysis_storage_mode, decode_analysis_result_json,
@@ -1497,6 +1503,20 @@ impl Store {
         payload: &Value,
         client_ip: Option<&str>,
     ) -> Result<Value, StoreError> {
+        self.upsert_batch_with_ip_opts(session_id, batch_id, source, payload, client_ip, false)
+    }
+
+    /// Robots fast lane: `skip_cold=true` — PG skips L3 cold write + per-batch
+    /// analyze arm; SQLite (lab, no cold tier) is a pass-through.
+    pub fn upsert_batch_with_ip_opts(
+        &self,
+        session_id: &str,
+        batch_id: &str,
+        source: &str,
+        payload: &Value,
+        client_ip: Option<&str>,
+        skip_cold: bool,
+    ) -> Result<Value, StoreError> {
         match &self.backend {
             Backend::Sqlite(s) => {
                 // SQLite: same upsert; client_ip folded into payload fields for lab.
@@ -1512,11 +1532,24 @@ impl Store {
                         }
                     }
                 }
-                s.upsert_batch(session_id, batch_id, source, &p)
+                let mut out = s.upsert_batch(session_id, batch_id, source, &p)?;
+                if skip_cold {
+                    if let Some(obj) = out.as_object_mut() {
+                        obj.insert("cold_skip_reason".into(), json!("robot_fastlane"));
+                        obj.insert("robot_fastlane".into(), json!(true));
+                        obj.insert("cold_written".into(), json!(false));
+                    }
+                }
+                Ok(out)
             }
-            Backend::Postgres(s) => {
-                s.upsert_batch_with_ip(session_id, batch_id, source, payload, client_ip)
-            }
+            Backend::Postgres(s) => s.upsert_batch_with_ip_opts(
+                session_id,
+                batch_id,
+                source,
+                payload,
+                client_ip,
+                skip_cold,
+            ),
         }
     }
 
@@ -1781,6 +1814,41 @@ impl Store {
         match &self.backend {
             Backend::Sqlite(s) => s.reap_stale_analyze_jobs(stale_ms),
             Backend::Postgres(s) => s.reap_stale_analyze_jobs(stale_ms),
+        }
+    }
+
+    /// 洪水根因修复: 降级扫集批挂臂 — 只挂无结果会话, due 只前移。
+    pub fn arm_analyze_if_no_result(&self, sids: &[String]) -> Result<i64, StoreError> {
+        match &self.backend {
+            Backend::Sqlite(s) => s.arm_analyze_if_no_result(sids),
+            Backend::Postgres(s) => s.arm_analyze_if_no_result(sids),
+        }
+    }
+
+    /// 爬虫快道: UA 自明爬虫会话早判结果 (幂等, 不覆盖已有结果)。
+    /// product_version 由调用方传入 (plane 持有 GR_PRODUCT_VERSION)。
+    pub fn save_early_class_result(
+        &self,
+        session_id: &str,
+        robot_name: Option<&str>,
+        source: &str,
+        product_version: &str,
+    ) -> Result<Value, StoreError> {
+        match &self.backend {
+            Backend::Sqlite(s) => {
+                s.save_early_class_result(session_id, robot_name, source, product_version)
+            }
+            Backend::Postgres(s) => {
+                s.save_early_class_result(session_id, robot_name, source, product_version)
+            }
+        }
+    }
+
+    /// 洪水根因修复: 陈臂收割 (robots 臂全删 + 已分析 24h 陈账)。
+    pub fn harvest_stale_arms(&self, idle_ms: i64) -> Result<i64, StoreError> {
+        match &self.backend {
+            Backend::Sqlite(s) => s.harvest_stale_arms(idle_ms),
+            Backend::Postgres(s) => s.harvest_stale_arms(idle_ms),
         }
     }
 
@@ -3851,6 +3919,130 @@ impl SqliteStore {
                AND EXISTS (
                  SELECT 1 FROM analysis_results a
                  WHERE a.session_id = analyze_jobs.session_id AND a.created_ms < ?1
+               )",
+            params![cut],
+        )?;
+        Ok(n as i64)
+    }
+    /// 洪水根因修复: 集批挂臂 (sqlite 循环版 — lab 规模小, 无需集批 SQL)。
+    fn arm_analyze_if_no_result(&self, sids: &[String]) -> Result<i64, StoreError> {
+        // Pass 1 (conn held): filter to sessions without any analysis result.
+        let need: Vec<String> = {
+            let conn = self.conn.lock().map_err(|e| StoreError::Msg(e.to_string()))?;
+            let mut out = Vec::new();
+            for sid in sids {
+                let has: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM analysis_results WHERE session_id=?1)",
+                    params![sid],
+                    |r| r.get(0),
+                )?;
+                if !has {
+                    out.push(sid.clone());
+                }
+            }
+            out
+        };
+        // Pass 2 (lock released): schedule via the normal merge path.
+        let mut armed = 0i64;
+        for sid in &need {
+            let _ = self.schedule_analyze_merge(sid, 0, AnalyzeDueMerge::Replace);
+            armed += 1;
+        }
+        Ok(armed)
+    }
+    /// 爬虫快道: 早判结果 (sqlite 版 — 幂等, 清臂)。
+    fn save_early_class_result(
+        &self,
+        session_id: &str,
+        robot_name: Option<&str>,
+        source: &str,
+        product_version: &str,
+    ) -> Result<Value, StoreError> {
+        let conn = self.conn.lock().map_err(|e| StoreError::Msg(e.to_string()))?;
+        let has: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM analysis_results WHERE session_id=?1)",
+            params![session_id],
+            |r| r.get(0),
+        )?;
+        if has {
+            return Ok(json!({
+                "ok": true, "session_id": session_id, "skipped": true,
+                "reason": "result_exists",
+            }));
+        }
+        let result = json!({
+            "bot": {
+                "verdict": "robot",
+                "score": 100,
+                "flags": ["ua_robot"],
+                "robot_name": robot_name,
+                "algo": "early_class_v1",
+            },
+            "visitor_facet": "robots",
+            "robot_name": robot_name,
+            "source": source,
+            "early": true,
+        });
+        let s = serde_json::to_string(&result).map_err(|e| StoreError::Msg(e.to_string()))?;
+        let next: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(rev), 0) + 1 FROM analysis_results WHERE session_id=?1",
+            params![session_id],
+            |r| r.get(0),
+        )?;
+        let ts = now_ms();
+        let bot_verdict = Some("robot".to_string());
+        // Best-effort migrate existing sqlite files (mirror save_analysis —
+        // base SCHEMA predates the scalar columns; latest_analysis reads site_id).
+        for ddl in [
+            "ALTER TABLE analysis_results ADD COLUMN real_band TEXT",
+            "ALTER TABLE analysis_results ADD COLUMN device_id TEXT",
+            "ALTER TABLE analysis_results ADD COLUMN bot_verdict TEXT",
+            "ALTER TABLE analysis_results ADD COLUMN device_confidence REAL",
+            "ALTER TABLE analysis_results ADD COLUMN client_ip TEXT",
+            "ALTER TABLE analysis_results ADD COLUMN device_tier TEXT",
+            "ALTER TABLE analysis_results ADD COLUMN collision_risk INTEGER",
+            "ALTER TABLE analysis_results ADD COLUMN product_version TEXT",
+            "ALTER TABLE analysis_results ADD COLUMN digest_path TEXT",
+            "ALTER TABLE analysis_results ADD COLUMN residual_entropy_ok INTEGER",
+            "ALTER TABLE analysis_results ADD COLUMN site_id TEXT",
+        ] {
+            let _ = conn.execute(ddl, []);
+        }
+        conn.execute(
+            "INSERT INTO analysis_results(session_id, rev, result_json, created_ms,
+                bot_verdict, product_version)
+             VALUES(?1,?2,?3,?4,?5,?6)",
+            params![session_id, next, s, ts, bot_verdict, product_version],
+        )?;
+        let arms = conn.execute(
+            "DELETE FROM analyze_jobs WHERE session_id=?1",
+            params![session_id],
+        )?;
+        Ok(json!({
+            "ok": true, "session_id": session_id, "rev": next,
+            "skipped": false, "arms_deleted": arms, "source": source,
+        }))
+    }
+    /// 洪水根因修复: 陈臂收割 (robots + 已分析陈账, sqlite 谓词同 PG)。
+    fn harvest_stale_arms(&self, idle_ms: i64) -> Result<i64, StoreError> {
+        let conn = self.conn.lock().map_err(|e| StoreError::Msg(e.to_string()))?;
+        let cut = now_ms() - idle_ms.max(60_000);
+        let n = conn.execute(
+            "DELETE FROM analyze_jobs
+             WHERE status='pending'
+               AND (
+                 EXISTS (
+                   SELECT 1 FROM sessions s
+                   WHERE s.session_id = analyze_jobs.session_id
+                     AND s.meta_json LIKE '%\"visitor_facet\":\"robots\"%'
+                 )
+                 OR (
+                   updated_ms < ?1
+                   AND EXISTS (
+                     SELECT 1 FROM analysis_results a
+                     WHERE a.session_id = analyze_jobs.session_id
+                   )
+                 )
                )",
             params![cut],
         )?;
@@ -7338,4 +7530,150 @@ mod tests {
         ));
     }
 
+}
+
+/// 1.0.10 洪水根因修复测试: 集批挂臂去重 / 爬虫早判结果 / 陈臂收割 /
+/// runtime_cfg 新旋钮 (速率限制 + 洪水加固) 的 patch-clamp-json 往返。
+#[cfg(test)]
+mod flood_fix_tests {
+    use super::*;
+
+    fn tmp_store() -> (Store, std::path::PathBuf) {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let db = std::env::temp_dir().join(format!("gr_flood_{}.sqlite", n));
+        let _ = std::fs::remove_file(&db);
+        let store = Store::open(&db).unwrap();
+        (store, db)
+    }
+
+    #[test]
+    fn arm_if_no_result_dedupes_and_skips_analyzed() {
+        let (store, db) = tmp_store();
+        store
+            .open_session(Some("s_arm1".into()), Some("vt_a".into()), Some(json!({})))
+            .unwrap();
+        store
+            .open_session(Some("s_arm2".into()), Some("vt_b".into()), Some(json!({})))
+            .unwrap();
+        // Neither has a result: both arm.
+        let n = store
+            .arm_analyze_if_no_result(&["s_arm1".into(), "s_arm2".into()])
+            .unwrap();
+        assert_eq!(n, 2);
+        // Give s_arm1 a result; repeat the same batch → only s_arm2 can arm again.
+        store
+            .save_analysis("s_arm1", &json!({"verdict": "x", "bot": {"verdict": "human"}}))
+            .unwrap();
+        let n2 = store
+            .arm_analyze_if_no_result(&["s_arm1".into(), "s_arm2".into()])
+            .unwrap();
+        assert_eq!(n2, 1, "analyzed session must not re-arm from the sweep");
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn early_class_result_idempotent_and_clears_arms() {
+        let (store, db) = tmp_store();
+        store
+            .open_session(
+                Some("s_robot1".into()),
+                Some("vt_r".into()),
+                Some(json!({"visitor_facet": "robots", "robot_name": "Googlebot"})),
+            )
+            .unwrap();
+        // A pending arm exists (e.g. legacy pre-upgrade path armed it).
+        store
+            .schedule_analyze_merge("s_robot1", 0, AnalyzeDueMerge::Replace)
+            .unwrap();
+        let out = store
+            .save_early_class_result("s_robot1", Some("Googlebot"), "gateway_early", "1.0.10")
+            .unwrap();
+        assert_eq!(out["skipped"], json!(false));
+        assert_eq!(out["arms_deleted"], json!(1), "pending arm cleared: {out}");
+        // Second write is a no-op (result exists).
+        let out2 = store
+            .save_early_class_result("s_robot1", Some("Googlebot"), "gateway_early", "1.0.10")
+            .unwrap();
+        assert_eq!(out2["skipped"], json!(true));
+        // The stored verdict is readable through the normal latest path.
+        let latest = store.latest_analysis("s_robot1").unwrap().unwrap();
+        assert_eq!(latest["bot"]["verdict"], json!("robot"));
+        assert_eq!(latest["visitor_facet"], json!("robots"));
+        // And the sweep will never arm it again.
+        let n = store.arm_analyze_if_no_result(&["s_robot1".into()]).unwrap();
+        assert_eq!(n, 0);
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn harvest_removes_robot_arms_keeps_fresh_browser_arms() {
+        let (store, db) = tmp_store();
+        store
+            .open_session(
+                Some("s_hrobot".into()),
+                Some("vt_hr".into()),
+                Some(json!({"visitor_facet": "robots"})),
+            )
+            .unwrap();
+        store
+            .open_session(Some("s_hbrowser".into()), Some("vt_hb".into()), Some(json!({})))
+            .unwrap();
+        store
+            .schedule_analyze_merge("s_hrobot", 0, AnalyzeDueMerge::Replace)
+            .unwrap();
+        store
+            .schedule_analyze_merge("s_hbrowser", 0, AnalyzeDueMerge::Replace)
+            .unwrap();
+        let deleted = store.harvest_stale_arms(24 * 60 * 60 * 1000).unwrap();
+        assert_eq!(deleted, 1, "only the robots arm is harvested");
+        // Robot arm gone, browser arm still pending.
+        let pending = store.analyze_queue_stats().unwrap();
+        let n_pending = pending
+            .get("pending")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(-1);
+        assert_eq!(n_pending, 1, "fresh no-result browser arm survives: {pending}");
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn runtime_cfg_flood_knobs_patch_clamp_roundtrip() {
+        let mut c = RuntimeCfg::default();
+        // Defaults: fast lane on, cap 8192, sweep 15s/256, flood batch 16.
+        assert!(c.robot_fastlane_enabled);
+        assert_eq!(c.hot_max_vts, 8192);
+        assert_eq!(c.arm_sweep_interval_ms, 15_000);
+        assert_eq!(c.arm_sweep_cap, 256);
+        assert_eq!(c.analyze_claim_batch_flood, 16);
+        // Panel patch overrides; clamp_global enforces bounds.
+        let patch = json!({
+            "rate_limit_open_per_min": 30,
+            "rate_limit_ingest_per_min": 150,
+            "robot_fastlane_enabled": false,
+            "hot_max_vts": 4096,
+            "arm_sweep_interval_ms": 500,
+            "arm_sweep_cap": 99,
+            "analyze_claim_batch_flood": 64
+        });
+        c = parse_global_patch(&c, &patch);
+        assert_eq!(c.rate_limit_open_per_min, 30);
+        assert_eq!(c.rate_limit_ingest_per_min, 150);
+        assert!(!c.robot_fastlane_enabled);
+        assert_eq!(c.hot_max_vts, 4096);
+        assert_eq!(c.arm_sweep_interval_ms, 1_000, "clamped up to the 1s floor");
+        assert_eq!(c.arm_sweep_cap, 99);
+        assert_eq!(c.analyze_claim_batch_flood, 32, "clamped down to the 32 cap");
+        // JSON roundtrip keeps the knobs visible to the panel.
+        let j = global_to_json(&c);
+        assert_eq!(j["rate_limit_open_per_min"], json!(30));
+        assert_eq!(j["robot_fastlane_enabled"], json!(false));
+        assert_eq!(j["hot_max_vts"], json!(4096));
+        assert_eq!(j["analyze_claim_batch_flood"], json!(32));
+        let help = field_help_json();
+        assert!(help.get("robot_fastlane_enabled").is_some());
+        assert!(help.get("rate_limit_open_per_min").is_some());
+    }
 }

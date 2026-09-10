@@ -59,6 +59,21 @@ pub fn cold_ttl_ms() -> i64 {
 /// Default cold TTL: 7 days.
 pub const DEFAULT_COLD_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
+/// L1 hot map VT cap (flood bound). 0 = unbounded. Runtime cfg (panel hot)
+/// seeds from `GR_HOT_MAX_VTS`. Eviction picks the most-idle entries — L2/L3
+/// are already durable and per-batch ingest arms exist, so silent L1 drop is
+/// safe (the pre-cold sweep arm only tops up result-less sessions).
+pub fn hot_max_vts() -> i64 {
+    let rt = crate::runtime_cfg::get_runtime_cfg().hot_max_vts;
+    if crate::runtime_cfg::config_version() > 0 && rt >= 0 {
+        return rt;
+    }
+    gr_abi::env::get("HOT_MAX_VTS")
+        .and_then(|s| s.trim().parse::<i64>().ok())
+        .filter(|&n| n >= 0)
+        .unwrap_or(8192)
+}
+
 /// How far back promote-from-cold looks for a VT (default = hot idle × 48 ≈ 24h).
 pub fn cold_promote_window_ms() -> i64 {
     let rt = crate::runtime_cfg::get_runtime_cfg().cold_promote_window_ms;
@@ -195,6 +210,32 @@ impl HotProbeCache {
         // Store compact: prefer fields object for hot queries
         let compact = compact_probe_payload(payload);
         entry.batches.insert(batch_id.to_string(), compact);
+        // Flood bound: cap distinct VTs in L1, evicting the most-idle first.
+        // Eviction is silent — every batch ingest already armed its session and
+        // L2/L3 hold the durable copies (no data loss, only cache pressure off).
+        let cap = hot_max_vts() as usize;
+        if cap > 0 && by_vt.len() > cap {
+            let mut idle: Vec<(String, i64)> = by_vt
+                .iter()
+                .map(|(k, e)| (k.clone(), e.last_update_ms))
+                .collect();
+            idle.sort_by_key(|(_, t)| *t); // oldest activity first
+            let over = by_vt.len() - cap;
+            let mut victims: Vec<String> = Vec::with_capacity(over.min(64).max(0));
+            for (k, _) in idle.into_iter().take(over.min(64)) {
+                victims.push(k);
+            }
+            let mut by_s = self.by_session.lock().unwrap();
+            for k in victims {
+                if k == visitor_terminal_id {
+                    continue; // never evict the entry we just touched
+                }
+                if let Some(e) = by_vt.remove(&k) {
+                    by_s.remove(&e.session_id);
+                }
+            }
+            drop(by_s);
+        }
         drop(by_vt);
         let mut by_s = self.by_session.lock().unwrap();
         by_s.insert(session_id.to_string(), visitor_terminal_id.to_string());
@@ -240,6 +281,24 @@ impl HotProbeCache {
             .collect();
         for k in stale {
             if let Some(e) = by_vt.remove(&k) {
+                by_s.remove(&e.session_id);
+                out.push(e);
+            }
+        }
+        out
+    }
+
+    /// Demote exactly the given VT keys (caller pre-selected them via
+    /// `list_idle`). Used by the capped sweep: when a flood leaves more idle
+    /// entries than the arm budget allows, only the armed subset demotes —
+    /// the rest stays in L1 for the next sweep instead of being dropped
+    /// un-armed.
+    pub fn demote_vts(&self, vtids: &[String]) -> Vec<HotProbeEntry> {
+        let mut by_vt = self.by_vt.lock().unwrap();
+        let mut by_s = self.by_session.lock().unwrap();
+        let mut out = Vec::new();
+        for k in vtids {
+            if let Some(e) = by_vt.remove(k) {
                 by_s.remove(&e.session_id);
                 out.push(e);
             }
@@ -613,5 +672,42 @@ mod tests {
             g.get_mut("vt_h").unwrap().last_update_ms = now_ms() - 120_000;
         }
         assert!(!cache.is_hot("vt_h", 60_000));
+    }
+
+    #[test]
+    fn hot_cap_evicts_most_idle_keeps_recent() {
+        // Cap via env seed (config_version()==0 in unit tests → env path).
+        std::env::set_var("GR_HOT_MAX_VTS", "3");
+        let cache = HotProbeCache::new();
+        // Distinct ages so the victim order is deterministic (equal-ms stamps
+        // would fall back to HashMap iteration order).
+        let ages_ms = [3_600_000, 2_400_000, 1_200_000];
+        for i in 0..4 {
+            cache.upsert_batch(
+                &format!("vt_cap{i}"),
+                &format!("c_cap{i}"),
+                "B0_bootstrap",
+                &json!({"fields": {"n": i}}),
+                None,
+            );
+            if i < 3 {
+                let mut g = cache.by_vt.lock().unwrap();
+                g.get_mut(&format!("vt_cap{i}"))
+                    .unwrap()
+                    .last_update_ms = now_ms() - ages_ms[i];
+            }
+        }
+        assert_eq!(cache.len_hot(), 3, "cap enforced");
+        assert!(
+            cache.get_by_vt("vt_cap0").is_none(),
+            "most-idle evicted first"
+        );
+        assert!(cache.get_by_vt("vt_cap2").is_some(), "less-idle survives");
+        assert!(cache.get_by_vt("vt_cap3").is_some(), "just-touched survives");
+        assert!(
+            cache.get_by_session("c_cap0").is_none(),
+            "session index dropped with evicted entry"
+        );
+        std::env::remove_var("GR_HOT_MAX_VTS");
     }
 }

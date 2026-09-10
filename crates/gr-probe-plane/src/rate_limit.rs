@@ -39,6 +39,8 @@ fn now_window() -> i64 {
 }
 
 fn limit_for(route: &str) -> u64 {
+    // Panel hot config wins once published (config_version > 0); before any
+    // publish the env/builtin seed keeps the legacy env-only behavior.
     let env_key = match route {
         "open" => "RATE_LIMIT_OPEN_PER_MIN",
         "ingest" => "RATE_LIMIT_INGEST_PER_MIN",
@@ -48,6 +50,22 @@ fn limit_for(route: &str) -> u64 {
         "client_event" => "RATE_LIMIT_CLIENT_EVENT_PER_MIN",
         _ => "RATE_LIMIT_DEFAULT_PER_MIN",
     };
+    let nonneg = |v: i64| if v >= 0 { Some(v as u64) } else { None };
+    if gr_probe_store::config_version() > 0 {
+        let c = gr_probe_store::get_runtime_cfg();
+        let from_cfg = match route {
+            "open" => nonneg(c.rate_limit_open_per_min),
+            "ingest" => nonneg(c.rate_limit_ingest_per_min),
+            "analyze" => nonneg(c.rate_limit_analyze_per_min),
+            "complete" => nonneg(c.rate_limit_complete_per_min),
+            "result" => nonneg(c.rate_limit_result_per_min),
+            "client_event" => nonneg(c.rate_limit_client_event_per_min),
+            _ => None,
+        };
+        if let Some(v) = from_cfg {
+            return v;
+        }
+    }
     gr_abi::env::get(env_key)
         .and_then(|s| s.parse().ok())
         .unwrap_or(match route {
@@ -138,13 +156,43 @@ pub fn stats() -> Value {
     for r in ["open", "ingest", "analyze", "complete", "result"] {
         caps.insert(r.into(), json!(limit_for(r)));
     }
+    let cfg_version = gr_probe_store::config_version();
     json!({
         "enabled": enabled(),
         "force": gr_abi::env::get("RATE_LIMIT_FORCE").as_deref() == Some("1"),
         "shared_backend": "postgres_probe_rate_limit_windows",
         "caps_per_min": Value::Object(caps),
+        "caps_source": if cfg_version > 0 { "panel_runtime_cfg" } else { "env_or_builtin" },
+        "config_version": cfg_version,
         "checked": CHECKED.load(Ordering::Relaxed),
         "rejected": REJECTED.load(Ordering::Relaxed),
         "local_bucket_count": buckets().len(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gr_probe_store::{set_runtime_cfg, RuntimeCfg};
+
+    /// 1.0.10: once the panel publishes (config_version > 0) the runtime cfg
+    /// caps win over env/builtin; stats exposes the source.
+    #[test]
+    fn panel_caps_win_once_published() {
+        let mut c = RuntimeCfg::default();
+        c.version = 1;
+        c.rate_limit_open_per_min = 7;
+        c.rate_limit_ingest_per_min = 9;
+        set_runtime_cfg(c);
+        assert_eq!(limit_for("open"), 7);
+        assert_eq!(limit_for("ingest"), 9);
+        // Untouched routes keep their defaults through the panel cfg object.
+        assert!(limit_for("result") > 0);
+        let s = stats();
+        assert_eq!(s["caps_source"], serde_json::json!("panel_runtime_cfg"));
+        assert_eq!(s["caps_per_min"]["open"], serde_json::json!(7));
+        // Restore process state for other tests.
+        set_runtime_cfg(RuntimeCfg::default());
+        assert_eq!(gr_probe_store::config_version(), 0);
+    }
 }

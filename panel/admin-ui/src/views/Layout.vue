@@ -95,6 +95,7 @@ import {
   Timer,
   Cpu,
   Box,
+  Setting,
   Share,
   DataLine,
   Document,
@@ -127,6 +128,7 @@ const productNav = [
 ]
 const platformNav = [
   { path: '/workers', labelKey: 'nav.workers', icon: markRaw(Cpu), testId: 'nav-workers' },
+  { path: '/config', labelKey: 'nav.config', icon: markRaw(Setting), testId: 'nav-config' },
   { path: '/modules', labelKey: 'nav.modules', icon: markRaw(Box), testId: 'nav-modules' },
   { path: '/cluster', labelKey: 'nav.cluster', icon: markRaw(Share), testId: 'nav-cluster' },
   { path: '/loadbalance', labelKey: 'nav.loadbalance', icon: markRaw(Histogram), testId: 'nav-loadbalance' },
