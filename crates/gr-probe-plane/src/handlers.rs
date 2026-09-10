@@ -2253,6 +2253,30 @@ fn capture_cookie_fields_from_value(st: &AppState, site_id: &str, raw: &Value) -
     capture_allowlisted_cookies(&allow, &pairs)
 }
 
+/// UA to classify at open. The transport header is authoritative for
+/// UA-declared crawlers: a scraper reaching open with an empty or
+/// claimed-browser meta but a crawler header ("curl/…") must still land on
+/// the robots fast lane — ingest/gateway/pixel already read the header.
+/// Otherwise trust the FE-collected meta claim (real browsers send both,
+/// and they agree).
+fn resolve_open_ua(meta: &Value, headers: &HashMap<String, String>) -> String {
+    let ua_meta = meta
+        .get("user_agent")
+        .or_else(|| meta.get("ua"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let ua_hdr = headers
+        .get("user-agent")
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    if crate::admin::facet::extract_robot_name(ua_hdr).is_some() {
+        ua_hdr
+    } else {
+        ua_meta
+    }
+    .to_string()
+}
+
 fn capture_cookie_fields_from_header(
     st: &AppState,
     site_id: &str,
@@ -2398,12 +2422,7 @@ pub fn open_session(
         .and_then(|v| v.as_str())
         == Some("js")
         || meta.get("source").and_then(|v| v.as_str()) == Some("backend_sdk");
-    let ua_open = meta
-        .get("user_agent")
-        .or_else(|| meta.get("ua"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let ua_open = resolve_open_ua(&meta, headers);
     meta = crate::admin::facet::merge_visit_class(
         Some(meta),
         &crate::admin::facet::ClassInputs {
@@ -10616,6 +10635,56 @@ mod ip_provider_tests {
             .to_ascii_lowercase()
             .contains("x-test-auth: fixture-auth-value"));
         std::env::remove_var("GR_ALLOW_LAB_INTEGRATION_HTTP");
+    }
+}
+
+#[cfg(test)]
+mod open_ua_tests {
+    use super::resolve_open_ua;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    fn hdr(ua: &str) -> HashMap<String, String> {
+        let mut m = HashMap::new();
+        m.insert("user-agent".to_string(), ua.to_string());
+        m
+    }
+
+    #[test]
+    fn browser_meta_unchanged() {
+        // Real FE: meta carries the collected UA; header agrees.
+        let meta = json!({"user_agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36"});
+        let ua = resolve_open_ua(&meta, &hdr("Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36"));
+        assert!(ua.contains("Chrome/120"));
+    }
+
+    #[test]
+    fn crawler_header_wins_over_browser_meta_claim() {
+        // Scraper claiming a browser in meta while the transport says curl.
+        let meta = json!({"user_agent": "Mozilla/5.0 (Windows NT 10.0) Chrome/120"});
+        let ua = resolve_open_ua(&meta, &hdr("curl/8.5.0"));
+        assert_eq!(ua, "curl/8.5.0");
+    }
+
+    #[test]
+    fn empty_meta_falls_back_to_header() {
+        // Scraper hitting open directly: no meta UA at all, curl header.
+        let ua = resolve_open_ua(&json!({"fe": "e2e"}), &hdr("curl/8.5.0"));
+        assert_eq!(ua, "curl/8.5.0");
+    }
+
+    #[test]
+    fn empty_meta_and_empty_header_stay_browser() {
+        let ua = resolve_open_ua(&json!({}), &HashMap::new());
+        assert_eq!(ua, "");
+    }
+
+    #[test]
+    fn crawler_meta_still_classified_when_header_silent() {
+        // Headless automation with FE running and a robot UA in meta only.
+        let meta = json!({"user_agent": "Googlebot/2.1 (+http://www.google.com/bot.html)"});
+        let ua = resolve_open_ua(&meta, &HashMap::new());
+        assert!(ua.contains("Googlebot"));
     }
 }
 

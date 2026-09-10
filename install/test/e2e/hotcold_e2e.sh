@@ -31,9 +31,13 @@ psql_biz() { # psql_biz <sql> — 业务库 (sessions/probe_batches/probe_cold)
 
 VT="hotcold_$(date +%s)"
 SID=""
-open_session() { # open_session <vt> → sid
-  local vt="$1"
-  curl -s -m 8 -X POST "$PROBE_BASE/v1/session/open" -H 'content-type: application/json' \
+# 浏览器 UA: 本件测的是「正常访客」的冷热分层全链路。curl 默认 UA
+# ("curl/…") 命中 robots 快道 (1.0.10+: 不落 L3/不挂臂, 早判即终判),
+# 分层断言会全部失真 — 浏览器线路显式声明; 爬虫快道在 1b 节专项覆盖。
+BROWSER_UA='user-agent: Mozilla/5.0 (X11; Linux x86_64) Chrome/120 Safari/537.36'
+open_session() { # open_session <vt> [ua_header] → sid
+  local vt="$1" ua="${2:-$BROWSER_UA}"
+  curl -s -m 8 -X POST "$PROBE_BASE/v1/session/open" -H 'content-type: application/json' -H "$ua" \
     -d "{\"site_id\":\"e2e_hotcold\",\"visitor_terminal_id\":\"$vt\",\"meta\":{\"fe\":\"e2e\"}}" \
     | python3 -c '
 import json,sys
@@ -47,8 +51,9 @@ def f(o):
     return ""
 print(f(d))'
 }
-ingest() { # ingest <sid> <bid>
-  curl -s -m 8 -X POST "$PROBE_BASE/v1/ingest" -H 'content-type: application/json' \
+ingest() { # ingest <sid> <bid> [ua_header]
+  local ua="${3:-$BROWSER_UA}"
+  curl -s -m 8 -X POST "$PROBE_BASE/v1/ingest" -H 'content-type: application/json' -H "$ua" \
     -d "{\"session_id\":\"$1\",\"batch_id\":\"$2\",\"source\":\"main\",\"payload\":{\"fields\":{\"os_family\":\"windows\",\"form_class\":\"desktop\",\"timezone\":\"Asia/Shanghai\",\"hardware_concurrency\":8}}}"
 }
 poll_result() { # poll_result <sid> → ok?
@@ -73,6 +78,18 @@ N_L2=$(psql_biz "select count(*) from probe_batches where session_id='$SID'")
 N_L3=$(psql_biz "select count(*) from probe_cold where session_id='$SID'")
 [[ "$N_L2" -ge 2 ]] && ok "L2 probe_batches 双行在 ($N_L2)" || bad "L2 行数 $N_L2"
 [[ "$N_L3" -ge 2 ]] && ok "L3 probe_cold 双写 ($N_L3, ingest 即落冷)" || bad "L3 行数 $N_L3"
+
+# --- 1b. 爬虫快道 (curl 默认 UA = robots facet) ---
+# 1.0.10+: UA 自明爬虫不落 L3/不挂分析臂 — 早判结果即终判, L2 证据照留。
+RSID="$(open_session "${VT}_robot" 'user-agent: curl/8.5.0')"
+[[ -n "$RSID" ]] && ok "爬虫 UA open" || bad "爬虫 UA open 失败"
+ingest "$RSID" lab.hotcold.B0 'user-agent: curl/8.5.0' | grep -q '"accepted" *: *true' \
+  && ok "爬虫 UA ingest accepted (L2 照留)" || bad "爬虫 UA ingest 失败"
+RL2=$(psql_biz "select count(*) from probe_batches where session_id='$RSID'")
+RL3=$(psql_biz "select count(*) from probe_cold where session_id='$RSID'")
+[[ "$RL2" -ge 1 ]] && ok "爬虫快道 L2 证据在 ($RL2)" || bad "爬虫快道 L2 行数 $RL2"
+[[ "$RL3" == "0" ]] && ok "爬虫快道 L3 零落 (不冷存等补充探测)" || bad "爬虫快道 L3 应为 0, 实为 $RL3"
+poll_result "$RSID" && ok "爬虫快道早判结果可取" || bad "爬虫快道结果缺失"
 
 # --- 2. idle 逐出 + 同 VT 再上传 (促升 L3→L1 路径) ---
 echo "[hotcold] sleep 7s (L1 idle 4s 逐出)…"
