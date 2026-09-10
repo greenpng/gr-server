@@ -82,10 +82,15 @@ health3() {
 # 尺寸约束 (runner 时限): runtime 副本 strip (debug 未 strip ~300MB → ~40MB);
 # admin 收敛为单文件 (面板 OTA 流不消费 admin_tree, 交给 install.sh/gate-b);
 # spec 省略 (签名体条件字段, 消费方是 updater 而非面板流)。
+# 1.0.10 补齐 (原 1.0.9 推迟项): 真模块件 — 每轮以当轮版本 sign-module 域签名
+# (fixture manifest 无 release 绑定 → 验签链 = 根钥 sig-only), full-upgrade 的
+# stage→verify→activate 模块热装链从此有行为面覆盖 (此前 modules:[] 为空转)。
+# cli 条目不加: 面板流不消费 cli (归 install.sh / updater → install-smoke 与
+# gate-b 的实包清单覆盖)。
 build_release() {
   # build_release <ver> <marker>
   local ver="$1" marker="$2" top="greenpng-$1-$arch" rd="$FIX_ROOT/v$1"
-  rm -rf "$rd"; mkdir -p "$rd/$top/bin" "$rd/$top/admin"
+  rm -rf "$rd"; mkdir -p "$rd/$top/bin" "$rd/$top/modules" "$rd/$top/admin"
   cp -f "$SRV_BIN" "$rd/$top/bin/gr-service"
   strip "$rd/$top/bin/gr-service" 2>/dev/null || true
   cp -a "$E2E_DIR/fe" "$rd/$top/fe"
@@ -100,12 +105,24 @@ d["e2e_marker"] = marker
 json.dump(d, open(dst, "w"), sort_keys=True)
 PY
   cp -f "$GEO_SRC/dbip-asn-lite.mmdb" "$GEO_SRC/dbip-country-lite.mmdb" "$rd/$top/data/geo/"
+  # 模块件: 与 build_multiarch 同名约定 modules/libgr_<name>-<ver>-<triple>.so
+  local mods_json="[]" pair name so asset art
+  for pair in identity brain analyze ingest edge probe_assets; do
+    name="$pair"
+    so="$(dirname "$SRV_BIN")/libgr_module_${name}.so"
+    [[ -f "$so" ]] || { echo "ota_stability: module .so missing: $name ($so) — build with --features plugin" >&2; exit 2; }
+    asset="modules/libgr_${name}-${ver}-${TRIPLE}.so"
+    cp -f "$so" "$rd/$top/$asset"
+    art="$("$CLI_BIN" sign-module --name "$name" --version "$ver" --so "$rd/$top/$asset" \
+      --secret-key "$E2E_DIR/keys/ota_ed25519.sk" --domain "$name")"
+    mods_json="$(python3 -c 'import json,sys;print(json.dumps(json.loads(sys.argv[1])+[json.loads(sys.argv[2])]))' "$mods_json" "$art")"
+  done
   # 顺序铁律: fe tgz → manifest(fe sha) → 签名 → 断言 → bundle tar(含 manifest)
   # → index(bundle sha)。tar 必须在 manifest 写入之后, 否则包内无 manifest。
   tar -czf "$rd/fe-$ver.tgz" -C "$rd/$top" fe
-  python3 - "$rd" "$top" "$ver" "$TRIPLE" "$arch" <<'PY'
+  python3 - "$rd" "$top" "$ver" "$TRIPLE" "$arch" "$mods_json" <<'PY'
 import hashlib, json, pathlib, sys
-rd, top, ver, triple, arch = sys.argv[1:6]
+rd, top, ver, triple, arch, mods_raw = sys.argv[1:7]
 rd, bd = pathlib.Path(rd), pathlib.Path(rd) / top
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def tree_files(root):
@@ -118,7 +135,7 @@ man = {
     "fe_tree": {"epoch": ver, "files": tree_files(bd / "fe")},
     "admin_tree": {"files": tree_files(bd / "admin")},
     "data_tree": {"files": tree_files(bd / "data")},
-    "modules": [],
+    "modules": json.loads(mods_raw),
 }
 json.dump(man, open(bd / "manifest.json", "w"), indent=2)
 PY
@@ -172,6 +189,19 @@ D_A=$(sha_of "$FIX_ROOT/v1.0.81/greenpng-1.0.81-$arch/data/r100_templates.json")
 D_B=$(sha_of "$FIX_ROOT/v1.0.82/greenpng-1.0.82-$arch/data/r100_templates.json")
 D_C=$(sha_of "$FIX_ROOT/v1.0.83/greenpng-1.0.83-$arch/data/r100_templates.json")
 GEO_A=$(sha_of "$FIX_ROOT/v1.0.81/greenpng-1.0.81-$arch/data/geo/dbip-country-lite.mmdb")
+# 模块: 三套 fixture 的 .so 字节相同 (同一 debug 构建), 版本差异仅在文件名/
+# manifest 条目; stage 落点 = $MODULES/versions/<name>/<ver>/libgr_<name>-…so
+MOD_SRC="$(dirname "$SRV_BIN")/libgr_module_analyze.so"
+MOD_SHA=$(sha_of "$MOD_SRC")
+mod_path() { echo "$E2E_DIR/modules/versions/$1/$2/libgr_$1-$2-$TRIPLE.so"; }
+mod_staged() { # mod_staged <ver> → 1 当六模块全 stage
+  local n
+  for n in identity brain analyze ingest edge probe_assets; do
+    [[ -f "$(mod_path "$n" "$1")" ]] || return 0
+  done
+  echo 1
+}
+mod_tmp_left() { find "$E2E_DIR/modules/versions" -name '*.tmp.*' 2>/dev/null | wc -l; }
 
 # ---------- C1. install-runtime A (单发, restart=false) ----------
 echo "== C1 install-runtime rel-1.0.81 =="
@@ -193,6 +223,8 @@ check "C1j VERSION" "1.0.81" "$(cat "$E2E_DIR/install/VERSION")"
 check "C1k install data overlay (r100)" "$D_A" "$(sha_of "$E2E_DIR/install/data/r100_templates.json")"
 check "C1l install data overlay (geo)" "$GEO_A" "$(sha_of "$E2E_DIR/install/data/geo/dbip-country-lite.mmdb")"
 [[ ! -f "$E2E_DIR/fe/e2e-marker.txt" ]] && ok "C1m install-runtime 不动 FE" || bad "C1m FE 被误动"
+[[ ! -d "$E2E_DIR/modules/versions" ]] \
+  && ok "C1o install-runtime 不动模块 (versions 未建)" || bad "C1o 模块被误动: $(ls "$E2E_DIR/modules/versions" 2>/dev/null | tr '\n' ' ')"
 health3 && ok "C1n 服务健康 (三面 200)" || bad "C1n 服务不健康"
 
 # ---------- C2. full-upgrade B (模块+FE+runtime 一体) ----------
@@ -206,7 +238,12 @@ check "C2c 主二进制 sha" "$BIN_B" "$(sha_of "$E2E_DIR/install/bin/gr-service
 check "C2d fe/VERSION" "1.0.82" "$(cat "$E2E_DIR/fe/VERSION")"
 check "C2e fe marker 落地" "rel-B" "$(cat "$E2E_DIR/fe/e2e-marker.txt" 2>/dev/null || echo missing)"
 check "C2f install data overlay (r100)" "$D_B" "$(sha_of "$E2E_DIR/install/data/r100_templates.json")"
-health3 && ok "C2g 服务健康" || bad "C2g 服务不健康"
+check "C2g 模块 stage sha (analyze@B)" "$MOD_SHA" "$(sha_of "$(mod_path analyze 1.0.82)")"
+check "C2h 六模块全 stage (@B)" "1" "$(mod_staged 1.0.82)"
+grep -q "versions/analyze/1.0.82" "$E2E_DIR/modules/active/analyze" 2>/dev/null \
+  && ok "C2i 模块激活标记 (active/analyze→1.0.82)" || bad "C2i active 标记: $(cat "$E2E_DIR/modules/active/analyze" 2>/dev/null || echo none)"
+check "C2j 无模块 stage 残留 tmp" "0" "$(mod_tmp_left)"
+health3 && ok "C2k 服务健康" || bad "C2k 服务不健康"
 
 # ---------- C3. 并发风暴 C (坑 1/2 的回归: 同进程并发 fetch+swap) ----------
 echo "== C3 并发风暴 rel-1.0.83: 3×install-runtime + 2×full-upgrade =="
@@ -241,7 +278,10 @@ leftover_extract=$(find "$E2E_DIR/data/ota_staging/bundle" -maxdepth 1 -name '*.
 check "C3f 无残留解包 stage" "0" "$leftover_extract"
 leftover_swap=$(find "$E2E_DIR/install/bin" -maxdepth 1 -name '.gr-service.new.*' 2>/dev/null | wc -l)
 check "C3g 无残留换二进制暂存" "0" "$leftover_swap"
-health3 && ok "C3h 风暴后服务健康" || bad "C3h 风暴后服务不健康"
+check "C3h 风暴后模块= C 版 (analyze sha)" "$MOD_SHA" "$(sha_of "$(mod_path analyze 1.0.83)")"
+check "C3i 风暴后六模块全 stage (@C)" "1" "$(mod_staged 1.0.83)"
+check "C3j 风暴后无模块 tmp 残留" "0" "$(mod_tmp_left)"
+health3 && ok "C3k 风暴后服务健康" || bad "C3k 风暴后服务不健康"
 
 # ---------- C4. 幂等重装 C ----------
 echo "== C4 幂等重装 rel-1.0.83 =="
@@ -251,7 +291,9 @@ check "C4b data 未变 (幂等)" "$D_C" "$(sha_of "$E2E_DIR/install/data/r100_te
 check "C4c 二进制未损" "$BIN_C" "$(sha_of "$E2E_DIR/install/bin/gr-service")"
 leftover_extract=$(find "$E2E_DIR/data/ota_staging/bundle" -maxdepth 1 -name '*.extract-*' 2>/dev/null | wc -l)
 check "C4d 无残留解包 stage" "0" "$leftover_extract"
-health3 && ok "C4e 服务健康" || bad "C4e 服务不健康"
+check "C4e 幂等重装不动模块 (analyze sha)" "$MOD_SHA" "$(sha_of "$(mod_path analyze 1.0.83)")"
+check "C4f 幂等重装无模块 tmp" "0" "$(mod_tmp_left)"
+health3 && ok "C4g 服务健康" || bad "C4g 服务不健康"
 
 # ---------- C5. 进程重启 → boot data 自举 (旧二进制升级场景收口) ----------
 echo "== C5 重启新二进制 → boot data 自举 =="
@@ -276,6 +318,9 @@ check "C5d data_dir 自举 (r100, boot 通道)" "$D_C" "$(sha_of "$E2E_DIR/data/
 check "C5e data_dir 自举 (geo)" "$GEO_A" "$(sha_of "$E2E_DIR/data/geo/dbip-country-lite.mmdb")"
 curl -s -o /dev/null -m 5 -w '%{http_code}' "$PROBE_BASE/v1/r100/pack/R00_spotcheck.js" | grep -q 200 \
   && ok "C5f r100 端点活" || bad "C5f r100 端点非 200"
+grep -q "versions/analyze/1.0.83" "$E2E_DIR/modules/active/analyze" 2>/dev/null \
+  && ok "C5g 重启后模块激活标记保留 (analyze→1.0.83)" || bad "C5g active 标记丢失"
+check "C5h 重启后模块 stage 完好 (analyze sha)" "$MOD_SHA" "$(sha_of "$(mod_path analyze 1.0.83)")"
 # 重启后重登 (会话可能随进程换代)
 curl -s -m 10 -c "$E2E_DIR/panel.cookies" -X POST "$CON/api/login" \
   -H 'content-type: application/json' \
@@ -291,7 +336,12 @@ check "C6b 降级 ok" "True" "$(echo "$R6" | jq_get ok)"
 check "C6c VERSION 回退" "1.0.81" "$(cat "$E2E_DIR/install/VERSION")"
 check "C6d 二进制回退" "$BIN_A" "$(sha_of "$E2E_DIR/install/bin/gr-service")"
 check "C6e data 随版本回退" "$D_A" "$(sha_of "$E2E_DIR/install/data/r100_templates.json")"
-health3 && ok "C6f 服务健康" || bad "C6f 服务不健康"
+# install-runtime 不动模块: runtime 回 1.0.81 而模块留 1.0.83 — 混跑容忍
+# (模块 requires_major=1 与 runtime major 一致即可加载)。
+check "C6f 降级后模块留 C 版 (混跑容忍)" "$MOD_SHA" "$(sha_of "$(mod_path analyze 1.0.83)")"
+grep -q "versions/analyze/1.0.83" "$E2E_DIR/modules/active/analyze" 2>/dev/null \
+  && ok "C6g 降级后激活标记不变" || bad "C6g active 标记被误改"
+health3 && ok "C6h 服务健康" || bad "C6h 服务不健康"
 
 kill "$FIX_PID" 2>/dev/null || true
 echo "OTA-STABILITY pass=$pass fail=$fail"
