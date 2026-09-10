@@ -43,8 +43,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: "1.88.0"
-      - name: cargo build (debug, gr-service + gr-cli)
-        run: cargo build -p gr-service -p gr-cli
+      - name: cargo build (debug, gr-service + gr-cli + plugin modules)
+        run: |
+          cargo build -p gr-service -p gr-cli
+          # ota_stability fixture 的真模块件 (1.0.10 补齐): 与 build_multiarch
+          # 同款 -p <module> --features plugin。strip 控工件体积 (debug 未 strip)。
+          for p in gr-module-identity gr-module-brain gr-module-analyze gr-module-ingest gr-module-edge gr-module-probe-assets; do
+            cargo build -p "$p" --features plugin
+          done
+          strip target/debug/libgr_module_*.so
       - name: upload binaries
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
@@ -52,6 +59,7 @@ jobs:
           path: |
             target/debug/gr-service
             target/debug/gr-cli
+            target/debug/libgr_module_*.so
           if-no-files-found: error
 
   panel:
