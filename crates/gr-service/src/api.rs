@@ -4142,4 +4142,48 @@ mod cookie_secure_tests {
         let tls = session_cookie_header(SESSION_COOKIE, "c-abc", "tok", false, true);
         assert!(tls.contains("Secure"));
     }
+
+    #[test]
+    fn prod_boot_defaults_do_not_force_cookie_secure() {
+        // v1.0.12 regression lock (178 incident 2026-09-10/11): the boot-time
+        // prod fill of GR_COOKIE_SECURE=1 in main.rs::map_env_aliases defeated
+        // the per-request resolver — every prod session cookie was Secure, so
+        // plain-HTTP panel origins looped login 200 → /api/me 401 while lab
+        // (DEPLOY_ENV=lab) stayed green. The prod default block must leave the
+        // cookie var untouched; explicit env still wins.
+        let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let keys = [
+            "GR_DEPLOY_ENV",
+            "GR_COOKIE_SECURE",
+            "GR_DEV_INSECURE_COOKIE",
+            "GR_REQUIRE_MANIFEST_SIG",
+            "GR_REQUIRE_FE_SHA",
+            "GR_REQUIRE_RUNTIME_SHA",
+            "GR_ALLOW_LAB_CHALLENGE",
+            "GR_REQUIRE_SEALED_INGEST",
+            "GR_REQUIRE_RESULT_TOKEN",
+            "GR_CORS_ORIGINS",
+            "GR_ALLOW_OPEN_CORS",
+        ];
+        let saved: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|k| (k.to_string(), std::env::var(k).ok()))
+            .collect();
+        for k in keys {
+            std::env::remove_var(k);
+        }
+        std::env::set_var("GR_DEPLOY_ENV", "production");
+        std::env::set_var("GR_CORS_ORIGINS", "https://panel.example");
+        crate::map_env_aliases();
+        assert!(
+            std::env::var("GR_COOKIE_SECURE").is_err(),
+            "prod defaults must not fill GR_COOKIE_SECURE (per-request resolver owns the flag)"
+        );
+        for (k, v) in saved {
+            match v {
+                Some(val) => std::env::set_var(&k, val),
+                None => std::env::remove_var(&k),
+            }
+        }
+    }
 }

@@ -209,9 +209,18 @@ fn map_env_aliases() {
                 tracing::info!("prod default: CORS=admin (registered domains only; override with GR_CORS_ORIGINS)");
             }
         }
-        if gr_abi::env::get("COOKIE_SECURE").is_none() {
-            std::env::set_var("GR_COOKIE_SECURE", "1");
-        }
+        // 2026-09-11 (v1.0.12): the `GR_COOKIE_SECURE=1` prod default is REMOVED.
+        // It defeated the per-request resolver (`api.rs::request_secure_cookie`,
+        // landed 2026-09-08 d1d1718): on a prod-shaped env the boot-time fill
+        // made every session cookie `Secure`, so plain-HTTP panel origins
+        // (public IP entry) looped login 200 → /api/me 401 for two days while
+        // source + unit tests + lab (DEPLOY_ENV=lab) all looked green — the
+        // resolver only ran when the var was unset, which only happened
+        // outside prod. The resolver IS the secure default: https facade
+        // (x-forwarded-proto: https) keeps Secure, plain HTTP drops it (the
+        // console path is the access control; Secure on plaintext only makes
+        // browsers discard the cookie). Operators who want to force a side
+        // can still set GR_COOKIE_SECURE=1|0 explicitly — explicit env wins.
     } else {
         // Lab defaults
         if gr_abi::env::get("ALLOW_LAB_CHALLENGE").is_none() {
