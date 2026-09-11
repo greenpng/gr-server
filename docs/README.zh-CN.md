@@ -166,6 +166,16 @@ v1.0.14 策略：站点总量默认**关**（总量一刀切会把混在机器�
 一起掐掉）；遥测通道改为**按 IP** 限。429 响应体标明触发的层
 （`client_event:ip` / `client_event:site`）。
 
+**站点在 CDN 后面时**，按 IP 限的桶键是服务端实际看到的 IP——若前置
+代理不做真实 IP 还原，那就是 **CDN 边缘 IP**。服务端只信任来自受信
+代理对端（默认 loopback，`GR_TRUSTED_PROXIES` 可扩展）的
+`X-Real-IP`/`X-Forwarded-For`，绝不直接信任客户端自报头。nginx 前置时
+用 `realip` 模块还原访客 IP（网段取 CDN 公布列表，Cloudflare 用
+`CF-Connecting-IP` 头，其他 CDN 用 `True-Client-IP`），按 IP 限流与
+遥测归属即落在真实访客上。只有来自所列网段的连接才会采信该头——
+绕过 CDN 直连源站伪造头仍按其自身 IP 记账，防伪造。实测案例见根
+README §4.1（2026-09-11 生产验证）。
+
 **洪水加固**：`robot_fastlane_enabled`（开）、`hot_max_vts`（8192）、
 `arm_sweep_interval_ms`（15000）、`arm_sweep_cap`（256）、
 `analyze_claim_batch_flood`（16）。

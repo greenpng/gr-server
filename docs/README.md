@@ -182,6 +182,19 @@ real users mixed into bot floods); the telemetry route is bounded per-IP
 instead. 429 bodies name the tripped layer (`client_event:ip` /
 `client_event:site`).
 
+**Behind a CDN** the per-IP layer keys on the IP the server sees — without
+real-IP restoration at the fronting proxy that is a **CDN edge IP**. The
+server honors `X-Real-IP`/`X-Forwarded-For` only from a trusted proxy peer
+(loopback; `GR_TRUSTED_PROXIES` to extend) and never trusts client-supplied
+headers directly. With nginx in front, restore visitor IPs with the
+`realip` module (ranges from the CDN's published list, header
+`CF-Connecting-IP` for Cloudflare / `True-Client-IP` for others) so
+per-IP limiting and telemetry attribution key on visitors. Only
+connections from the listed ranges get the header honored — forged
+headers from direct-to-origin clients stay keyed by their own address.
+See the root README §4.1 for a worked example (production-verified
+2026-09-11).
+
 **Flood hardening**: `robot_fastlane_enabled` (on), `hot_max_vts` (8192),
 `arm_sweep_interval_ms` (15000), `arm_sweep_cap` (256),
 `analyze_claim_batch_flood` (16).
