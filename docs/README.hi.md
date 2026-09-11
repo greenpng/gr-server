@@ -113,8 +113,8 @@ Docker एक रनटाइम कंटेनर है, अपडेट च�
    के साथ जोड़ना चाहते हैं (`password`/`token` जैसे संवेदनशील नाम
    सर्वर-पक्ष में अवरुद्ध होते हैं)।
 2. **जाँच (probe) परिनियोजित करें** — तीन मोड:
-   - *Nginx फ़र्स्ट-पार्टी (अनुशंसित)*: `/gr.js` + `/gr/dist/v/` को pv
-     डोमेन पर और `/gr/v1/` को gv डोमेन पर प्रॉक्सी करें (Cookie पासथ्रू),
+   - *Nginx फ़र्स्ट-पार्टी (अनुशंसित)*: pv डोमेन पर `/gr.js` + `/gr/dist/v/` +
+     `/gr/v1/` को प्रोब प्लेन पर प्रॉक्सी करें (Cookie पासथ्रू),
      HTML में
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` इंजेक्ट करें।
@@ -139,3 +139,59 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # फिर परिणाम जाँचें (वास्तविक FE बैचों या सिम्युलेटेड बैचों के बाद):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. एडमिन पैनल पैरामीटर
+
+पैनल के **Config** पेज पर संपादित किए जाते हैं (सहेजें → प्रकाशित करें):
+प्रकाशित करने वाला नोड तुरंत लागू करता है; क्लस्टर नोड ≤30 सेकंड में,
+पुनरारंभ के बिना।
+
+**रेट सीमाएँ** (v1.0.14 नीति: साइट-कुलयोग डिफ़ॉल्ट रूप से बंद; टेलीमेट्री
+मार्ग इसके बजाय प्रति-एकल-IP सीमित; 429 उत्तर ट्रिप हुई परत का नाम बताते हैं):
+
+| पैरामीटर | डिफ़ॉल्ट | अर्थ |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = असीमित | सत्र-ओपन / साइट / मिनट |
+| `rate_limit_ingest_per_min` | 0 = असीमित | बैच-अपलोड / साइट / मिनट |
+| `rate_limit_analyze_per_min` | 0 = असीमित | सीधे विश्लेषण / साइट / मिनट |
+| `rate_limit_complete_per_min` | 0 = असीमित | complete-रसीदें / साइट / मिनट |
+| `rate_limit_result_per_min` | 0 = असीमित | परिणाम-पढ़ना / साइट / मिनट |
+| `rate_limit_client_event_per_min` | 0 = असीमित | FE टेलीमेट्री / साइट / मिनट (कुल) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | FE टेलीमेट्री **प्रति एकल IP** / मिनट — सीमा पार होने पर केवल वही IP प्रभावित; 0 = बंद |
+
+**CDN के पीछे** प्रति-IP परत उसी IP पर आधारित होती है जो सर्वर देखता है।
+प्रॉक्सी के CIDR को `/opt/greenpng/.env` में `GR_TRUSTED_PROXIES` में जोड़ें
+और सामने के प्रॉक्सी पर असली विज़िटर IP पुनर्स्थापित करें (nginx उदाहरण):
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**हॉट/कोल्ड टियरिंग** (वास्तविक नाम): `cold_ttl_ms` (604800000 = 7 दिन),
+`cold_promote_window_ms` (864000000 = 24 घंटे), `cold_purge_interval_ms`
+(300000 = 5 मिनट); प्रति-साइट प्रतिधारण पैनल के **Data Retention** पेज पर
+सेट होता है और सीमित बैचों में पर्ज होता है।
+
+## 5. लॉगिंग और मेमोरी
+
+- सेवा लॉग: `journalctl -u greenpng.service`; संचालन टेलीमेट्री
+  (`ops_client_events`) को `ops_retention_days` (14) दिन रखा जाता है।
+- **मेमोरी टिप (v1.0.14 से)**: लंबे समय तक चलने वाले मल्टी-कोर होस्ट पर
+  glibc प्रति कोर 8 तक arenas (~64 MB प्रत्येक) रख सकता है, जिससे
+  समवर्ती भार में RSS बढ़ सकता है। इसलिए इंस्टॉलर `/opt/greenpng/.env`
+  में `MALLOC_ARENA_MAX=4` डिफ़ॉल्ट रखता है; भार के अंतर्गत RSS स्थिर रहता है।
+
+## 6. ओपन-सोर्स प्रोजेक्ट और संदर्भ
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — एज गेटवे, TLS टर्मिनेशन, सील्ड इनजेस्ट (openssl फ़ीचर)।
+- [Tokio](https://github.com/tokio-rs/tokio) और [Axum](https://github.com/tokio-rs/axum) (MIT) — कंट्रोल प्लेन का एसिंक रनटाइम और REST फ़्रेमवर्क।
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — एज और एडमिन कंसोल का TLS बैकएंड।
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — रिलीज़ मैनिफ़ेस्ट, प्रोब एसेट और OTA के हस्ताक्षर।
+- [PostgreSQL](https://www.postgresql.org/) और [Redis](https://redis.io/) — L3 स्टोरेज और मल्टी-नोड स्थिति।
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — पेलोड संपीड़न (zstd केवल वेंडर्ड pingora में)।
+- [Element Plus](https://element-plus.org/) और [Vue 3](https://vuejs.org/) (MIT) — एडमिन कंसोल UI।
+- शोध संदर्भ: [CreepJS](https://github.com/abrahamjuliot/creepjs) (B1/B12 प्रेरणा), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [BotD](https://github.com/fingerprintjs/botd)।

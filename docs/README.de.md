@@ -113,8 +113,8 @@ Repository. Docker ist ein Laufzeit-Container, kein Update-Kanal.
    sollen (sensible Namen wie `password`/`token` werden serverseitig
    blockiert).
 2. **Sonde deployen** — drei Modi:
-   - *Nginx First-Party (empfohlen)*: `/gr.js` + `/gr/dist/v/` auf die
-     pv-Domain und `/gr/v1/` auf die gv-Domain proxen (Cookie-Durchleitung),
+   - *Nginx First-Party (empfohlen)*: auf der pv-Domain `/gr.js` +
+     `/gr/dist/v/` + `/gr/v1/` zur Probe-Ebene proxen (Cookie-Durchleitung),
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` in das HTML injizieren.
    - *Cloudflare-Worker*: dasselbe Tag injizieren und `/gr` im Origin proxen.
@@ -139,3 +139,61 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # danach das Ergebnis prüfen (nach echten FE-Batches oder simulierten):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. Admin-Panel-Parameter
+
+Auf der **Config**-Seite des Panels editiert (Speichern → Veröffentlichen):
+der veröffentlichende Knoten wendet sofort an; Cluster-Knoten binnen ≤30 s,
+ohne Neustart.
+
+**Rate-Limits** (v1.0.14-Standard: Site-Summen standardmäßig aus; die
+Telemetrie-Route ist stattdessen pro einzelner IP begrenzt; 429-Antworten
+nennen die ausgelöste Ebene):
+
+| Parameter | Standard | Bedeutung |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = unbegrenzt | Sitzungs-Opens / Site / min |
+| `rate_limit_ingest_per_min` | 0 = unbegrenzt | Batch-Uploads / Site / min |
+| `rate_limit_analyze_per_min` | 0 = unbegrenzt | direkte Analysen / Site / min |
+| `rate_limit_complete_per_min` | 0 = unbegrenzt | Complete-Quittungen / Site / min |
+| `rate_limit_result_per_min` | 0 = unbegrenzt | Result-Abfragen / Site / min |
+| `rate_limit_client_event_per_min` | 0 = unbegrenzt | FE-Telemetrie / Site / min (gesamt) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | FE-Telemetrie **pro einzelner IP** / min — Überschreitung deckelt nur diese IP; 0 = aus |
+
+**Hinter einem CDN** schlüsselt die Pro-IP-Ebene nach der IP, die der Server
+sieht. Tragen Sie die Proxy-CIDRs in `GR_TRUSTED_PROXIES` in
+`/opt/greenpng/.env` ein und stellen Sie die echte Besucher-IP am
+vorgelagerten Proxy wieder her (nginx-Beispiel):
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**Heiß-/Kalt-Tiering** (echte Knopfnamen): `cold_ttl_ms` (604800000 = 7 Tage),
+`cold_promote_window_ms` (864000000 = 24 h), `cold_purge_interval_ms`
+(300000 = 5 min); die Aufbewahrung je Site wird auf der Panel-Seite
+**Data Retention** gesetzt und in begrenzten Batches gelöscht.
+
+## 5. Logging & Speicher
+
+- Dienst-Logs: `journalctl -u greenpng.service`; operationelle Telemetrie
+  (`ops_client_events`) wird `ops_retention_days` (14) Tage aufbewahrt.
+- **Speicherhinweis (ab v1.0.14)**: auf langlebigen Mehrkern-Hosts kann
+  glibc bis zu 8 Arenen pro Kern (~64 MB je Arena) halten, sodass RSS unter
+  Nebenläufigkeit aufschaukeln kann. Der Installer setzt daher
+  `MALLOC_ARENA_MAX=4` in `/opt/greenpng/.env`; RSS bleibt unter Last stabil.
+
+## 6. Open-Source-Projekte & Referenzen
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — Edge-Gateway, TLS-Terminierung, versiegelter Ingest (openssl-Feature).
+- [Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum) (MIT) — Async-Runtime und REST-Framework der Kontrollebene.
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — TLS-Backend für Edge und Admin-Konsole.
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — Signaturen für Release-Manifeste, Sonde-Assets und OTA.
+- [PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/) — L3-Speicher und Multi-Node-Zustand.
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — Payload-Kompression (zstd liegt nur im vendorten Pingora).
+- [Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/) (MIT) — UI der Admin-Konsole.
+- Forschungsreferenzen: [CreepJS](https://github.com/abrahamjuliot/creepjs) (Inspiration für B1/B12), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [BotD](https://github.com/fingerprintjs/botd).

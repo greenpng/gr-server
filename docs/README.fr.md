@@ -109,8 +109,8 @@ dépôt. Docker est un conteneur d'exécution, pas un canal de mise à jour.
    la liste de cookies autorisés pour les champs métier que vous voulez attacher à chaque verdict
    (les noms sensibles comme `password`/`token` sont bloqués côté serveur).
 2. **Déployer le sondage** — trois modes :
-   - *Nginx first-party (recommandé)* : proxifier `/gr.js` + `/gr/dist/v/` vers le
-     domaine pv et `/gr/v1/` vers le domaine gv (Cookie passthrough), injecter
+   - *Nginx first-party (recommandé)* : sur le domaine pv, proxifier `/gr.js` +
+     `/gr/dist/v/` + `/gr/v1/` vers le plan de sonde (Cookie passthrough), injecter
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` dans le HTML.
    - *Worker Cloudflare* : injecter le même tag et proxifier `/gr` in-origin.
@@ -134,3 +134,62 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # puis vérifier le résultat (après de vrais lots FE ou des lots simulés) :
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. Paramètres du panneau d'administration
+
+S'éditent sur la page **Config** du panneau (enregistrer → publier) : le
+nœud qui publie applique immédiatement ; les nœuds du cluster en ≤30 s,
+sans redémarrage.
+
+**Limites de débit** (politique v1.0.14 : les totaux par site sont
+désactivés par défaut ; la télémétrie est bornée par IP individuelle ; les
+réponses 429 nomment la couche déclenchée) :
+
+| Paramètre | Défaut | Signification |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = illimité | ouvertures de session / site / min |
+| `rate_limit_ingest_per_min` | 0 = illimité | envois de lots / site / min |
+| `rate_limit_analyze_per_min` | 0 = illimité | analyses directes / site / min |
+| `rate_limit_complete_per_min` | 0 = illimité | accusés complete / site / min |
+| `rate_limit_result_per_min` | 0 = illimité | lectures de résultat / site / min |
+| `rate_limit_client_event_per_min` | 0 = illimité | télémétrie FE / site / min (total) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | télémétrie FE **par IP individuelle** / min — le dépassement ne borne que cette IP ; 0 = désactivé |
+
+**Derrière un CDN**, la couche par IP s'appuie sur l'IP vue par le serveur.
+Ajoutez les CIDR du proxy à `GR_TRUSTED_PROXIES` dans `/opt/greenpng/.env`
+et restaurez la vraie IP du visiteur sur le proxy frontal (exemple nginx) :
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**Répartition chaud/froid** (vrais noms de réglages) : `cold_ttl_ms`
+(604800000 = 7 jours), `cold_promote_window_ms` (864000000 = 24 h),
+`cold_purge_interval_ms` (300000 = 5 min) ; la rétention par site se règle
+sur la page **Data Retention** du panneau et se purge par lots bornés.
+
+## 5. Journalisation et mémoire
+
+- Journaux du service : `journalctl -u greenpng.service` ; la télémétrie
+  opérationnelle (`ops_client_events`) est conservée `ops_retention_days`
+  (14) jours.
+- **Note mémoire (dès v1.0.14)** : sur des hôtes multicœurs à longue durée
+  de vie, glibc peut garder jusqu'à 8 arènes par cœur (~64 Mo chacune), si
+  bien que le RSS peut grimper par paliers sous concurrence. L'installateur
+  fixe donc `MALLOC_ARENA_MAX=4` dans `/opt/greenpng/.env` ; le RSS reste
+  stable en charge.
+
+## 6. Projets open source et références
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — passerelle de bord, terminaison TLS, ingest scellé (feature openssl).
+- [Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum) (MIT) — runtime asynchrone et framework REST du plan de contrôle.
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — backend TLS du bord et de la console d'administration.
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — signatures des manifestes, actifs de sonde et OTA.
+- [PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/) — stockage L3 et état multi-nœuds.
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — compression des payloads (zstd seulement dans le pingora vendored).
+- [Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/) (MIT) — UI de la console.
+- Références de recherche : [CreepJS](https://github.com/abrahamjuliot/creepjs) (inspiration B1/B12), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [BotD](https://github.com/fingerprintjs/botd).

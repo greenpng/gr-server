@@ -117,8 +117,8 @@ runtime, no un canal de actualización.
    quieres adjuntar a cada veredicto (los nombres sensibles como
    `password`/`token` se bloquean en el lado del servidor).
 2. **Despliega la sonda** — tres modos:
-   - *Nginx first-party (recomendado)*: proxya `/gr.js` + `/gr/dist/v/` al
-     dominio pv y `/gr/v1/` al dominio gv (Cookie passthrough), e inserta
+   - *Nginx first-party (recomendado)*: en el dominio pv, proxya `/gr.js` +
+     `/gr/dist/v/` + `/gr/v1/` al plano de sondas (Cookie passthrough), e inserta
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` en el HTML.
    - *Cloudflare worker*: inserta la misma etiqueta y proxya `/gr`
@@ -145,3 +145,60 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # luego comprobar el resultado (tras lotes FE reales o simulados):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. Parámetros del panel de administración
+
+Se editan en la página **Config** del panel (guardar → publicar): el nodo
+que publica aplica de inmediato; los nodos del clúster en ≤30 s, sin reinicio.
+
+**Límites de tasa** (política v1.0.14: los totales por sitio están
+desactivados por defecto; la ruta de telemetría se limita por IP individual;
+las respuestas 429 indican la capa activada):
+
+| Parámetro | Por defecto | Significado |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = sin límite | aperturas de sesión / sitio / min |
+| `rate_limit_ingest_per_min` | 0 = sin límite | subidas por lotes / sitio / min |
+| `rate_limit_analyze_per_min` | 0 = sin límite | análisis directos / sitio / min |
+| `rate_limit_complete_per_min` | 0 = sin límite | acuses complete / sitio / min |
+| `rate_limit_result_per_min` | 0 = sin límite | lecturas de resultado / sitio / min |
+| `rate_limit_client_event_per_min` | 0 = sin límite | telemetría FE / sitio / min (total) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | telemetría FE **por IP individual** / min — superarlo limita solo esa IP; 0 = desactivado |
+
+**Tras un CDN**, la capa por IP usa la IP que ve el servidor. Añada los CIDR
+del proxy a `GR_TRUSTED_PROXIES` en `/opt/greenpng/.env` y restaure la IP
+real del visitante en el proxy frontal (ejemplo nginx):
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**Niveles caliente/frío** (nombres reales): `cold_ttl_ms` (604800000 = 7
+días), `cold_promote_window_ms` (864000000 = 24 h), `cold_purge_interval_ms`
+(300000 = 5 min); la retención por sitio se configura en la página
+**Data Retention** del panel y se purga en lotes acotados.
+
+## 5. Registro y memoria
+
+- Registros del servicio: `journalctl -u greenpng.service`; la telemetría
+  operativa (`ops_client_events`) se conserva `ops_retention_days` (14) días.
+- **Nota de memoria (v1.0.14+)**: en hosts multinúcleo de larga duración
+  glibc puede mantener hasta 8 arenas por núcleo (~64 MB cada una), por lo
+  que el RSS puede subir en escalera bajo concurrencia. El instalador fija
+  `MALLOC_ARENA_MAX=4` en `/opt/greenpng/.env`; el RSS se mantiene estable
+  bajo carga.
+
+## 6. Proyectos de código abierto y referencias
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — pasarela de borde, terminación TLS, ingest sellado (feature openssl).
+- [Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum) (MIT) — runtime asíncrono y framework REST del plano de control.
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — backend TLS del borde y la consola de administración.
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — firmas para manifiestos, activos de sonda y OTA.
+- [PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/) — almacenamiento L3 y estado multi-nodo.
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — compresión de payloads (zstd solo dentro del pingora vendored).
+- [Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/) (MIT) — UI de la consola.
+- Referencias de investigación: [CreepJS](https://github.com/abrahamjuliot/creepjs) (inspiración B1/B12), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [BotD](https://github.com/fingerprintjs/botd).

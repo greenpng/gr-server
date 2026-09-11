@@ -115,8 +115,8 @@ Docker はランタイムコンテナであり、アップデートチャネル�
    添付したい業務フィールドの Cookie 許可リスト（`password`/`token` などの
    機密名はサーバー側で強制ブロックされます）。
 2. **プローブをデプロイ** — 3 つのモード:
-   - *Nginx ファーストパーティ（推奨）*: `/gr.js` + `/gr/dist/v/` を pv
-     ドメインへ、`/gr/v1/` を gv ドメインへプロキシ（Cookie パススルー）し、
+   - *Nginx ファーストパーティ（推奨）*: pv ドメイン上で `/gr.js` + `/gr/dist/v/` +
+     `/gr/v1/` をプローブプレーンへプロキシ（Cookie パススルー）し、
      HTML に `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` を注入。
    - *Cloudflare Worker*: 同じタグを注入し、`/gr` をオリジン内でプロキシ。
@@ -141,3 +141,59 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # （実際の FE バッチまたはシミュレーション後の）結果を確認:
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. 管理パネルのパラメータ
+
+パネルの **Config** ページで編集します（保存 → 公開）。公開したノードは
+即時に適用、クラスタの各ノードは ≤30 秒、再起動不要です。
+
+**レート制限**（v1.0.14 のポリシー：サイト合計はデフォルトで無効。代わりに
+テレメトリ経路は単一 IP ごとに制限。429 応答は発動したレイヤーを明示します）：
+
+| パラメータ | デフォルト | 意味 |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = 無制限 | セッション open / サイト / 分 |
+| `rate_limit_ingest_per_min` | 0 = 無制限 | バッチ Upload / サイト / 分 |
+| `rate_limit_analyze_per_min` | 0 = 無制限 | 直接 analyze / サイト / 分 |
+| `rate_limit_complete_per_min` | 0 = 無制限 | complete 受領 / サイト / 分 |
+| `rate_limit_result_per_min` | 0 = 無制限 | 結果 Read / サイト / 分 |
+| `rate_limit_client_event_per_min` | 0 = 無制限 | FE テレメトリ / サイト / 分（合計） |
+| `rate_limit_client_event_per_ip_per_min` | 100 | FE テレメトリ **単一 IP あたり** / 分 — 超過時はその IP のみ制限；0 = 無効 |
+
+**CDN 背後**では、per-IP レイヤーはサーバーが見る IP を鍵とします。プロキシ
+の CIDR を `/opt/greenpng/.env` の `GR_TRUSTED_PROXIES` に追加し、前段
+プロキシで実際の訪問者 IP を復元してください（nginx 例）：
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**ホット/コールド階層**（実際のノブ名）：`cold_ttl_ms`（604800000 = 7 日）、
+`cold_promote_window_ms`（864000000 = 24 時間）、`cold_purge_interval_ms`
+（300000 = 5 分）。サイトごとの保持期間はパネルの **Data Retention** ページ
+で設定し、限定バッチで削除されます。
+
+## 5. ログとメモリ
+
+- サービスログ：`journalctl -u greenpng.service`。運用テレメトリ
+  （`ops_client_events`）は `ops_retention_days`（14）日保持されます。
+- **メモリに関する注記（v1.0.14 以降）**：長時間稼働するマルチコアホスト
+  では glibc がコアあたり最大 8 アリーナ（各 ~64 MB）を保持でき、並行
+  負荷下で RSS が階段状に増加することがあります。インストーラは既定で
+  `/opt/greenpng/.env` に `MALLOC_ARENA_MAX=4` を設定します。負荷下でも
+  RSS は平坦に保たれます。
+
+## 6. オープンソース・プロジェクトと参考文献
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — エッジゲートウェイ、TLS 終端、シールド済み ingest（openssl feature）。
+- [Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum) (MIT) — コントロールプレーンの非同期ランタイムと REST フレームワーク。
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — エッジと管理コンソールの TLS バックエンド。
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — リリースマニフェスト、プローブアセット、OTA の署名。
+- [PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/) — L3 ストレージとマルチノード状態。
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — ペイロード圧縮（zstd は vendored pingora 内のみ）。
+- [Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/) (MIT) — 管理コンソール UI。
+- 研究参考文献：[CreepJS](https://github.com/abrahamjuliot/creepjs)（B1/B12 の着想）、[FingerprintJS](https://github.com/fingerprintjs/fingerprintjs)、[BotD](https://github.com/fingerprintjs/botd)。

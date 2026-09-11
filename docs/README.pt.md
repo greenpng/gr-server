@@ -114,8 +114,8 @@ atualização.
    veredito (nomes sensíveis como `password`/`token` são bloqueados no
    servidor).
 2. **Implante a sonda** — três modos:
-   - *Nginx first-party (recomendado)*: faça proxy de `/gr.js` + `/gr/dist/v/`
-     para o domínio pv e de `/gr/v1/` para o domínio gv (repasse de Cookie),
+   - *Nginx first-party (recomendado)*: no domínio pv, faça proxy de `/gr.js` +
+     `/gr/dist/v/` + `/gr/v1/` para o plano de sondas (repasse de Cookie),
      e injete
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` no HTML.
@@ -141,3 +141,60 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # depois verifique o resultado (após lotes FE reais ou simulados):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. Parâmetros do painel de administração
+
+Editados na página **Config** do painel (salvar → publicar): o nó que
+publica aplica imediatamente; os nós do cluster em ≤30 s, sem reinício.
+
+**Limites de taxa** (política v1.0.14: os totais por site ficam desligados
+por padrão; a rota de telemetria é limitada por IP individual; as
+respostas 429 nomeiam a camada acionada):
+
+| Parâmetro | Padrão | Significado |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = ilimitado | aberturas de sessão / site / min |
+| `rate_limit_ingest_per_min` | 0 = ilimitado | uploads de lote / site / min |
+| `rate_limit_analyze_per_min` | 0 = ilimitado | análises diretas / site / min |
+| `rate_limit_complete_per_min` | 0 = ilimitado | recibos complete / site / min |
+| `rate_limit_result_per_min` | 0 = ilimitado | leituras de resultado / site / min |
+| `rate_limit_client_event_per_min` | 0 = ilimitado | telemetria FE / site / min (total) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | telemetria FE **por IP individual** / min — exceder limita apenas esse IP; 0 = desligado |
+
+**Atrás de um CDN**, a camada por-IP usa o IP que o servidor vê. Adicione os
+CIDRs do proxy ao `GR_TRUSTED_PROXIES` em `/opt/greenpng/.env` e restaure o
+IP real do visitante no proxy frontal (exemplo nginx):
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**Camadas quente/fria** (nomes reais dos controles): `cold_ttl_ms`
+(604800000 = 7 dias), `cold_promote_window_ms` (864000000 = 24 h),
+`cold_purge_interval_ms` (300000 = 5 min); a retenção por site é definida na
+página **Data Retention** do painel e eliminada em lotes limitados.
+
+## 5. Logs e memória
+
+- Logs do serviço: `journalctl -u greenpng.service`; a telemetria
+  operacional (`ops_client_events`) é mantida por `ops_retention_days` (14) dias.
+- **Nota de memória (desde v1.0.14)**: em hosts multi-core de longa duração
+  o glibc pode manter até 8 arenas por núcleo (~64 MB cada), então o RSS
+  pode subir em degraus sob concorrência. O instalador define
+  `MALLOC_ARENA_MAX=4` em `/opt/greenpng/.env`; o RSS permanece estável
+  sob carga.
+
+## 6. Projetos open source e referências
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — gateway de borda, terminação TLS, ingest selado (feature openssl).
+- [Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum) (MIT) — runtime assíncrono e framework REST do plano de controle.
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — backend TLS da borda e do console de administração.
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — assinaturas para manifestos de release, ativos de sonda e OTA.
+- [PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/) — armazenamento L3 e estado multi-nó.
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — compressão de payloads (zstd apenas dentro do pingora vendored).
+- [Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/) (MIT) — UI do console de administração.
+- Referências de pesquisa: [CreepJS](https://github.com/abrahamjuliot/creepjs) (inspiração B1/B12), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [BotD](https://github.com/fingerprintjs/botd).
