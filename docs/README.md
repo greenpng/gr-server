@@ -103,7 +103,31 @@ written to `/opt/greenpng/data/admin/admin_bootstrap_once.txt`.
 All updates pull the same tag's signed Release assets from this repository.
 Docker is a runtime container, not an update channel.
 
-### 3.3 Use
+- **Modules and FE are hot** — panel `install` / `install-fe` swap them
+  without a process restart; browsers pick up new FE automatically
+  (version-immutable, content-hashed asset URLs).
+- **The runtime binary needs a restart** — `install-runtime` swaps the
+  binary, restarts the service, and **gates the version stamp on a health
+  probe**; on `HEALTH_FAIL` it restores the previous binary, FE/spec trees
+  and `VERSION` automatically (no half-upgraded, auto-upgrade-locked host).
+- **Auto-upgrade** (opt-in via panel `cluster-apply`): target version + apply
+  window (default `04:00-05:30`); nodes apply the same health-gated flow.
+
+### 3.3 Uninstall
+
+```bash
+bash install/uninstall.sh          # standard removal
+bash install/uninstall.sh --purge  # also remove the greenpng system account
+```
+
+Stops/disables/removes the systemd units, the polkit self-OTA rule, the
+`/opt/greenpng` install tree, runtime locks and OTA caches (`--purge` also
+the system account). **Docker data services and database volumes are
+deliberately untouched** — drop them with
+`docker compose -f install/data-compose.yml down -v` only if you want the
+data gone.
+
+### 3.4 Use
 
 1. **Create a site** in the admin panel: site id, root domains, and the
    cookie allow-list for business fields you want attached to each verdict
@@ -134,3 +158,100 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # then check the result (after real FE batches or simulated ones):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+## 4. Admin panel parameters
+
+Everything below is edited in the panel's **Config page** (save → publish):
+**publishing node applies immediately, cluster nodes ≤30s, no restart.**
+Each field renders with a one-line hint (EN + 中文); this is the summary.
+
+**Rate limits** (shared cluster-wide via PostgreSQL windows):
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `rate_limit_open_per_min` | **0 = unlimited** | session opens / site / min (total) |
+| `rate_limit_ingest_per_min` | **0 = unlimited** | batch uploads / site / min |
+| `rate_limit_analyze_per_min` | **0 = unlimited** | direct analyze / site / min |
+| `rate_limit_complete_per_min` | **0 = unlimited** | complete receipts / site / min |
+| `rate_limit_result_per_min` | **0 = unlimited** | result reads / site / min |
+| `rate_limit_client_event_per_min` | **0 = unlimited** | FE telemetry / site / min (total) |
+| `rate_limit_client_event_per_ip_per_min` | **100** | FE telemetry **per single IP** / min — exceeding caps only that IP; 0 = off |
+
+v1.0.14 policy: site totals default **off** (an aggregate cap can throttle
+real users mixed into bot floods); the telemetry route is bounded per-IP
+instead. 429 bodies name the tripped layer (`client_event:ip` /
+`client_event:site`).
+
+**Flood hardening**: `robot_fastlane_enabled` (on), `hot_max_vts` (8192),
+`arm_sweep_interval_ms` (15000), `arm_sweep_cap` (256),
+`analyze_claim_batch_flood` (16).
+
+**Cycle & tiers**: `cycle_cool_ms` (86400000), `cycle_incomplete_ms`
+(259200000), `session_inactivity_ms`, `session_hard_max_ms`, `hot_idle_ms`,
+`cold_ttl_ms` (604800000), `cold_promote_window_ms` (86400000),
+`cold_purge_interval_ms` (300000), `complete_on_commercial_silicon` (on).
+
+**Analyze & FE upload**: `analyze_idle_upload_ms` (20000),
+`analyze_debounce_ms` (40), `return_identity_idle_ms` (45000),
+`rpa_idle_analyze_ms` (25000), `hard_max_attempts` (8) / `soft_max_attempts`
+(4) / `deepen_max_attempts` (6) / `rpa_max_attempts` (3), `fail_budget_n`
+(24) / `fail_budget_window_ms` (90000), `hard_sla_retries` (5, 2000 ms
+base), `upload_concurrency` (6) → `upload_mid_ramp` (12) after
+`upload_ramp_after` (14), `upload_max_retries` (5), `client_alive_retry_ms`
+(30000), `multi_tick_max` (96), `empty_kick_patience` (20).
+
+**Workers / retention / sites**:
+
+| Area | Defaults | Timing |
+|---|---|---|
+| Workers | analyze / ingest / gateway counts | analyze hot-rescale immediate; others via cluster desired (≤30s) |
+| Retention | analysis 30d · session 30d · velocity 7d · ops 14d · master 90d · cold_ttl 7d · batch 200 · interval 300s | next purge cycle; manual purge immediate (bounded batches) |
+| Sites | collect on/off, strategy, domains/SSL, SDK keys | collect/strategy next request; SSL hot (SNI); keys immediate |
+
+## 5. Logging & observability
+
+Logs go to journald (`journalctl -u greenpng.service`), INFO-level and
+quiet by design:
+
+| Line | Meaning |
+|---|---|
+| `ingest_ack … durability_state=stored_durable` | accepted probe batch (source + batch type) |
+| `analyze claimed n=… worker=…` | scheduler claims (throttled 5s/worker) |
+| `auto-analyze complete sid=… rev=… eval_ms=…` | verdict + evaluation time |
+| `arm sweep armed=…` | hot→cold sweep armed sessions (idle sweeps silent) |
+| `cold purge loop / retention purge loop started` | background TTL/retention ownership at boot |
+| `http_4xx_5xx_30s n=… sample="…"` | aggregated 4xx/5xx window (one WARN per 30s instead of per-request flooding) |
+| `pg worker reconnected / admin pg reconnected / control admin pg reconnected` | PostgreSQL self-heal after a DB restart |
+| queue-over-cap | re-warns every 60s while over the soft cap |
+
+**Ops event streams** (panel 结果/审计 pages, `/v1/ops/events/export`):
+`ops_server_events` (sealed accepts, protocol rejects, throttles) and
+`ops_client_events` (FE diagnostics; secrets/raw series stripped, IPs
+stored as /24), bounded by `ops_retention_days` (14).
+
+**Switches**: FE telemetry upload off via admin setting
+`ops_client_events_enabled=0` (or `GR_OPS_CLIENT_EVENTS=0`); limiter forced
+on/off in lab shapes via `GR_RATE_LIMIT_FORCE=1` / `GR_RATE_LIMIT_OFF=1`.
+Admin actions are audit-logged (actor + detail) in the panel Audit page.
+
+## 6. Open-source projects
+
+**Vendored**: [Pingora](https://github.com/cloudflare/pingora)
+(Apache-2.0, Cloudflare) — the probe plane's serving layer under
+`vendor/pingora/`.
+
+**Major crates.io dependencies**: axum / tower-http / tokio (control-plane
+HTTP + async), postgres / rusqlite (storage), ed25519-dalek / x25519-dalek /
+aes-gcm / hkdf / hmac / scrypt (signing, seals, credentials), sha2 / blake3
+(digests), reqwest-rustls (OTA/webhook fetch), dashmap / arc-swap /
+parking_lot (shared state), tracing (logging), serde / chrono / uuid /
+semver / regex / clap / sysinfo / flate2 (utilities). Full inventory per
+release: **`sbom.cdx.json`** (CycloneDX).
+
+**Built-on infrastructure**: PostgreSQL (data layer), Redis (multi-node),
+nginx (first-party load mode), systemd + polkit (lifecycle + self-OTA
+grant), Cloudflare CDN/Workers (optional front). Design references: signed
+package-repository trust chains (manifest index → per-asset signature →
+pinned root key) and Cloudflare's Pingora service model. No third-party
+probe/anti-bot code is included — probe, scoring and analysis code is
+original to this project.

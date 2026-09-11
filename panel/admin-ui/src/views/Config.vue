@@ -89,8 +89,12 @@ const groups = [
       { key: 'rate_limit_open_per_min', min: 0, max: 1000000 },
       { key: 'rate_limit_ingest_per_min', min: 0, max: 1000000 },
       { key: 'rate_limit_analyze_per_min', min: 0, max: 1000000 },
+      { key: 'rate_limit_complete_per_min', min: 0, max: 1000000 },
       { key: 'rate_limit_result_per_min', min: 0, max: 1000000 },
       { key: 'rate_limit_client_event_per_min', min: 0, max: 1000000 },
+      // v1.0.14: per-IP telemetry cap (default 100) — caps one flooding IP
+      // without touching other visitors; independent of the site total.
+      { key: 'rate_limit_client_event_per_ip_per_min', min: 0, max: 1000000 },
     ],
   },
   {

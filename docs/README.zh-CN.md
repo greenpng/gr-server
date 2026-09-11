@@ -94,7 +94,27 @@ bash install/install.sh --version <VERSION> --with-docker --yes
 所有更新都从本仓库拉取同一 tag 的签名 Release 资产。
 Docker 是运行时容器，不是更新通道。
 
-### 3.3 使用
+- **模块与 FE 热更新** — 面板 `install` / `install-fe` 无需重启进程即换；
+  浏览器经版本不可变、内容哈希的资源 URL 自动取新 FE。
+- **runtime 二进制需重启** — `install-runtime` 换二进制、重启服务，并把
+  **版本戳门禁在健康探针上**；`HEALTH_FAIL` 自动还原旧二进制、FE/spec 树
+  与 `VERSION`（不会留下半升级、自动升级锁死的主机）。
+- **自动升级**（面板 `cluster-apply` 选择性开启）：目标版本 + 生效窗口
+  （默认 `04:00-05:30`），节点走同一健康门流程。
+
+### 3.3 卸载
+
+```bash
+bash install/uninstall.sh          # 标准移除
+bash install/uninstall.sh --purge  # 连 greenpng 系统账户一并移除
+```
+
+停用并移除三个 systemd 单元、polkit 自 OTA 规则、`/opt/greenpng` 安装树、
+运行时锁与 OTA 缓存（`--purge` 另加系统账户）。**Docker 数据服务与数据库
+卷刻意不动**——确要清数据时才用
+`docker compose -f install/data-compose.yml down -v`。
+
+### 3.4 使用
 
 1. 在管理面板**创建站点**：站点 ID、根域名，以及想随判定携带的业务字段
    Cookie 白名单（`password`/`token` 等敏感名称在服务端被强制拦截）。
@@ -123,3 +143,97 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # （真实 FE 批次或模拟批次之后）查结果:
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+## 4. 管理面板参数
+
+以下参数都在面板 **Config（调参）页**编辑（保存 → 发布）：**发布节点立即
+生效，集群节点 ≤30s，无需重启。** 每个字段带一行提示（中/英），此处为
+运维向摘要。
+
+**速率限制**（经 PostgreSQL 共享窗口，集群级一致）：
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `rate_limit_open_per_min` | **0 = 不限** | 每站每分钟会话开启总数 |
+| `rate_limit_ingest_per_min` | **0 = 不限** | 每站每分钟探测批次上传总数 |
+| `rate_limit_analyze_per_min` | **0 = 不限** | 每站每分钟直接分析调用总数 |
+| `rate_limit_complete_per_min` | **0 = 不限** | 每站每分钟完成回执总数 |
+| `rate_limit_result_per_min` | **0 = 不限** | 每站每分钟结果读取总数 |
+| `rate_limit_client_event_per_min` | **0 = 不限** | 每站每分钟 FE 遥测事件总数 |
+| `rate_limit_client_event_per_ip_per_min` | **100** | **单个 IP** 每分钟 FE 遥测事件数——超限只掐该 IP，其他访客不受影响；0 = 关 |
+
+v1.0.14 策略：站点总量默认**关**（总量一刀切会把混在机器人洪峰里的真人
+一起掐掉）；遥测通道改为**按 IP** 限。429 响应体标明触发的层
+（`client_event:ip` / `client_event:site`）。
+
+**洪水加固**：`robot_fastlane_enabled`（开）、`hot_max_vts`（8192）、
+`arm_sweep_interval_ms`（15000）、`arm_sweep_cap`（256）、
+`analyze_claim_batch_flood`（16）。
+
+**周期与热冷分层**：`cycle_cool_ms`（86400000）、`cycle_incomplete_ms`
+（259200000）、`session_inactivity_ms`、`session_hard_max_ms`、
+`hot_idle_ms`、`cold_ttl_ms`（604800000）、`cold_promote_window_ms`
+（86400000）、`cold_purge_interval_ms`（300000）、
+`complete_on_commercial_silicon`（开）。
+
+**分析触发与 FE 上传**：`analyze_idle_upload_ms`（20000）、
+`analyze_debounce_ms`（40）、`return_identity_idle_ms`（45000）、
+`rpa_idle_analyze_ms`（25000）、`hard_max_attempts`（8）/`soft_max_attempts`
+（4）/`deepen_max_attempts`（6）/`rpa_max_attempts`（3）、`fail_budget_n`
+（24）/`fail_budget_window_ms`（90000）、`hard_sla_retries`（5，基础延迟
+2000ms）、`upload_concurrency`（6）→ `upload_mid_ramp`（12）于
+`upload_ramp_after`（14）之后、`upload_max_retries`（5）、
+`client_alive_retry_ms`（30000）、`multi_tick_max`（96）、
+`empty_kick_patience`（20）。
+
+**并发 / 保留 / 站点**：
+
+| 区域 | 默认 | 生效 |
+|---|---|---|
+| 并发 workers | analyze / ingest / gateway 数量 | analyze 热缩放立即；其余走集群 desired（≤30s） |
+| 数据保留 | analysis 30天 · session 30天 · velocity 7天 · ops 14天 · master 90天 · cold_ttl 7天 · 批量 200 · 间隔 300s | 下个清理周期；手动清理立即（有界批次） |
+| 站点 | 采集开关、策略、域名/SSL、SDK key | 采集/策略下一请求即效；SSL 热（SNI）；key 即刻可用 |
+
+## 5. 日志与可观测
+
+日志走 journald（`journalctl -u greenpng.service`），默认 INFO、安静设计：
+
+| 日志线 | 含义 |
+|---|---|
+| `ingest_ack … durability_state=stored_durable` | 每个被接受的探测批次（来源 + 批次类型） |
+| `analyze claimed n=… worker=…` | 调度领取（每 worker 5s 节流） |
+| `auto-analyze complete sid=… rev=… eval_ms=…` | 判定产出 + 评估耗时 |
+| `arm sweep armed=…` | 热→冷扫挂臂数（空扫不记） |
+| `cold purge loop / retention purge loop started` | 启动时后台 TTL/保留清理所有权 |
+| `http_4xx_5xx_30s n=… sample="…"` | 4xx/5xx 聚合窗（每 30s 一条 WARN，不逐请求刷屏） |
+| `pg worker reconnected / admin pg reconnected / control admin pg reconnected` | 数据库重启后的 PG 自愈重连 |
+| 队列超上限 | 超限期间每 60s 重复告警 |
+
+**ops 事件流**（面板 结果/审计 页、`/v1/ops/events/export`）：
+`ops_server_events`（密封接受、协议拒绝、限流）与 `ops_client_events`
+（FE 诊断；服务端剥离密钥/原始序列，IP 存 /24），由 `ops_retention_days`
+（14 天）约束增长。
+
+**开关**：管理设置 `ops_client_events_enabled=0`（或
+`GR_OPS_CLIENT_EVENTS=0`）整体关闭 FE 遥测上传；实验室形态可用
+`GR_RATE_LIMIT_FORCE=1` / `GR_RATE_LIMIT_OFF=1` 强制限流开/关。管理动作
+（登录、OTA、配置发布、key 签发）全部带 actor + detail 进面板审计页。
+
+## 6. 使用的开源项目
+
+**vendor 内置**：[Pingora](https://github.com/cloudflare/pingora)
+（Apache-2.0，Cloudflare）——探测面服务层，位于 `vendor/pingora/`。
+
+**主要 crates.io 依赖**：axum / tower-http / tokio（控制面 HTTP + 异步）、
+postgres / rusqlite（存储）、ed25519-dalek / x25519-dalek / aes-gcm / hkdf /
+hmac / scrypt（签名、密封、凭据）、sha2 / blake3（摘要）、reqwest-rustls
+（OTA/webhook 拉取）、dashmap / arc-swap / parking_lot（共享态）、tracing
+（日志）、serde / chrono / uuid / semver / regex / clap / sysinfo / flate2
+（工具）。每版全量清单见 **`sbom.cdx.json`**（CycloneDX）。
+
+**构建其上的基础设施**：PostgreSQL（数据层）、Redis（多节点）、nginx
+（第一方加载模式）、systemd + polkit（生命周期 + 自 OTA 授权）、
+Cloudflare CDN/Workers（可选前置）。设计参考：签名包仓库的信任链模型
+（清单索引 → 逐资产签名 → 钉根公钥）与 Cloudflare Pingora 服务模型。
+**未包含任何第三方探针/反爬代码**——`crates/` 与 `modules/` 中的探测、
+评分与分析代码均为本项目原创。
