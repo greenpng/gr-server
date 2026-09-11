@@ -10,11 +10,11 @@
 //!
 //! Weights persist via `shared_governance` (`contrastive_w.json`) and process memory.
 
-use crate::hnsw_lite::{contrastive_embed_base, embed_base_from_fields, EMB_DIM};
+use crate::hnsw_lite::{embed_base_from_fields, EMB_DIM};
 use crate::shared_governance::{
     as_object_mut, shared_governance_dir, with_shared_json,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
 

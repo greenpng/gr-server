@@ -2199,7 +2199,19 @@
     if (hiding && !sealed && global.navigator && navigator.sendBeacon) {
       try {
         var blob = new Blob([bodyStr], { type: "text/plain;charset=UTF-8" });
-        if (navigator.sendBeacon(url, blob)) return Promise.resolve({ ok: true, via: "beacon" });
+        if (navigator.sendBeacon(url, blob)) {
+          try {
+            if (global.GROps && GROps.report) {
+              GROps.report(
+                "upload_beacon_besteffort",
+                "upload",
+                { batch: String((item && (item.batch_id || item.pack_id)) || "").slice(0, 48), queued: true },
+                "info"
+              );
+            }
+          } catch (eOpsB) {}
+          return Promise.resolve({ ok: true, via: "beacon" });
+        }
       } catch (e) {}
     }
     // Gecko: avoid keepalive on large hard plain bodies (broken-pipe 5xx).
@@ -3008,6 +3020,14 @@
               attempts[k] = nTry;
             }
           }
+          // 413 ingest body too large: the same body can never succeed — skip pointless
+          // retries and fall straight to the exhausted report (server already logs
+          // ingest_body_too_large as an ops event; this makes the client side honest too).
+          var bodyTooLarge = !!(err && err.status === 413 && !isSealRace);
+          if (bodyTooLarge) {
+            attempts[k] = Math.max(attempts[k] || 0, cap);
+            nTry = cap;
+          }
           if (nTry < cap || (isSealRace && sealWaits < 16)) {
             if (isHardAnchorBatch(item.batch_id) && !isSealRace) hardRetries++;
             if ((item.priority || 0) >= 70) {
@@ -3058,12 +3078,14 @@
                   var deepenish =
                     isDeepenBatch(item.batch_id) ||
                     isHeavyBatch(item.batch_id) && !commercialHard;
-                  var exCode = commercialHard
-                    ? "upload_hard_exhausted"
-                    : deepenish
-                      ? "upload_deepen_exhausted"
-                      : "upload_soft_exhausted";
-                  var exSev = commercialHard ? "error" : "warn";
+                  var exCode = bodyTooLarge
+                    ? "upload_body_too_large"
+                    : commercialHard
+                      ? "upload_hard_exhausted"
+                      : deepenish
+                        ? "upload_deepen_exhausted"
+                        : "upload_soft_exhausted";
+                  var exSev = bodyTooLarge || commercialHard ? "error" : "warn";
                   // Partial success: B10 already landed + only deepen failed → always warn.
                   try {
                     if (
@@ -3096,6 +3118,7 @@
                     {
                       batch_id: item.batch_id,
                       attempts: nTry,
+                      http_status: (err && err.status) || 0,
                       over_budget: !!(fr && fr.overBudget),
                       commercial_hard: commercialHard,
                       deepen: !!deepenish,

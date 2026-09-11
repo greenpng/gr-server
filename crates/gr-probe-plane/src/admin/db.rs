@@ -464,7 +464,38 @@ impl AdminDb {
                 }
                 migrate_site_edge_sql_pg(&mut client);
                 let _ = ready_tx.send(Ok(()));
+                // iss/audit STO-02 (extended to the admin store — it shares the
+                // pooled worker model with the probe/biz/assoc stores): self-heal
+                // a broken connection (PG restart / failover) instead of letting
+                // every admin job error on a dead socket forever.
                 while let Ok(job) = jobs_rx.recv() {
+                    if client.is_closed() {
+                        let mut delay_ms: u64 = 500;
+                        for attempt in 1..=6u32 {
+                            match connect_admin_pg(&dsn_owned) {
+                                Ok(mut c) => match c.batch_execute(PG_SCHEMA) {
+                                    Ok(()) => {
+                                        migrate_site_edge_sql_pg(&mut c);
+                                        client = c;
+                                        log::info!(
+                                            "admin pg reconnected after connection loss (attempt {attempt})"
+                                        );
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "admin pg reconnect schema failed attempt {attempt}/6: {e}"
+                                        );
+                                    }
+                                },
+                                Err(e) => {
+                                    log::warn!("admin pg reconnect failed attempt {attempt}/6: {e}");
+                                }
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                            delay_ms = (delay_ms * 2).min(8_000);
+                        }
+                    }
                     job(&mut client);
                 }
             })

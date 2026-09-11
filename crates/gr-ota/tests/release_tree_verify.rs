@@ -17,7 +17,6 @@
 
 use gr_abi::ReleaseManifest;
 use gr_ota::{bundle_tree_root, safe_extract_tar_gz, verify_artifact_sig_chain, verify_manifest_chain};
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 fn env_path(gr: &str) -> Option<PathBuf> {

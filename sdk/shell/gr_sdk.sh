@@ -13,7 +13,7 @@
 set -u
 
 : "${GR_CURL:=curl}"
-: "${GR_WAIT_INTERVAL_MS:=250}"
+: "${GR_WAIT_INTERVAL_MS:=500}"
 
 # gr_get_result <session_id> [projection] [strategy_id] [response_profile] [lang] [profile_cap] — one snapshot.
 gr_get_result() {
@@ -72,7 +72,7 @@ gr_wait_for_result() {
       esac
     fi
     last="$body"
-    sleep "${GR_WAIT_INTERVAL_MS}e-3" 2>/dev/null || sleep 0.25
+    sleep "${GR_WAIT_INTERVAL_MS}e-3" 2>/dev/null || sleep 0.5
   done
 }
 

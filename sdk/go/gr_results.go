@@ -1,4 +1,4 @@
-// Package gv7results is a backend-only, read-only client for Green V7
+// Package grresults is a backend-only, read-only client for greenpng
 // analysis results. It does NOT collect or relay browser probes — probes
 // keep flowing straight to the probe server; this client only queries
 // the stored result per session.
@@ -6,7 +6,7 @@
 // Surface: GetResult / WaitForResult / Query + CookieFields helper.
 // Auth: X-Gr-Sdk-Key with the site-scoped backend key.
 // Projection: "public" | "sdk" | "diagnostic" (diagnostic needs an ops key).
-package gv7results
+package grresults
 
 import (
 	"encoding/json"
@@ -142,7 +142,7 @@ func (c *Client) WaitForResult(sessionID, projection string, timeoutMs, interval
 		timeoutMs = 8000
 	}
 	if intervalMs <= 0 {
-		intervalMs = 250
+		intervalMs = 500
 	}
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	var last map[string]interface{}

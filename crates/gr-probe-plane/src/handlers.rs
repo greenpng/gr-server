@@ -12,7 +12,7 @@ use gr_probe_core::{
     DEFAULT_CHALLENGE_SECRET, PROMOTE_TO_COMMERCIAL_ID, RUNTIME_CONFIDENCE_VERSION,
 };
 use gr_probe_store::{
-    analyze_claim_batch, analyze_idle_poll_ms_range, cold_promote_window_ms, cold_ttl_ms,
+    analyze_idle_poll_ms_range, cold_promote_window_ms, cold_ttl_ms,
     hot_idle_ms, timeout_matrix_json, AnalyzeDueMerge, HotProbeCache, HotProbeEntry, Store,
     StoreError, ANALYZE_DEBOUNCE_MS, ANALYZE_LOCK_MS, ANALYZE_IDLE_IMMINENT_MS,
 };
@@ -352,9 +352,11 @@ fn demote_hot_to_cold_opts(st: &AppState, idle_ms: i64, force: bool) -> usize {
     }
     let idle = st.hot_probe.list_idle(idle_ms);
     if idle.is_empty() {
-        // Nothing idle: still run the opportunistic cold TTL purge (cheap, bounded).
-        let cutoff = gr_probe_store::hot_now_ms() - cold_ttl_ms();
-        let _ = st.store.purge_expired_cold(cutoff);
+        // iss/audit STO-01: no opportunistic cold TTL purge here. This sweep
+        // runs on the HTTP ingest/gateway path; the (previously unbounded)
+        // DELETE could seize a pooled PG worker and spike WAL whenever a TTL
+        // backlog existed. The dedicated background cold-purge loop
+        // (run.rs spawn_cold_purge_loop) owns TTL enforcement in bounded chunks.
         return 0;
     }
     // Robots never need the demote arm (early-class result already stands in).
@@ -387,9 +389,8 @@ fn demote_hot_to_cold_opts(st: &AppState, idle_ms: i64, force: bool) -> usize {
         let vts: Vec<String> = selected.iter().map(|e| e.visitor_terminal_id.clone()).collect();
         st.hot_probe.demote_vts(&vts)
     };
-    // Opportunistic cold TTL purge (ignore errors — never block ingest).
-    let cutoff = gr_probe_store::hot_now_ms() - cold_ttl_ms();
-    let _ = st.store.purge_expired_cold(cutoff);
+    // iss/audit STO-01: cold TTL purge deliberately NOT run on this HTTP path —
+    // the background cold-purge loop owns it (bounded chunks, panel-visible).
     demoted.len()
 }
 
@@ -397,7 +398,7 @@ fn demote_hot_to_cold_opts(st: &AppState, idle_ms: i64, force: bool) -> usize {
 /// Such visitors never reuse the session/VT, so deep identity probing and
 /// store-then-analyze adds nothing: skip L1 hot, skip L3 cold (no future
 /// promote), skip analyze arms, and write a one-shot early-class result.
-fn robot_fastlane_active(st: &AppState) -> bool {
+fn robot_fastlane_active(_st: &AppState) -> bool {
     gr_probe_store::robot_fastlane_enabled()
 }
 
@@ -494,11 +495,14 @@ fn promote_cold_to_hot_if_needed(
         let now = gr_probe_store::hot_now_ms();
         let clocks = new_batch_analyze_clocks(now);
         let _ = st.store.merge_session_meta(current_session_id, &clocks);
-        let _ = st.store.schedule_analyze_merge(
-            current_session_id,
-            60_000,
-            AnalyzeDueMerge::IdleReset,
-        );
+        // iss/audit LOG-01: enqueue failures used to be silently dropped — the
+        // session then never got analyzed and nothing surfaced why.
+        if let Err(e) = st
+            .store
+            .schedule_analyze_merge(current_session_id, 60_000, AnalyzeDueMerge::IdleReset)
+        {
+            log::warn!("schedule_analyze_merge failed sid={current_session_id} err={e}");
+        }
     }
     n
 }
@@ -3860,19 +3864,23 @@ pub fn ingest_plain_body(
             // materials unchanged for identity — skip re-schedule (avoid waste)
             false
         } else {
-            let _ = st.store.schedule_analyze_merge(
+            // iss/audit LOG-01: surface enqueue failures instead of dropping them.
+            if let Err(e) = st.store.schedule_analyze_merge(
                 &body.session_id,
                 ANALYZE_IDLE_UPLOAD_MS,
                 AnalyzeDueMerge::IdleReset,
-            );
+            ) {
+                log::warn!("schedule_analyze_merge failed sid={} err={e}", body.session_id);
+            }
             true
         }
     } else if explicit_analyze {
-        let _ = st.store.schedule_analyze_merge(
-            &body.session_id,
-            0,
-            AnalyzeDueMerge::Replace,
-        );
+        if let Err(e) = st
+            .store
+            .schedule_analyze_merge(&body.session_id, 0, AnalyzeDueMerge::Replace)
+        {
+            log::warn!("schedule_analyze_merge failed sid={} err={e}", body.session_id);
+        }
         true
     } else {
         // Coverage floors from received batches via brain checklist (no full evaluate).
@@ -3953,9 +3961,21 @@ pub fn ingest_plain_body(
         } else {
             AnalyzeDueMerge::IdleReset
         };
-        let _ = st
+        // iss/audit LOG-01: the main arming site — decision context at debug
+        // (per-ingest volume makes INFO flooding), enqueue failure at WARN
+        // (previously silent: a failed enqueue meant the session was never
+        // analyzed and nothing explained why).
+        log::debug!(
+            "analyze arm sid={} debounce_ms={debounce} merge={:?} coverage_complete={coverage_complete}",
+            body.session_id,
+            merge
+        );
+        if let Err(e) = st
             .store
-            .schedule_analyze_merge(&body.session_id, debounce, merge);
+            .schedule_analyze_merge(&body.session_id, debounce, merge)
+        {
+            log::warn!("schedule_analyze_merge failed sid={} err={e}", body.session_id);
+        }
         let _ = ANALYZE_IDLE_IMMINENT_MS; // referenced for docs/health coupling
         true
     };
@@ -6336,18 +6356,25 @@ pub fn gateway_early(st: &AppState, headers: &HashMap<String, String>, body: Gat
         && !has_fe_identity;
     // Gateway path must NOT force 40ms analyze when FE identity arrives — that was
     // per-upload thrash. Arm idle quiet only; explicit analyze / nojs still fire.
+    // iss/audit LOG-01: enqueue failures surfaced (were silently dropped).
     if body.analyze {
-        let _ = st.store.schedule_analyze_merge(&sid, 0, AnalyzeDueMerge::Replace);
+        if let Err(e) = st.store.schedule_analyze_merge(&sid, 0, AnalyzeDueMerge::Replace) {
+            log::warn!("schedule_analyze_merge failed sid={sid} err={e}");
+        }
     } else if is_nojs_path {
         // Nojs/pixel: short delayed analyze without FE batches.
-        let _ = st.store.schedule_analyze_merge(&sid, 80, AnalyzeDueMerge::PullEarlier);
+        if let Err(e) = st.store.schedule_analyze_merge(&sid, 80, AnalyzeDueMerge::PullEarlier) {
+            log::warn!("schedule_analyze_merge failed sid={sid} err={e}");
+        }
     } else if has_fe_identity {
         // FE materials present on gateway early — only re-arm idle clock, not fire now.
-        let _ = st.store.schedule_analyze_merge(
+        if let Err(e) = st.store.schedule_analyze_merge(
             &sid,
             ANALYZE_IDLE_UPLOAD_MS,
             AnalyzeDueMerge::IdleReset,
-        );
+        ) {
+            log::warn!("schedule_analyze_merge failed sid={sid} err={e}");
+        }
     }
     if body.analyze && (has_fe_identity || is_nojs_path) {
         let evidence = st.store.build_evidence(&sid)?;
@@ -7284,7 +7311,7 @@ pub fn require_ops_auth(st: &AppState, headers: &HashMap<String, String>) -> Res
 /// true only when the caller actually presented a matching ops/result secret
 /// or a valid admin session. Lab fallback: when no ops secrets are configured
 /// anywhere and deploy env is not prod, verbose is granted (debug convenience).
-pub fn ops_grant_active(st: &AppState, headers: &HashMap<String, String>) -> bool {
+pub fn ops_grant_active(_st: &AppState, headers: &HashMap<String, String>) -> bool {
     let presented = presented_ops_secrets(headers);
     if secret_matches_env(&presented) {
         return true;
@@ -8302,7 +8329,7 @@ pub fn ops_client_event(
                 continue;
             }
             // Cap residual_paths-style arrays to compact path rows (no embedded curves).
-            if (lk == "residual_paths" || lk.ends_with("_paths")) {
+            if lk == "residual_paths" || lk.ends_with("_paths") {
                 if let Some(arr) = v.as_array() {
                     let compact: Vec<Value> = arr
                         .iter()
@@ -9523,6 +9550,10 @@ pub async fn analyze_worker_loop(
     log::info!("analyze worker started worker_id={worker_id}");
     let (idle_min, idle_max) = analyze_idle_poll_ms_range();
     let mut idle_sleep_ms = idle_min;
+    // iss/audit LOG-03: claim visibility with a per-worker 5s throttle — INFO
+    // only when jobs were actually claimed (empty polls stay silent; during
+    // floods this caps claim logging to one line per worker per 5s).
+    let mut last_claim_log_ms: i64 = 0;
     loop {
         // Hot-scaling (gpt5.5 P1): the supervisor retires workers by setting
         // this flag; exit gracefully between jobs.
@@ -9579,6 +9610,16 @@ pub async fn analyze_worker_loop(
             continue;
         }
         idle_sleep_ms = idle_min;
+        if !claimed.is_empty() {
+            let now = gr_probe_store::hot_now_ms();
+            if now.saturating_sub(last_claim_log_ms) >= 5_000 {
+                last_claim_log_ms = now;
+                log::info!(
+                    "analyze claimed n={} worker={worker_id} claim_limit={claim_limit} queue_depth={depth}",
+                    claimed.len()
+                );
+            }
+        }
         for sid in claimed {
             if cancel.load(Ordering::Relaxed) {
                 // Remaining claimed rows keep their lock until ANALYZE_LOCK_MS
@@ -9592,6 +9633,10 @@ pub async fn analyze_worker_loop(
             let sid2 = sid.clone();
             let out = tokio::task::spawn_blocking(move || {
                 // blocking path — evaluate is CPU/sync
+                // iss/audit LOG-03: measure the claim→save path for the
+                // completion log (eval_ms) — queue lag stays visible via the
+                // supervisor's pending-depth sampling.
+                let t0 = std::time::Instant::now();
                 let rt_sid = sid2;
                 // use a tiny helper without async
                 if let Err(e) = store2.require_active_session(&rt_sid) {
@@ -9688,17 +9733,30 @@ pub async fn analyze_worker_loop(
                     }
                 }
                 let _ = store2.maybe_complete_cycle_from_analysis(&rt_sid, &result);
-                Ok::<_, String>((rt_sid, rev))
+                Ok::<_, String>((rt_sid, rev, t0.elapsed().as_millis() as u64))
             })
             .await;
             match out {
-                Ok(Ok((sid, rev))) => {
+                Ok(Ok((sid, rev, eval_ms))) => {
                     analyze_runs.fetch_add(1, Ordering::Relaxed);
-                    log::debug!("auto-analyze complete sid={sid} rev={rev}");
+                    // iss/audit LOG-03: debug→info (completion was invisible at
+                    // production RUST_LOG=info) + evaluation duration.
+                    log::info!("auto-analyze complete sid={sid} rev={rev} eval_ms={eval_ms}");
                 }
                 // On failure leave lock; after lock_ms another worker can claim again.
                 Ok(Err(e)) => {
-                    log::debug!("auto-analyze skipped/failed sid={sid} err={e}");
+                    // iss/audit LOG-03: debug→warn for real failures; benign
+                    // skips (session expired/inactive between claim and run)
+                    // stay at info so normal churn does not read as an incident.
+                    let benign = e.contains("expired")
+                        || e.contains("inactive")
+                        || e.contains("not_found")
+                        || e.contains("not found");
+                    if benign {
+                        log::info!("auto-analyze skipped sid={sid} err={e}");
+                    } else {
+                        log::warn!("auto-analyze failed sid={sid} err={e}");
+                    }
                     crate::webhook_outbox::analyze_dlq_push(&sid, &e, 1);
                 }
                 Err(e) => {
@@ -10542,7 +10600,7 @@ mod ip_provider_tests {
     };
     use serde_json::{json, Value};
     use std::io::{Read, Write};
-    use std::net::{TcpListener, TcpStream};
+    use std::net::TcpListener;
     use std::sync::Mutex;
     use std::thread;
     use std::time::Duration;

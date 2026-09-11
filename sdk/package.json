@@ -1,7 +1,7 @@
 {
-  "name": "@green-v7/results",
+  "name": "@greenpng/results",
   "version": "1.1.0",
-  "description": "Green V7 backend result client (six languages: this package, python, go, php, shell, rust). Does not collect or proxy browser probes.",
+  "description": "greenpng backend result client (six languages: this package, python, go, php, shell, rust). Does not collect or proxy browser probes.",
   "type": "module",
   "main": "src/index.js",
   "exports": {

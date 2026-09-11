@@ -302,6 +302,13 @@ impl ProxyHttp for GrService {
         };
         if let Some(disp) = admin_disp {
             ctx.responded = true;
+            // iss/audit LOG-02: admin-plane non-2xx join the same aggregate.
+            let admin_status = match &disp {
+                crate::admin::AdminDispatch::Json(s, _) => *s,
+                crate::admin::AdminDispatch::Bytes(s, ..) => *s,
+                crate::admin::AdminDispatch::File(_) => 200,
+            };
+            note_dispatch_status(&method, &path, admin_status);
             return respond_admin(session, disp).await;
         }
 
@@ -318,6 +325,13 @@ impl ProxyHttp for GrService {
             }
         };
         ctx.responded = true;
+        // iss/audit LOG-02: aggregated journal visibility for data-plane
+        // non-2xx (was: zero access logging at the Pingora entry).
+        let disp_status = match &result {
+            Dispatch::Json(s, _) => *s,
+            Dispatch::Bytes(s, ..) => *s,
+        };
+        note_dispatch_status(&method, &path, disp_status);
         match result {
             Dispatch::Json(status, v) => respond_json(session, status, &v).await,
             Dispatch::Bytes(status, ct, bytes) => respond_bytes(session, status, ct, bytes).await,
@@ -382,6 +396,40 @@ async fn respond_admin(
 
 fn map_err(e: ApiError) -> Dispatch {
     Dispatch::Json(e.status(), e.to_json())
+}
+
+/// iss/audit LOG-02: journal visibility for non-2xx dispatch responses.
+/// The Pingora data plane previously had zero access logging — 4xx/5xx were
+/// only visible as per-request ops DB events on the ingest arms. A per-request
+/// INFO line would flood the journal during crawler storms, so aggregate
+/// instead: one WARN per 30s window with count + sample (method/path/status),
+/// lazily flushed on the next non-2xx after the window closes.
+fn note_dispatch_status(method: &str, path: &str, status: u16) {
+    if (200..400).contains(&status) {
+        return;
+    }
+    use std::sync::Mutex;
+    static WINDOW: std::sync::OnceLock<Mutex<(i64, u64, String, u16)>> =
+        std::sync::OnceLock::new();
+    let now = gr_probe_store::hot_now_ms();
+    let Some(g) = WINDOW.get_or_init(|| Mutex::new((0, 0, String::new(), 0))).lock().ok() else {
+        return;
+    };
+    let mut w = g;
+    if now.saturating_sub(w.0) >= 30_000 {
+        if w.1 > 0 {
+            log::warn!(
+                "http_4xx_5xx_30s n={} sample=\"{} -> {}\" (aggregated window; per-request access logging stays off by design)",
+                w.1,
+                w.2,
+                w.3
+            );
+        }
+        *w = (now, 1, format!("{method} {path}"), status);
+    } else {
+        w.1 += 1;
+        w.3 = status; // most recent status wins the histogram slot
+    }
 }
 
 /// Record ingest 4xx/5xx as ops events with a reason class (P0-2, iss/grok4.6/05).
@@ -1503,8 +1551,8 @@ mod strip_version_tests {
 
 fn map_boot_alias(name: &str) -> Option<&'static str> {
     match name {
-        "mp.boot.min.js" | "mp.boot.js" | "gr.boot.js" | "gr.boot.js" => Some("gr.boot.js"),
-        "gr.boot.min.js" | "gr.boot.min.js" => Some("gr.boot.min.js"),
+        "mp.boot.min.js" | "mp.boot.js" | "gr.boot.js" => Some("gr.boot.js"),
+        "gr.boot.min.js" => Some("gr.boot.min.js"),
         "gr.race.min.js" => Some("gr.race.min.js"),
         "gr.entry.min.js" => Some("gr.entry.min.js"),
         // Eternal pin: URL /dist/gr.js → min body (source stays fe/gr.js for debug)

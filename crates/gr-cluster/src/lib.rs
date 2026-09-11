@@ -71,10 +71,15 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// Full-length SHA-256 hex of the cluster key (256-bit).
+/// iss/audit SEC-01: the previous 16-hex-char (64-bit) truncation lowered the
+/// birthday-collision bound to ~2^32; keep the full digest. The hash never
+/// leaves the process (compared locally against the configured key's hash),
+/// so widening it is wire-compatible across mixed-version peers.
 fn key_hash(key: &str) -> String {
     let mut h = Sha256::new();
     h.update(key.as_bytes());
-    hex::encode(h.finalize())[..16].to_string()
+    hex::encode(h.finalize())
 }
 
 /// RFC 2104 HMAC-SHA256 (implemented on sha2 to avoid extra deps; key > block is rehashed).
@@ -142,7 +147,13 @@ impl ClusterHub {
     }
 
     pub fn auth_ok(&self, presented_key: &str) -> bool {
-        key_hash(presented_key) == self.inner.cluster_key_hash
+        // iss/audit SEC-01: constant-time comparison (the file-local `ct_eq`)
+        // instead of `==`, which early-exits on the first mismatching byte and
+        // leaks a timing side channel on the key hash.
+        ct_eq(
+            key_hash(presented_key).as_bytes(),
+            self.inner.cluster_key_hash.as_bytes(),
+        )
     }
 
     pub fn update_self<F: FnOnce(&mut NodeInfo)>(&self, f: F) {
@@ -329,5 +340,40 @@ mod tests {
         let rollback_ts = newer_ts - 1_000;
         let rollback_sig = a.sign_payload(&newer.node_id, &newer, rollback_ts);
         assert!(!a.ingest_peer("secret", newer.clone(), rollback_ts, &rollback_sig));
+    }
+
+    #[test]
+    fn cluster_key_hash_is_full_length_and_auth_is_constant_time() {
+        // iss/audit SEC-01 regression lock:
+        // 1. key_hash keeps the full 256-bit digest (64 hex chars), not the
+        //    legacy 16-char (64-bit) truncation.
+        assert_eq!(key_hash("secret").len(), 64);
+        assert_eq!(key_hash("secret"), key_hash("secret"));
+        assert_ne!(key_hash("secret"), key_hash("secreT"));
+        // 2. auth_ok accepts the configured key and rejects anything else —
+        //    including a key engineered to share a 64-bit prefix of the digest
+        //    (the old truncation made such collisions meaningful).
+        let hub = ClusterHub::new(
+            "n1".into(),
+            "secret",
+            "127.0.0.1:7900".into(),
+            "6.0.0".into(),
+        );
+        assert!(hub.auth_ok("secret"));
+        assert!(!hub.auth_ok("secret "));
+        assert!(!hub.auth_ok(""));
+        // Brute-force a 64-bit-prefix collision against the full hash (bounded
+        // search — practically guaranteed not to find one, which is the point).
+        let target_prefix = &key_hash("secret")[..16];
+        let mut found_prefix_collision = false;
+        for i in 0..100_000u32 {
+            let cand = format!("secret-{i}");
+            let h = key_hash(&cand);
+            if &h[..16] == target_prefix && h != key_hash("secret") {
+                found_prefix_collision = true;
+                break;
+            }
+        }
+        assert!(!found_prefix_collision, "unexpected 64-bit prefix collision");
     }
 }

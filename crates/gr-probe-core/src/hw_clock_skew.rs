@@ -29,7 +29,7 @@ pub fn estimate_clock_skew(samples: &[SkewSample]) -> Value {
     // Use first sample as origin
     let t0s = samples[0].t_server_ms;
     let t0p = samples[0].t_perf_ms;
-    let mut pts: Vec<(f64, f64)> = samples
+    let pts: Vec<(f64, f64)> = samples
         .iter()
         .map(|s| (s.t_server_ms - t0s, s.t_perf_ms - t0p))
         .filter(|(x, y)| x.is_finite() && y.is_finite())

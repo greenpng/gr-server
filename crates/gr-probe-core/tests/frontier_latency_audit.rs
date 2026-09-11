@@ -113,7 +113,7 @@ fn audit_print_frontier_under_budgets() {
 
     // Band budget after frontier
     let f = build_frontier(&thin_ev(), true, Some(true), 24).unwrap();
-    let mut packs = f.packs.clone();
+    let packs = f.packs.clone();
     for band in ["low", "mid", "high", "critical"] {
         let pb = policy_band_from_scores(Some(0.8), Some(0.75), Some(0.6));
         // override band

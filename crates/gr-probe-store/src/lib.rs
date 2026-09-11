@@ -1728,6 +1728,7 @@ impl Store {
         }
     }
 
+    #[allow(dead_code)] // public facade default (PullEarlier); direct callers use schedule_analyze_merge
     pub fn schedule_analyze(&self, session_id: &str, debounce_ms: i64) -> Result<(), StoreError> {
         // Default: pull earlier (safe for milestone-style arms and legacy callers).
         self.schedule_analyze_merge(session_id, debounce_ms, AnalyzeDueMerge::PullEarlier)
@@ -3510,6 +3511,7 @@ impl SqliteStore {
         }))
     }
 
+    #[allow(dead_code)] // public facade default (PullEarlier); direct callers use schedule_analyze_merge
     fn schedule_analyze(&self, session_id: &str, debounce_ms: i64) -> Result<(), StoreError> {
         self.schedule_analyze_merge(session_id, debounce_ms, AnalyzeDueMerge::PullEarlier)
     }
@@ -5187,7 +5189,7 @@ fn sqlite_subject_erase(s: &SqliteStore, kind: &str, value: &str) -> Result<Valu
             counts.insert(name.to_string(), json!(cur + n as i64));
         }
     }
-    let mut del = |counts: &mut serde_json::Map<String, Value>,
+    let del = |counts: &mut serde_json::Map<String, Value>,
                    conn: &rusqlite::Connection,
                    name: &str,
                    sql: &str,

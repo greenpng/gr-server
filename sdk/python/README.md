@@ -1,4 +1,4 @@
-# Green V7 results SDK — Python
+# greenpng results SDK — Python
 
 Backend-only thin client. **Does not collect or relay probes** — it only
 reads analysis results for sessions (browser/edge probed).

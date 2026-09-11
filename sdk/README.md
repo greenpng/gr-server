@@ -1,4 +1,4 @@
-# Green V7 results SDK
+# greenpng results SDK
 
 Backend-only result clients (six languages). **They do not collect or relay
 browser probes** — probes keep flowing straight to the probe server (browser
@@ -9,7 +9,7 @@ query** the analysis results per session.
 
 | Language | Path | Requirements |
 |---|---|---|
-| JavaScript / Node | `src/index.js` (`@green-v7/results`) | Node 18+ (`fetch`) |
+| JavaScript / Node | `src/index.js` (`@greenpng/results`) | Node 18+ (`fetch`) |
 | Python | `python/gr_results.py` | Python 3.8+ (stdlib) |
 | Go | `go/gr_results.go` | Go 1.21+ (stdlib) |
 | PHP | `php/GrResultsClient.php` | PHP + curl |
@@ -41,7 +41,7 @@ Auth: `X-Gr-Sdk-Key` header with the site-scoped backend key
 ## JavaScript quick start
 
 ```js
-import { GrResultClient } from "@green-v7/results";
+import { GrResultClient } from "@greenpng/results";
 
 const client = new GrResultClient({
   baseUrl: "https://probe.example.com",

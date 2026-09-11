@@ -251,6 +251,7 @@ fn digest_token(part_code: &str, material: &str) -> String {
 }
 
 /// Encode a float curve array at a precision lane into a short stable token.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn encode_curve(arr: &[f64], places: Option<u32>) -> String {
     if arr.is_empty() {
         return PLACEHOLDER.to_string();
@@ -270,6 +271,7 @@ fn encode_curve(arr: &[f64], places: Option<u32>) -> String {
     digest_token("curve", &buf)
 }
 
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn encode_residual(v: Option<f64>, places: Option<u32>) -> String {
     match v {
         // Missing residual is the sole placeholder token "0".
@@ -2170,6 +2172,7 @@ fn places_for_prefix(prefix: &str) -> Option<u32> {
     }
 }
 
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn build_segment_body(
     residual: Option<f64>,
     wg: &[f64],
@@ -2188,6 +2191,7 @@ fn build_segment_body(
     )
 }
 
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn encode_residual_with_std(
     v: Option<f64>,
     std_bucket: Option<&str>,
@@ -2373,6 +2377,7 @@ fn is_lane_c_role(role: &str) -> bool {
     matches!(role, "float" | "noderiv" | "rint")
 }
 
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn is_lane_s_role(role: &str) -> bool {
     matches!(
         role,
@@ -2599,6 +2604,7 @@ fn residual_paths_lane_c_sig(fo: &Map<String, Value>) -> Option<String> {
 /// Mean residual from Lane-C roles. With 2+ roles, use the median (label-invariant);
 /// a single noderiv-first pick forks Blink when engines tag the same two physical
 /// families as noderiv vs std in opposite order.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn residual_mean_lane_c(fo: &Map<String, Value>) -> Option<f64> {
     let by = lane_c_role_stats(fo);
     let mut means: Vec<f64> = Vec::new();
@@ -2639,12 +2645,14 @@ fn residual_mean_primary(fo: &Map<String, Value>) -> Option<f64> {
 /// Extract per-path signature from residual_paths objects (FE multipath / B10x).
 /// **Commercial body uses Lane-C filter** (see residual_paths_lane_c_sig).
 /// Full path_id listing kept only for diagnostics.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn residual_paths_object_sig(fo: &Map<String, Value>) -> Option<String> {
     // Commercial: Lane-C role aggregates only
     residual_paths_lane_c_sig(fo)
 }
 
 /// Coarse EU timing signature (DrawnApart-lite) — secondary when residual class-dead.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn eu_timing_sig(fo: &Map<String, Value>) -> Option<String> {
     let mut samples: Vec<f64> = Vec::new();
     for k in ["eu_timing_ms", "hw_eu_timing_ms", "draw_timing_ms"] {
@@ -2782,6 +2790,7 @@ fn residual_multipath_sig_ex(fo: &Map<String, Value>) -> Option<(String, bool)> 
 }
 
 /// Multipath signature (structure-only fallback variant keeps old call sites).
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn residual_multipath_sig(fo: &Map<String, Value>) -> Option<String> {
     residual_multipath_sig_ex(fo).map(|(s, _)| s)
 }
@@ -3098,6 +3107,7 @@ pub fn fuzzy_mint_enabled() -> bool {
 /// Optional B46 deep/convolver fields must NOT enter commercial au: they land
 /// only on some sessions (dwell/schedule) and fork same-machine digests across
 /// sites and refreshes (178 Ubuntu+Chrome 4-site audit).
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn audio_stack_extra(fo: &Map<String, Value>) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
     // Seed-delta structure (B10 triple-seed v4) — always-on with B10.
@@ -3374,6 +3384,7 @@ struct PathEncode {
 }
 
 impl PathEncode {
+    #[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
     fn missing(slot: &str) -> Self {
         Self {
             body: PLACEHOLDER.to_string(),
@@ -3606,6 +3617,7 @@ fn wg_path_role_sig(fo: &Map<String, Value>) -> Option<String> {
     residual_paths_lane_c_sig(fo).map(|s| format!("wgr={}", short_hash(&s)))
 }
 
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn build_segment_body_ex(
     residual: Option<f64>,
     residual_std_bucket: Option<&str>,
@@ -5919,7 +5931,7 @@ mod tests {
     #[test]
     fn audio_seed_delta_splits_au_when_absolute_bins_match() {
         let abs: Vec<f64> = (0..48).map(|i| 0.1 + i as f64 * 0.01).collect();
-        let mut a = json!({
+        let a = json!({
             "residual_mean": 0.26,
             "hw_curve_webgl": (0..16).map(|i| 0.2 + i as f64 * 0.01).collect::<Vec<_>>(),
             "hw_curve_audio": abs,
@@ -5961,7 +5973,7 @@ mod tests {
     #[test]
     fn audio_deep_dual_seed_splits_au() {
         let curve: Vec<f64> = (0..48).map(|i| 0.1 + i as f64 * 0.01).collect();
-        let mut a = json!({
+        let a = json!({
             "residual_mean": 0.26,
             "hw_curve_webgl": (0..16).map(|i| 0.2 + i as f64 * 0.01).collect::<Vec<_>>(),
             "hw_curve_audio": curve,

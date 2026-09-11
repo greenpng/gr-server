@@ -3,9 +3,9 @@
 //! Local pure tests — no 178 deploy.
 
 use gr_probe_core::{
-    apply_server_mint, association_ladder, build_frontier, commercial_projection, evaluate_session,
+    apply_server_mint, association_ladder, build_frontier, evaluate_session,
     has_host_separator, is_commercial_device_id, is_empty_anchor, is_multi_segment_id,
-    link_or_mint_pair, select_device_tier, server_mint_commercial_id, binder_obs_from_fields,
+    link_or_mint_pair, select_device_tier, binder_obs_from_fields,
     DIGEST_PATH_EMPTY, DIGEST_PATH_GATEWAY,
 };
 use serde_json::{json, Value};
@@ -294,7 +294,6 @@ fn d_dg_decoupled_and_digest_path_honest() {
             Some(DIGEST_PATH_EMPTY)
                 | Some(DIGEST_PATH_GATEWAY)
                 | Some("thin_surface_v1")
-                | Some("gateway_only_v1")
         ),
         "honest path: {}",
         mint["digest_path"]

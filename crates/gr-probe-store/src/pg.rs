@@ -34,6 +34,35 @@ fn connect_store_pg(dsn: &str) -> Result<Client, String> {
     Ok(c)
 }
 
+/// iss/audit STO-02: self-heal a pooled PG connection. A PG restart, failover
+/// or idle TCP reset used to leave the worker thread serving every subsequent
+/// job with a dead socket ("connection closed" forever, no recovery short of
+/// restarting the process). Before each job: if the client is closed, retry
+/// the connect with bounded exponential backoff. If all attempts fail the
+/// client stays closed — the job errors fast (callers get an immediate Err,
+/// not a hang) and the next job starts a fresh reconnect round.
+fn ensure_pg_client(client: &mut Client, dsn: &str) {
+    if !client.is_closed() {
+        return;
+    }
+    let mut delay_ms: u64 = 500;
+    for attempt in 1..=6u32 {
+        match connect_store_pg(dsn) {
+            Ok(c) => {
+                *client = c;
+                log::info!("pg worker reconnected after connection loss (attempt {attempt})");
+                return;
+            }
+            Err(e) => {
+                log::warn!("pg worker reconnect failed (attempt {attempt}/6): {e}");
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                delay_ms = (delay_ms * 2).min(8_000);
+            }
+        }
+    }
+    log::warn!("pg worker still disconnected after 6 attempts; jobs will error until PG returns");
+}
+
 /// iss/opus5 04-P0-1: connection pool size. The previous design ran the whole
 /// process on ONE postgres connection (single `gr-pg` thread), serializing
 /// every HTTP handler, analyze worker and retention task behind one socket.
@@ -384,6 +413,10 @@ impl PgStore {
                     }
                     let _ = ready_tx.send(Ok(()));
                     while let Ok(job) = jobs_rx.recv() {
+                        // iss/audit STO-02: heal the connection before running
+                        // the job (PG restart / failover used to brick the
+                        // worker permanently — every job errored forever).
+                        ensure_pg_client(&mut client, &dsn_owned);
                         job(&mut client);
                     }
                 })
@@ -1473,18 +1506,17 @@ BEGIN
 END $$;
 -- Drop obsolete demote-only duplicate rows if any remain from earlier builds.
 DELETE FROM probe_cold WHERE source = 'hot_demote';
--- Query helpers: GIN on fields + expression indexes for common filters.
-CREATE INDEX IF NOT EXISTS idx_probe_cold_fields_gin
-  ON probe_cold USING GIN (fields_json jsonb_path_ops);
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_ip
-  ON probe_cold ((fields_json #>> '{fields,server_client_ip}'))
-  WHERE (fields_json #>> '{fields,server_client_ip}') IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_sw
-  ON probe_cold ((fields_json #>> '{fields,screen_width}'))
-  WHERE (fields_json #>> '{fields,screen_width}') IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_robot
-  ON probe_cold ((fields_json #>> '{fields,robot_name}'))
-  WHERE (fields_json #>> '{fields,robot_name}') IS NOT NULL;
+-- iss/audit STO-03: probe_cold JSON indexes removed. No query in the tree
+-- filters probe_cold by JSONB field (all lookups key on session_id /
+-- visitor_terminal_id / source / created_ms), so the GIN jsonb_path_ops and
+-- the expression B-Trees were pure write amplification — every probe insert
+-- AND every server-side enrichment rewrite (server_country/server_asn)
+-- maintained 9 unused index trees. Drop them on upgrade; PK/session/vt/ip
+-- B-Trees and the created_ms BRIN (purge + time-window scans) remain.
+DROP INDEX IF EXISTS idx_probe_cold_fields_gin;
+DROP INDEX IF EXISTS idx_probe_cold_field_ip;
+DROP INDEX IF EXISTS idx_probe_cold_field_sw;
+DROP INDEX IF EXISTS idx_probe_cold_field_robot;
 -- P0 composite indexes on analysis_results history
 CREATE INDEX IF NOT EXISTS idx_ar_created_tier ON analysis_results (created_ms DESC, device_tier)
   WHERE device_id IS NOT NULL AND device_id <> '';
@@ -1583,22 +1615,13 @@ CREATE TABLE IF NOT EXISTS device_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_device_sessions_sid ON device_sessions(session_id);
 CREATE INDEX IF NOT EXISTS idx_device_sessions_created ON device_sessions(created_ms DESC);
--- P2: probe_cold TOP-field expression indexes (fast field filters)
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_os
-  ON probe_cold ((fields_json #>> '{fields,os_family}'))
-  WHERE (fields_json #>> '{fields,os_family}') IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_form
-  ON probe_cold ((fields_json #>> '{fields,form_class}'))
-  WHERE (fields_json #>> '{fields,form_class}') IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_platform
-  ON probe_cold ((fields_json #>> '{fields,platform}'))
-  WHERE (fields_json #>> '{fields,platform}') IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_residual_algo
-  ON probe_cold ((fields_json #>> '{fields,residual_algo}'))
-  WHERE (fields_json #>> '{fields,residual_algo}') IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_probe_cold_field_webrtc
-  ON probe_cold ((fields_json #>> '{fields,webrtc_host_ip_hash}'))
-  WHERE (fields_json #>> '{fields,webrtc_host_ip_hash}') IS NOT NULL;
+-- iss/audit STO-03: P2 TOP-field expression indexes removed with the GIN set
+-- above (zero query usage, 9-tree write amplification per cold insert).
+DROP INDEX IF EXISTS idx_probe_cold_field_os;
+DROP INDEX IF EXISTS idx_probe_cold_field_form;
+DROP INDEX IF EXISTS idx_probe_cold_field_platform;
+DROP INDEX IF EXISTS idx_probe_cold_field_residual_algo;
+DROP INDEX IF EXISTS idx_probe_cold_field_webrtc;
 -- P3: binder reverse lookup + device_sessions VT/IP + BRIN on large time columns
 CREATE INDEX IF NOT EXISTS idx_device_index_keys_binder
   ON device_index_keys(tenant_id, binder_key);
@@ -3112,14 +3135,34 @@ fn list_cold_for_vt_inner(
     }))
 }
 
+/// iss/audit STO-01: bounded-batch cold TTL purge. The previous single
+/// statement `DELETE FROM probe_cold WHERE created_ms < $1` could sweep
+/// millions of rows in one shot — one long lock window, a WAL spike and
+/// vacuum debt whenever a TTL backlog existed. Delete in ≤5000-row chunks
+/// instead (each statement is short and releases locks between chunks) and
+/// loop until drained so call semantics are unchanged (total deleted, TTL
+/// fully enforced). Safety cap 400 chunks (2M rows) per call: an extreme
+/// backlog simply finishes on the next sweep tick.
 fn purge_expired_cold_inner(c: &mut Client, older_than_ms: i64) -> Result<i64, StoreError> {
-    let n = c
-        .execute(
-            "DELETE FROM probe_cold WHERE created_ms < $1",
-            &[&older_than_ms],
-        )
-        .map_err(|e| StoreError::Msg(e.to_string()))?;
-    Ok(n as i64)
+    const CHUNK: i64 = 5_000;
+    const MAX_CHUNKS: usize = 400;
+    let mut total: i64 = 0;
+    for _ in 0..MAX_CHUNKS {
+        let n = c
+            .execute(
+                "DELETE FROM probe_cold
+                 WHERE ctid IN (
+                   SELECT ctid FROM probe_cold WHERE created_ms < $1 LIMIT $2
+                 )",
+                &[&older_than_ms, &CHUNK],
+            )
+            .map_err(|e| StoreError::Msg(e.to_string()))? as i64;
+        total += n;
+        if n < CHUNK {
+            break;
+        }
+    }
+    Ok(total)
 }
 
 /// Small-batch retention: analysis rows then orphaned sessions, optional velocity_hits.

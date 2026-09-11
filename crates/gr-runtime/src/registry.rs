@@ -13,6 +13,13 @@ pub struct ModuleRegistry {
     #[allow(dead_code)]
     runtime_abi: u32,
     slots: RwLock<HashMap<String, Arc<ArcSwap<Option<Arc<LoadedModule>>>>>>,
+    /// iss/audit (dlclose UAF): retired module libraries are intentionally
+    /// kept resident for the life of the process. Dropping the last Arc would
+    /// dlclose the .so while C-side statics / vtable pointers may still be
+    /// referenced by in-flight callers — a latent SIGSEGV class. Hot swaps are
+    /// rare (analyze-module OTA); a few retained text pages per swap is the
+    /// price of removing the entire class.
+    retired: parking_lot::Mutex<Vec<Arc<LoadedModule>>>,
 }
 
 impl ModuleRegistry {
@@ -21,6 +28,7 @@ impl ModuleRegistry {
             runtime_version: runtime_version.to_string(),
             runtime_abi,
             slots: RwLock::new(HashMap::new()),
+            retired: parking_lot::Mutex::new(Vec::new()),
         }
     }
 
@@ -49,7 +57,9 @@ impl ModuleRegistry {
             .collect()
     }
 
-    /// Load so and atomically activate (old module dropped when refs gone).
+    /// Load so and atomically activate. The previous instance (if any) is
+    /// moved to the retired list — its library is never dlclose'd (see the
+    /// `retired` field doc for the UAF rationale).
     pub fn hot_load(&self, name: &str, so_path: &Path) -> Result<Arc<LoadedModule>, String> {
         let loaded = LoadedModule::open(so_path, &self.runtime_version)?;
         if loaded.name() != name && name != loaded.meta.domain {
@@ -62,7 +72,16 @@ impl ModuleRegistry {
             }
         }
         let slot = self.slot(loaded.name());
-        slot.store(Arc::new(Some(loaded.clone())));
+        let prev = slot.swap(Arc::new(Some(loaded.clone())));
+        if let Some(old) = prev.as_ref() {
+            let old = old.clone();
+            self.retired.lock().push(old.clone());
+            tracing::info!(
+                module = loaded.name(),
+                retired_version = old.version(),
+                "previous module instance kept resident (no dlclose — UAF-safe swap)"
+            );
+        }
         tracing::info!(
             module = loaded.name(),
             version = loaded.version(),
@@ -84,15 +103,19 @@ impl ModuleRegistry {
         }
     }
 
-    /// Unload a module (paid-gate enforcement etc.): drops the slot's loaded
-    /// module; the old .so stays on disk and can be hot-loaded again later.
+    /// Unload a module (paid-gate enforcement etc.): clears the slot's active
+    /// instance; the .so stays on disk AND its library stays resident (retired
+    /// list — no dlclose, same UAF rationale as hot_load) so it can be
+    /// hot-loaded again later.
     pub fn unload(&self, name: &str) -> bool {
         let g = self.slots.read();
         if let Some(slot) = g.get(name) {
-            let had = slot.load_full().as_ref().is_some();
-            slot.store(Arc::new(None));
-            if had {
-                tracing::warn!(module = %name, "module unloaded");
+            let prev = slot.swap(Arc::new(None));
+            let had = prev.as_ref().is_some();
+            if let Some(old) = prev.as_ref() {
+                let old = old.clone();
+                self.retired.lock().push(old);
+                tracing::warn!(module = %name, "module unloaded (library kept resident — no dlclose)");
             }
             return had;
         }

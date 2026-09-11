@@ -18,10 +18,13 @@ pub const GR_MODULE_VERSION_PUBLIC: &str = env!("GR_MODULE_VERSION");
 /// Event name for commercial multi-segment mint (host ↔ so contract).
 pub const EVENT_SELECT_DEVICE_SEGMENTS: &str = "select_device_segments";
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static META_C: OnceLock<CString> = OnceLock::new();
 static WORKERS: AtomicUsize = AtomicUsize::new(1);
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static VT: OnceLock<ModuleVTable> = OnceLock::new();
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 fn meta_json() -> &'static CString {
     META_C.get_or_init(|| {
         let m = ModuleMeta {
@@ -37,12 +40,15 @@ fn meta_json() -> &'static CString {
     })
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn init(_: *const gr_abi::HostContext) -> i32 {
     0
 }
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn shutdown() -> i32 {
     0
 }
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn apply_config(json_c: *const c_char) -> i32 {
     let Some(s) = cstr_to_str(json_c) else {
         return -1;
@@ -81,6 +87,7 @@ pub fn mint_device_segments(fields: &Value, evidence: Option<&Value>) -> Value {
 /// - `select_device_segments` — body `{"fields":...,"evidence":...|null}` → segments JSON
 ///
 /// Return: bytes written (>=0), -1 error, or required size if `out_cap` too small.
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn on_event(
     event_c: *const c_char,
     in_ptr: *const u8,

@@ -1,4 +1,4 @@
-# Green V7 results SDK — Rust
+# greenpng results SDK — Rust
 
 Backend-only thin client (`ureq`, blocking, no async runtime requirement).
 **Does not collect or relay probes.**

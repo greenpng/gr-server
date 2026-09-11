@@ -282,6 +282,7 @@ fn residual_path_ok(v: &Value) -> bool {
 /// Enables B10 primary multipath + B10x deepen packs to coexist without last-write wipe.
 /// B10x must not replace a healthy B10 v3f/fma path — that last-write is how Firefox
 /// shop (B10 only) and news (B10+B10x) forked commercial wg on the same GPU.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn merge_residual_paths_field(fields: &mut Map<String, Value>, incoming: &Value) {
     merge_residual_paths_field_ex(fields, incoming, None);
 }
@@ -377,6 +378,7 @@ fn merge_residual_paths_field_ex(
 
 /// Merge one batch payload into merged `fields`, per-source views, and gateway/cf slices.
 /// When `batch_id` is R*spotcheck, score-facing `verify_*` ratios are multi-pack aggregated.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 pub fn merge_batch(
     base_src: &str,
     pf: Map<String, Value>,
@@ -1697,7 +1699,7 @@ pub fn structured_realm_diff(fields_by_source: &Map<String, Value>) -> Value {
     // M1 realm coherence (iss/74 §6-M1): numeric-level cross-realm agreement —
     // key-level ratio of agreed vs compared identity/caps keys, capped when any
     // hard conflict exists, score 1.0 (qualified) when nothing is comparable.
-    let compared_f = compared_total as f64;
+    let _compared_f = compared_total as f64;
     let (realm_coherence_score, realm_coherence_verdict) = if compared_total == 0 {
         (1.0f64, "qualified")
     } else {
@@ -2838,7 +2840,7 @@ mod realm_conflict_tests {
             &json!(false)
         );
         // No main algo → no claim (fields absent, not false)
-        let (mut fields3, _) = merge_one(
+        let (fields3, _) = merge_one(
             "sandbox",
             "B7_sandbox",
             json!({"nest_residual_algo": "gr_residual_v1"}),
@@ -2896,7 +2898,7 @@ mod realm_conflict_tests {
         assert_eq!(fields.get("fe_version_changed").unwrap(), &json!(true));
 
         // Build stamp vs its own FE epoch mismatch
-        let (mut fields2, _) = merge_one(
+        let (fields2, _) = merge_one(
             "main",
             "B0_bootstrap",
             json!({"fe_build_impl": "bld_x", "fe_impl_version": "bld_y"}),

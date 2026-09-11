@@ -1,4 +1,4 @@
-# Green V7 results SDK — Go
+# greenpng results SDK — Go
 
 Backend-only thin client (stdlib `net/http`). **Does not collect or relay
 probes.** Query-only surface.

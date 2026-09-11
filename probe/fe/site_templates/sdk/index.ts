@@ -14,8 +14,8 @@
  *        NEXT_PUBLIC_MAX_PROBE_BASE=/g5
  *        NEXT_PUBLIC_MAX_PROBE_GW_BASE=/g5-gw
  *        NEXT_PUBLIC_MAX_PROBE_FIRST_PARTY=1
- *        GV5_INGEST_UPSTREAM=http://127.0.0.1:28765
- *        GV5_GW_UPSTREAM=http://127.0.0.1:28766
+ *        GR_INGEST_UPSTREAM=http://127.0.0.1:28765
+ *        GR_GW_UPSTREAM=http://127.0.0.1:28766
  *   4. Prefer nginx reverse proxy for /g5 when available (see scripts/nginx_g5_first_party_snippet.conf).
  *      Next route remains the portable path; latency: nginx < Next stream < CF→pv.
  */

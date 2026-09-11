@@ -12,7 +12,7 @@
 #   - 管理面板登录:        本地管理员账号（GR_ADMIN_USER，无需官网）
 #
 # 用法:
-#   bash install.sh [--version 8.0.0] [--arch auto|x86_64|aarch64]
+#   bash install.sh [--version 1.0.12] [--arch auto|x86_64|aarch64]
 #                   [--prefix /opt/greenpng] [--env-file path]
 #                   [--with-docker] [--no-systemd] [--yes] [--dry-run]
 #
@@ -95,19 +95,21 @@ ask() { # ask <var> <prompt> <default> <secret=0|1>
 # ---------- 版本解析 ----------
 if [[ -z "$VERSION" ]]; then
   # 未认证 api.github.com 在共享/CI IP 上偶发限流: 重试数轮。
-  # 仍解析不到则直接报错并要求显式 --version 8.x.y（或兼容 7.x.y）— 刻意不回退到
-  # /releases/latest 的 302 跳转目标, 避免把 v6 旧版当 V7/GR 下载
-  # (v6/v7 资产命名、manifest 结构与签名要求不同, 混用会被下方 sha/ELF/签名校验拒绝)。
+  # iss/audit INS-01: 旧正则 v?([78])\.(\d+)\.(\d+) 是 green-v7/8 时代残留 —
+  # greenpng 线重启为 1.0.x 后自动解析永远为空, 一键安装直接 die。
+  # 现改为接受任意语义化主版本但排除 6/7/8 (旧线资产命名/manifest/签名
+  # 与 greenpng 不兼容, 混装会被下方 sha/ELF/签名校验拒绝; 显式 --version
+  # 仍可强制指定任意 X.Y.Z)。
   if [[ "$PY3" == "1" ]]; then
     for _attempt in 1 2 3; do
       VERSION="$(curl -fsSL --max-time 15 "https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=100" 2>/dev/null \
-        | python3 -c 'import sys,json,re; vs=[]; rs=json.load(sys.stdin); [vs.append((tuple(map(int,m.groups())),m.group(0))) for r in rs if r.get("tag_name") and (m:=re.fullmatch(r"v?([78])\.(\d+)\.(\d+)",r["tag_name"]))]; print(max(vs)[1].lstrip("v") if vs else "")' 2>/dev/null || true)"
+        | python3 -c 'import sys,json,re; vs=[]; rs=json.load(sys.stdin); [vs.append((tuple(map(int,m.groups())),m.group(0))) for r in rs if r.get("tag_name") and (m:=re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)",r["tag_name"])) and m.group(1) not in ("6","7","8")]; print(max(vs)[1].lstrip("v") if vs else "")' 2>/dev/null || true)"
       [[ -n "$VERSION" ]] && break
       sleep 2
     done
   fi
   if [[ -z "$VERSION" ]]; then
-    die "cannot resolve V7/GR stable release; pass --version 8.x.y (7.x.y still accepted for rollback)"
+    die "cannot resolve greenpng stable release; pass --version X.Y.Z explicitly"
   fi
 fi
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "greenpng installer requires a X.Y.Z version (got $VERSION)"

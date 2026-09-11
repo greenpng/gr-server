@@ -28,6 +28,7 @@ fn is_gatewayish_id(id: &str) -> bool {
         || (id.starts_with("dv0-") && id.matches("-0").count() >= 6)
 }
 
+#[allow(dead_code)] // test helper retained for upcoming silicon-tier cases
 fn is_siliconish_id(id: &str) -> bool {
     is_tiered_id(id) && !id.starts_with("dg")
 }

@@ -1,4 +1,4 @@
-//! Green V7 results SDK (Rust) — backend only.
+//! greenpng results SDK (Rust) — backend only.
 //!
 //! Thin, read-only client: [`Client::get_result`], [`Client::wait_for_result`],
 //! [`Client::query`] and the [`cookie_fields`] helper. It does **not** collect

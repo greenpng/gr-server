@@ -11,7 +11,6 @@
 //!   once; call `reload_model_key_aliases()` to re-read after config updates.
 
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Mutex};
 

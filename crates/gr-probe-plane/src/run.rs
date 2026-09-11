@@ -160,8 +160,8 @@ pub struct Args {
 }
 
 fn mirror_one_env_alias(name: &str) {
-    let gr = format!("GR_{name}");
-    let gr = format!("GR_{name}");
+    let _gr = format!("GR_{name}");
+    let _gr = format!("GR_{name}");
     let gr = format!("GR_{name}");
     let Some(value) = std::env::var(&gr)
         .ok()
@@ -916,6 +916,10 @@ pub fn run_with(args: Args) {
             rt_handle.spawn(async move {
                 let mut tick: u32 = 0;
                 let mut over_warned = false;
+                // iss/audit LOG-04: periodic re-warn while the queue stays over
+                // the soft cap (the old single-shot flag went silent for the
+                // whole duration of a backlog incident).
+                let mut last_over_warn_ms: i64 = 0;
                 loop {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                     tick = tick.wrapping_add(1);
@@ -974,8 +978,12 @@ pub fn run_with(args: Args) {
                                 sup_depth.store(p.max(0) as u64, std::sync::atomic::Ordering::Relaxed);
                                 let qmax = gr_probe_store::analyze_queue_max();
                                 if p > qmax {
-                                    if !over_warned {
+                                    let now = gr_probe_store::hot_now_ms();
+                                    if !over_warned
+                                        || now.saturating_sub(last_over_warn_ms) >= 60_000
+                                    {
                                         over_warned = true;
+                                        last_over_warn_ms = now;
                                         warn!(
                                             "analyze queue over soft cap: pending={p} cap={qmax} live={live} (tune GR_ANALYZE_QUEUE_MAX / GR_ANALYZE_CLAIM_BATCH / panel workers)"
                                         );
