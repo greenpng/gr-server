@@ -66,13 +66,20 @@ pub struct RuntimeCfg {
     // --- complete policy ---
     /// When true (default), commercial silicon + B10x done → cycle complete/cool.
     pub complete_on_commercial_silicon: bool,
-    // --- rate limits (panel hot; 0 = route off, seed = env) ---
+    // --- rate limits (panel hot; 0 = unlimited) ---
+    /// Site-wide per-minute caps (0 = unlimited). v1.0.14 policy: aggregate
+    /// caps default OFF so a blunt site total can never throttle real users
+    /// mixed into bot floods; protection is per-IP on the telemetry route.
     pub rate_limit_open_per_min: i64,
     pub rate_limit_ingest_per_min: i64,
     pub rate_limit_analyze_per_min: i64,
     pub rate_limit_complete_per_min: i64,
     pub rate_limit_result_per_min: i64,
     pub rate_limit_client_event_per_min: i64,
+    /// Per-IP per-minute cap for the FE ops telemetry route (default 100 —
+    /// a real browser sends a handful of events per session; a bot process
+    /// easily exceeds 100/min). 0 = per-IP limiting off.
+    pub rate_limit_client_event_per_ip_per_min: i64,
     // --- flood hardening (panel hot) ---
     /// Confirmed-robots (UA-declared crawler) fast lane: no L1 hot, no L3 cold,
     /// no analyze arms — early slim result instead (they never reuse sessions).
@@ -125,13 +132,19 @@ impl Default for RuntimeCfg {
             upload_mid_ramp: 12,
             upload_ramp_after: 14,
             complete_on_commercial_silicon: true,
-            // Rate limits: env seed keeps pre-panel behavior identical.
-            rate_limit_open_per_min: env_i64("RATE_LIMIT_OPEN_PER_MIN", 120),
-            rate_limit_ingest_per_min: env_i64("RATE_LIMIT_INGEST_PER_MIN", 600),
-            rate_limit_analyze_per_min: env_i64("RATE_LIMIT_ANALYZE_PER_MIN", 60),
-            rate_limit_complete_per_min: env_i64("RATE_LIMIT_COMPLETE_PER_MIN", 60),
-            rate_limit_result_per_min: env_i64("RATE_LIMIT_RESULT_PER_MIN", 240),
-            rate_limit_client_event_per_min: env_i64("RATE_LIMIT_CLIENT_EVENT_PER_MIN", 60),
+            // Rate limits (v1.0.14 policy): site totals default 0 (unlimited)
+            // — aggregate caps throttled real users mixed into bot floods;
+            // per-IP limiting is the protection layer. Env still overrides.
+            rate_limit_open_per_min: env_i64("RATE_LIMIT_OPEN_PER_MIN", 0),
+            rate_limit_ingest_per_min: env_i64("RATE_LIMIT_INGEST_PER_MIN", 0),
+            rate_limit_analyze_per_min: env_i64("RATE_LIMIT_ANALYZE_PER_MIN", 0),
+            rate_limit_complete_per_min: env_i64("RATE_LIMIT_COMPLETE_PER_MIN", 0),
+            rate_limit_result_per_min: env_i64("RATE_LIMIT_RESULT_PER_MIN", 0),
+            rate_limit_client_event_per_min: env_i64("RATE_LIMIT_CLIENT_EVENT_PER_MIN", 0),
+            rate_limit_client_event_per_ip_per_min: env_i64(
+                "RATE_LIMIT_CLIENT_EVENT_PER_IP_PER_MIN",
+                100,
+            ),
             robot_fastlane_enabled: true,
             hot_max_vts: env_i64("HOT_MAX_VTS", 8192),
             arm_sweep_interval_ms: 15_000,
@@ -190,6 +203,8 @@ pub fn clamp_global(mut c: RuntimeCfg) -> RuntimeCfg {
     c.rate_limit_complete_per_min = clamp(c.rate_limit_complete_per_min, 0, 1_000_000);
     c.rate_limit_result_per_min = clamp(c.rate_limit_result_per_min, 0, 1_000_000);
     c.rate_limit_client_event_per_min = clamp(c.rate_limit_client_event_per_min, 0, 1_000_000);
+    c.rate_limit_client_event_per_ip_per_min =
+        clamp(c.rate_limit_client_event_per_ip_per_min, 0, 1_000_000);
     // Flood hardening knobs.
     c.hot_max_vts = clamp(c.hot_max_vts, 0, 4_000_000);
     c.arm_sweep_interval_ms = clamp(c.arm_sweep_interval_ms, 1_000, 600_000);
@@ -432,6 +447,7 @@ pub fn global_to_json(c: &RuntimeCfg) -> Value {
         "rate_limit_complete_per_min": c.rate_limit_complete_per_min,
         "rate_limit_result_per_min": c.rate_limit_result_per_min,
         "rate_limit_client_event_per_min": c.rate_limit_client_event_per_min,
+        "rate_limit_client_event_per_ip_per_min": c.rate_limit_client_event_per_ip_per_min,
         "robot_fastlane_enabled": c.robot_fastlane_enabled,
         "hot_max_vts": c.hot_max_vts,
         "arm_sweep_interval_ms": c.arm_sweep_interval_ms,
@@ -483,12 +499,13 @@ pub fn field_help_json() -> Value {
         "upload_ramp_after": "首包成功后目标并发",
         "analyze_idle_upload_ms": "无新上传多久触发分析（短访问默认 20s）",
         "complete_on_commercial_silicon": "商业硅材料+B10x 齐→关周期冷却（默认开；178 修复）",
-        "rate_limit_open_per_min": "open 每分钟每站上限（0=不限流；共享 PG 窗口）",
-        "rate_limit_ingest_per_min": "ingest 每分钟每站上限",
-        "rate_limit_analyze_per_min": "analyze 每分钟每站上限",
-        "rate_limit_complete_per_min": "complete 每分钟每站上限",
-        "rate_limit_result_per_min": "result 每分钟每站上限",
-        "rate_limit_client_event_per_min": "client_event 每分钟每站上限",
+        "rate_limit_open_per_min": "open 每分钟每站总上限（0=不限，默认 0；共享 PG 窗口）",
+        "rate_limit_ingest_per_min": "ingest 每分钟每站总上限（0=不限，默认 0）",
+        "rate_limit_analyze_per_min": "analyze 每分钟每站总上限（0=不限，默认 0）",
+        "rate_limit_complete_per_min": "complete 每分钟每站总上限（0=不限，默认 0）",
+        "rate_limit_result_per_min": "result 每分钟每站总上限（0=不限，默认 0）",
+        "rate_limit_client_event_per_min": "client_event 每分钟每站总上限（0=不限，默认 0）",
+        "rate_limit_client_event_per_ip_per_min": "client_event 每分钟每 IP 上限（默认 100；0=不限。单 IP 超限只掐该 IP，不影响其他访客）",
         "robot_fastlane_enabled": "已确认爬虫快道：不入 L1/不冷存/不挂分析臂，直接早判结果（默认开）",
         "hot_max_vts": "L1 热图 VT 封顶（0=不封；超出按最久未活跃逐出）",
         "arm_sweep_interval_ms": "ingest 顺带降级/挂臂扫最小间隔（防重臂风暴）",
@@ -568,6 +585,11 @@ pub fn parse_global_patch(base: &RuntimeCfg, patch: &Value) -> RuntimeCfg {
         &mut c.rate_limit_client_event_per_min,
         patch,
         "rate_limit_client_event_per_min",
+    );
+    patch_i64(
+        &mut c.rate_limit_client_event_per_ip_per_min,
+        patch,
+        "rate_limit_client_event_per_ip_per_min",
     );
     patch_i64(&mut c.hot_max_vts, patch, "hot_max_vts");
     patch_i64(&mut c.arm_sweep_interval_ms, patch, "arm_sweep_interval_ms");

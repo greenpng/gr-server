@@ -8277,10 +8277,12 @@ pub fn ops_client_event(
         .and_then(|v| v.as_str())
         .unwrap_or("client")
         .to_string();
-    // iss/opus5 §2.4: the comment promised 60 events/min/IP but nothing was
-    // implemented. Enforce it via the shared limiter, keyed on the socket
-    // peer (client-supplied XFF/X-Real are spoofable and must not pick the
-    // bucket); fall back to forwarded headers only behind a trusted proxy.
+    // iss/opus5 §2.4 promised per-IP event limiting; v1.0.14 implements the
+    // two-layer policy: per-IP window (default 100/min; caps one flooding
+    // source without touching other visitors) + optional site-wide total
+    // (default 0 = unlimited). Keyed on the socket peer — client-supplied
+    // XFF/X-Real are spoofable and must not pick the bucket; forwarded
+    // headers are honored only behind a trusted proxy.
     let sock_peer = headers.get("x-gr-peer-ip").map(|s| s.as_str());
     let ip = if peer_is_trusted_proxy(sock_peer) {
         headers
@@ -8295,7 +8297,12 @@ pub fn ops_client_event(
             .map(|s| s.to_string())
             .unwrap_or_else(|| "unknown".to_string())
     };
-    if let Err(e) = crate::rate_limit::check(st, &format!("ce:{ip}"), "client_event") {
+    let site_id = body
+        .get("site_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if let Err(e) = crate::rate_limit::check_client_event(st, &site_id, &ip) {
         return Err(ApiError(429, e));
     }
     let detail = body.get("detail").cloned().unwrap_or(json!({}));
