@@ -135,6 +135,7 @@ fn license_sync_interval_ms() -> i64 {
 /// failure (5min → 6h cap). While the node is unreachable the last verified
 /// entitlements keep working up to the 72h offline grace, and the panel shows
 /// 离线宽限中 via `license_sync_status()`.
+#[allow(dead_code)] // public ops facade (iss/opus5 06-P0-3); wired per deployment profile
 pub fn spawn_license_sync_loop() {
     tokio::spawn(async move {
         // Stagger the first tick so a fleet restart doesn't hammer the issuer.
@@ -336,6 +337,8 @@ fn urlencoding_simple(s: &str) -> String {
 
 #[derive(Debug, Clone)]
 pub struct OAuthSession {
+    // retained for future authenticated issuer calls
+    #[allow(dead_code)]
     pub access_token: String,
     pub email: String,
     pub email_verified: bool,

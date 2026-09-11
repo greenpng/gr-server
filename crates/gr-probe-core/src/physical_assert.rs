@@ -397,7 +397,7 @@ pub fn physical_contradiction(fields: &Value) -> Value {
         || renderer.contains("radeon rx")
         || renderer.contains("geforce")
         || renderer.contains("nvidia");
-    let claims_igpu = renderer.contains("intel")
+    let _claims_igpu = renderer.contains("intel")
         || renderer.contains("uhd")
         || renderer.contains("iris")
         || renderer.contains("apple m")

@@ -1,4 +1,4 @@
-# Green V7 results SDK — PHP
+# greenpng results SDK — PHP
 
 Backend-only thin client (requires PHP with `curl` + `json`). **Does not
 collect or relay probes.**
@@ -27,7 +27,7 @@ Optional result controls are passed as a final associative-array argument:
 |---|---|
 | `new GrResultClient($baseUrl, $apiKey)` | one client per server + site key |
 | `getResult($sessionId, $projection = 'sdk', $options = [])` | single snapshot |
-| `waitForResult($sessionId, $projection = 'sdk', $timeoutMs = 8000, $intervalMs = 250, $options = [])` | poll until ready |
+| `waitForResult($sessionId, $projection = 'sdk', $timeoutMs = 8000, $intervalMs = 500, $options = [])` | poll until ready |
 | `query($sessionId, $projection = 'sdk', $wait = false, ..., $options = [])` | single fetch or poll |
 | `GrResultClient::cookieFields($result)` | extract captured allowlisted cookies |
 

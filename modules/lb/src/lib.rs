@@ -20,18 +20,23 @@ use std::sync::{Mutex, OnceLock};
 /// Stamped release version (aligned with GitHub tag / GR_RELEASE_VERSION).
 pub const GR_MODULE_VERSION_PUBLIC: &str = env!("GR_MODULE_VERSION");
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static META_C: OnceLock<CString> = OnceLock::new();
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static VT: OnceLock<ModuleVTable> = OnceLock::new();
 
 #[derive(Debug, Default)]
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 struct LbGateState {
     granted: bool,
     license_id: String,
     modes: Vec<String>,
     expiry_ms: i64,
 }
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 static GATE: Mutex<Option<LbGateState>> = Mutex::new(None);
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 fn meta_json() -> &'static CString {
     META_C.get_or_init(|| {
         let m = ModuleMeta {
@@ -47,17 +52,21 @@ fn meta_json() -> &'static CString {
     })
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn init(_: *const gr_abi::HostContext) -> i32 {
     0
 }
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn shutdown() -> i32 {
     0
 }
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn apply_config(_: *const c_char) -> i32 {
     0
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 struct GateReq {
     token: String,
     /// Optional lab/ops override key (hex 64). Production builds embed the
@@ -67,6 +76,7 @@ struct GateReq {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 struct GateResp {
     granted: bool,
     license_id: String,
@@ -75,6 +85,7 @@ struct GateResp {
     state: String,
 }
 
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -82,6 +93,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 fn resolve_pubkey(hex_override: &str) -> Option<[u8; 32]> {
     if !hex_override.is_empty() {
         let t = hex_override.trim();
@@ -97,6 +109,7 @@ fn resolve_pubkey(hex_override: &str) -> Option<[u8; 32]> {
     gr_probe_core::license_token::license_pubkey(None)
 }
 
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 fn gate(token: &str, pubkey_hex: &str) -> GateResp {
     let pk = match resolve_pubkey(pubkey_hex) {
         Some(pk) => pk,
@@ -149,6 +162,7 @@ fn gate(token: &str, pubkey_hex: &str) -> GateResp {
     }
 }
 
+#[allow(dead_code)] // lb entitlement gate machinery — live only via the dlopen'd on_event ("gate"/"status") path.
 fn status() -> GateResp {
     let st = GATE.lock().unwrap();
     match st.as_ref() {
@@ -169,6 +183,7 @@ fn status() -> GateResp {
     }
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn on_event(
     event_c: *const c_char,
     payload: *const c_uchar,
@@ -203,7 +218,7 @@ extern "C" fn on_event(
             }
         },
         "status" => status(),
-        other => {
+        _other => {
             return -1; // unknown event
         }
     };

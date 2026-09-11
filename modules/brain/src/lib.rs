@@ -11,10 +11,13 @@ use std::sync::OnceLock;
 /// Stamped release version (aligned with GitHub tag / GR_RELEASE_VERSION).
 pub const GR_MODULE_VERSION_PUBLIC: &str = env!("GR_MODULE_VERSION");
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static META_C: OnceLock<CString> = OnceLock::new();
 static PLAN_REV: AtomicU64 = AtomicU64::new(0);
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static VT: OnceLock<ModuleVTable> = OnceLock::new();
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 fn meta_json() -> &'static CString {
     META_C.get_or_init(|| {
         let m = ModuleMeta {
@@ -30,12 +33,15 @@ fn meta_json() -> &'static CString {
     })
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn init(_: *const gr_abi::HostContext) -> i32 {
     0
 }
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn shutdown() -> i32 {
     0
 }
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn apply_config(_: *const c_char) -> i32 {
     PLAN_REV.fetch_add(1, Ordering::Relaxed);
     0

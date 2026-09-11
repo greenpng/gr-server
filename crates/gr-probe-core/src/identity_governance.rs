@@ -973,6 +973,7 @@ pub fn mu_census_snapshot() -> Value {
 
 /// Adjust u upward when effective_bits collapse (class-dead channel).
 /// Blends **online census** m/u with priors when census has signal.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn slot_mu_adjusted(name: &str, eff: Option<&Value>) -> SlotMu {
     let mut mu = census_slot_mu(name, None).unwrap_or_else(|| default_slot_mu(name));
     if let Some(e) = eff {
@@ -1241,6 +1242,8 @@ struct DeviceCatalog {
 #[derive(Clone)]
 struct DeviceRecord {
     fields: Value,
+    // record identity retained for future direct lookups
+    #[allow(dead_code)]
     device_id: String,
     last_ms: u64,
     agree_n: u32,
@@ -1648,7 +1651,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::path::PathBuf;
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::MutexGuard;
 
     /// Per-test isolation: exclusive lock + thread-local shared dir + full reset.
     fn isolate(label: &str) -> (MutexGuard<'static, ()>, PathBuf) {

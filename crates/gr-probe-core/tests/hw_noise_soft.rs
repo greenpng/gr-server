@@ -98,7 +98,7 @@ fn different_machine_noise_no_soft_edge() {
             "server_client_ip": "1.1.1.1",
             "hw_curve_audio": curve_a(),
             "hw_curve_canvas": (0..16).map(|i| i as f64).collect::<Vec<_>>(),
-            "hw_curve_cpu": (0..24).map(|i| 1.0).collect::<Vec<_>>(),
+            "hw_curve_cpu": (0..24).map(|_| 1.0).collect::<Vec<_>>(),
         }
     });
     let ev_b = json!({

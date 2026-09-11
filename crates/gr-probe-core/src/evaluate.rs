@@ -22,7 +22,7 @@ use crate::link::{
     associate, browser_surface_id_from_fields, commercial_device_id_from_fields, gpu_key,
 };
 use crate::association_ladder::association_ladder;
-use crate::link_or_mint::{apply_server_mint, link_or_mint_pair};
+use crate::link_or_mint::link_or_mint_pair;
 use crate::product_scores::build_product_surface_with_evidence;
 use crate::session_ticket::{
     b10_sla_violation, evidence_has_b10, issue_session_ticket_versioned, should_skip_session_probe,
@@ -35,8 +35,8 @@ use crate::stack_auth::{
 };
 use crate::device_ensemble::{fuse_pair_ensemble, fuse_single_ensemble};
 use crate::device_tier::{
-    authentic_fields_for_device_id, commercial_family, device_id_body, format_algo_device_id,
-    is_commercial_device_id, is_dg_id, is_dh_id, is_dv_id, parse_algo_group, select_device_tier,
+    authentic_fields_for_device_id,
+    is_commercial_device_id, is_dh_id, is_dv_id, select_device_tier,
 };
 use crate::trust::{commercial_projection, COMMERCIAL_ALGO};
 use crate::protocol_edge::derive_engine_claim_obs;
@@ -227,7 +227,7 @@ fn project_device(
     // Commercial id = trust-gated machine-stable (cross-browser / cross-proxy).
     // Prefer main authentic materials; never mint from nest-overwritten identity.
     let fields_merged = Value::Object(fo.clone());
-    let mut fields_v = authentic_fields_for_device_id(&fields_merged, evidence);
+    let fields_v = authentic_fields_for_device_id(&fields_merged, evidence);
     let mut proj = commercial_projection(&fields_v);
     // Soft/untrusted: commercial id only when projection eligible (host separator on soft).
     // Annotate warnings; do not force-emit low-entropy soft dv_*.

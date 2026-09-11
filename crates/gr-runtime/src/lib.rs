@@ -677,7 +677,20 @@ impl Runtime {
             std::fs::set_permissions(&install_tmp, perms).map_err(|e| e.to_string())?;
         }
         std::fs::rename(&install_tmp, &dest).map_err(|e| e.to_string())?;
-        let _ = std::fs::write(install_root.join("VERSION"), ver.as_bytes());
+        // iss/audit OPR-01: VERSION write is gated on the health check when
+        // restart=true (HEALTH_OK → new ver, rollback → previous ver). The
+        // previous eager stamp left a new-VERSION / old-binary split brain on
+        // HEALTH_FAIL: auto_upgrade_check's monotonic gate then read the new
+        // version as "current" and never retried — a permanently locked-out,
+        // half-upgraded host. restart=false keeps the immediate stamp (no
+        // health gate to wait for; nothing serves the new binary before the
+        // next restart anyway).
+        let prev_version = std::fs::read_to_string(install_root.join("VERSION"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        if !restart {
+            let _ = std::fs::write(install_root.join("VERSION"), ver.as_bytes());
+        }
         let _ = std::fs::write(rel_dir.join("sha256"), format!("{got_sha}\n"));
         // data_tree (1.0.8+): a panel runtime OTA must land the product data
         // files (r100 templates + geoip mmdb) too, not just the binary — read
@@ -700,9 +713,15 @@ impl Runtime {
         let mut restart_note = String::new();
         if restart {
             // R-06: after restart, probe health; on failure restore newest bak and restart again.
+            // iss/audit OPR-01: the health gate owns the VERSION stamp —
+            // HEALTH_OK stamps the new version; the rollback branch restores
+            // the previous version alongside the .bak binary (split-brain lock).
             let bak_glob = bin_dir.join("gr-service.bak.*");
             let dest_s = dest.display().to_string();
             let bak_pat = bak_glob.display().to_string();
+            let version_path = install_root.join("VERSION").display().to_string();
+            let ver_q = shell_single_quote(ver.as_str());
+            let prev_ver_q = shell_single_quote(&prev_version);
             let script = format!(
                 r#"set -e
 sleep 2
@@ -723,6 +742,10 @@ if [ "$ok" != "1" ]; then
     echo "ROLLBACK_TO $newest" >>/tmp/gr-ota-restart.log
     cp -a "$newest" "{dest_s}"
     chmod 755 "{dest_s}"
+    if [ -n {prev_ver_q} ]; then
+      printf '%s\n' {prev_ver_q} > "{version_path}" || true
+      echo VERSION_ROLLBACK >>/tmp/gr-ota-restart.log
+    fi
     /bin/systemctl restart "$UNIT" || true
     sleep 3
     curl -fsS http://127.0.0.1:28680/v1/health >/tmp/gr-ota-health-rollback.json 2>/dev/null \
@@ -730,13 +753,21 @@ if [ "$ok" != "1" ]; then
       || echo ROLLBACK_HEALTH_FAIL >>/tmp/gr-ota-restart.log
   else
     echo NO_BACKUP_FOR_ROLLBACK >>/tmp/gr-ota-restart.log
+    if [ -n {prev_ver_q} ]; then
+      printf '%s\n' {prev_ver_q} > "{version_path}" || true
+    fi
   fi
 else
   echo HEALTH_OK >>/tmp/gr-ota-restart.log
+  printf '%s\n' {ver_q} > "{version_path}" || true
+  echo "VERSION_STAMPED {ver_q}" >>/tmp/gr-ota-restart.log
 fi
 "#,
                 bak_pat = bak_pat,
                 dest_s = dest_s,
+                version_path = version_path,
+                ver_q = ver_q,
+                prev_ver_q = prev_ver_q,
             );
             let spawned = std::process::Command::new("/bin/bash")
                 .args([

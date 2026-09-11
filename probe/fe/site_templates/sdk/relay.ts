@@ -13,10 +13,10 @@
  *   app/g5-gw/[[...path]]/route.ts
  *
  * Env:
- *   GV5_INGEST_UPSTREAM   default http://127.0.0.1:28765
- *   GV5_GW_UPSTREAM       default http://127.0.0.1:28766
- *   GV5_RELAY_CONNECT_MS  default 3000
- *   GV5_RELAY_TIMEOUT_MS  default 60000  (upload upper bound)
+ *   GR_INGEST_UPSTREAM   default http://127.0.0.1:28765
+ *   GR_GW_UPSTREAM       default http://127.0.0.1:28766
+ *   GR_RELAY_CONNECT_MS  default 3000
+ *   GR_RELAY_TIMEOUT_MS  default 60000  (upload upper bound)
  */
 
 export type RelayRole = 'ingest' | 'gateway';
@@ -64,14 +64,14 @@ const FORWARD_ALWAYS = [
 function upstreamBase(role: RelayRole): string {
   if (role === 'gateway') {
     return (
-      process.env.GV5_GW_UPSTREAM ||
-      process.env.NEXT_PUBLIC_GV5_GW_UPSTREAM ||
+      process.env.GR_GW_UPSTREAM ||
+      process.env.NEXT_PUBLIC_GR_GW_UPSTREAM ||
       'http://127.0.0.1:28766'
     ).replace(/\/$/, '');
   }
   return (
-    process.env.GV5_INGEST_UPSTREAM ||
-    process.env.NEXT_PUBLIC_GV5_INGEST_UPSTREAM ||
+    process.env.GR_INGEST_UPSTREAM ||
+    process.env.NEXT_PUBLIC_GR_INGEST_UPSTREAM ||
     'http://127.0.0.1:28765'
   ).replace(/\/$/, '');
 }
@@ -138,7 +138,7 @@ export async function relayRequest(
   const method = req.method.toUpperCase();
   const headers = buildForwardHeaders(req);
 
-  const timeoutMs = Number(process.env.GV5_RELAY_TIMEOUT_MS || 60_000);
+  const timeoutMs = Number(process.env.GR_RELAY_TIMEOUT_MS || 60_000);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 

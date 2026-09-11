@@ -20,6 +20,8 @@ use std::sync::{Arc, OnceLock};
 #[derive(Clone)]
 pub struct AppState {
     pub rt: Arc<Runtime>,
+    // SPA root (kept for panel/OTA wiring variants)
+    #[allow(dead_code)]
     pub spa_dir: PathBuf,
     pub probe_base: String,
     /// FE static root (e.g. /opt/greenpng/fe) for panel OTA install-fe.
@@ -194,6 +196,87 @@ pub fn router(
         .with_state(state)
 }
 
+/// iss/audit SDK-03: robust CSRF origin check behind reverse proxies.
+///
+/// Previous behavior rejected with 403 `csrf_origin_required` and no log when:
+/// - the proxy did not pass `X-Forwarded-Proto` (browser Origin is https,
+///   expected was http), or
+/// - Origin/Host carried different port spellings.
+///
+/// Now: hostname equality (case-insensitive, port-stripped) is the CSRF
+/// boundary; scheme mismatch on the SAME host is accepted but WARN-logged so
+/// the proxy misconfig is visible; every rejection is WARN-logged with
+/// origin/expected/proto/peer instead of failing silently. Proto resolution
+/// honors `X-Forwarded-Proto` then RFC 7239 `Forwarded: proto=`.
+fn csrf_host_only(h: &str) -> &str {
+    // IPv6 literals keep their brackets: [::1]:8443 → [::1]
+    if let Some(open) = h.find('[') {
+        if let Some(close) = h.find(']') {
+            return &h[open..=close];
+        }
+    }
+    h.split_once(':').map(|(host, _)| host).unwrap_or(h)
+}
+
+fn csrf_forwarded_proto(headers: &HeaderMap) -> String {
+    if let Some(v) = headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok()) {
+        return v.trim().to_ascii_lowercase();
+    }
+    if let Some(v) = headers.get(header::FORWARDED).and_then(|v| v.to_str().ok()) {
+        // RFC 7239: "for=1.2.3.4;proto=https;host=..." — first element wins.
+        let first = v.split(',').next().unwrap_or("");
+        for part in first.split(';') {
+            if let Some((k, val)) = part.split_once('=') {
+                if k.trim().eq_ignore_ascii_case("proto") {
+                    return val.trim_matches('"').to_ascii_lowercase();
+                }
+            }
+        }
+    }
+    "http".to_string()
+}
+
+fn csrf_peer_ip(headers: &HeaderMap) -> String {
+    if let Some(v) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
+        return v.to_string();
+    }
+    if let Some(v) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        return v.split(',').next().unwrap_or("").trim().to_string();
+    }
+    "-".to_string()
+}
+
+/// Pure decision core (unit-tested in csrf_origin_tests below).
+enum CsrfDecision {
+    /// Same host, same scheme — pass silently.
+    Pass,
+    /// Same host, different scheme — pass, but the proxy is missing
+    /// X-Forwarded-Proto/Forwarded and that must be surfaced.
+    PassSchemeMismatch,
+    /// Reject (cross-site Origin, or missing Origin/Host).
+    Reject,
+}
+
+fn csrf_origin_check(origin: Option<&str>, host: Option<&str>, proto: &str) -> CsrfDecision {
+    let (Some(o), Some(h)) = (origin, host) else {
+        return CsrfDecision::Reject;
+    };
+    let origin_host = o
+        .split_once("://")
+        .map(|(_, rest)| csrf_host_only(rest).to_string())
+        .unwrap_or_default();
+    let req_host = csrf_host_only(h);
+    let same_host = !origin_host.is_empty() && origin_host.eq_ignore_ascii_case(req_host);
+    let scheme_ok = o.to_ascii_lowercase().starts_with(&format!("{proto}://"));
+    if same_host && scheme_ok {
+        CsrfDecision::Pass
+    } else if same_host {
+        CsrfDecision::PassSchemeMismatch
+    } else {
+        CsrfDecision::Reject
+    }
+}
+
 async fn csrf_middleware(req: Request<Body>, next: axum::middleware::Next) -> Response {
     let method = req.method();
     let path = req.uri().path();
@@ -209,10 +292,30 @@ async fn csrf_middleware(req: Request<Body>, next: axum::middleware::Next) -> Re
     {
         let origin = req.headers().get(header::ORIGIN).and_then(|v| v.to_str().ok());
         let host = req.headers().get(header::HOST).and_then(|v| v.to_str().ok());
-        let proto = req.headers().get("x-forwarded-proto").and_then(|v| v.to_str().ok()).unwrap_or("http");
-        let expected = host.map(|h| format!("{proto}://{h}"));
-        if origin.zip(expected.as_deref()).map(|(o, e)| o == e).unwrap_or(false) == false {
-            return (StatusCode::FORBIDDEN, Json(json!({"ok":false,"error":"csrf_origin_required"}))).into_response();
+        let proto = csrf_forwarded_proto(req.headers());
+        let peer = csrf_peer_ip(req.headers());
+        match csrf_origin_check(origin, host, &proto) {
+            CsrfDecision::Pass => {}
+            CsrfDecision::PassSchemeMismatch => {
+                // Same host, different scheme: the proxy did not pass
+                // X-Forwarded-Proto/Forwarded. Host equality is the CSRF
+                // boundary, so accept — but make the misconfig visible.
+                log::warn!(
+                    "csrf origin scheme mismatch accepted (proxy missing X-Forwarded-Proto?): \
+                     origin={} proto={proto} host={} peer={peer} path={path}",
+                    origin.unwrap_or("-"),
+                    host.unwrap_or("-")
+                );
+            }
+            CsrfDecision::Reject => {
+                log::warn!(
+                    "csrf rejected: origin={} expected_host={} proto={proto} peer={peer} path={path} missing={}",
+                    origin.unwrap_or("-"),
+                    host.unwrap_or("-"),
+                    if origin.is_none() { "Origin" } else if host.is_none() { "Host" } else { "-" }
+                );
+                return (StatusCode::FORBIDDEN, Json(json!({"ok":false,"error":"csrf_origin_required"}))).into_response();
+            }
         }
     }
     next.run(req).await
@@ -306,6 +409,7 @@ fn content_type_for(path: &str) -> &'static str {
     }
 }
 
+#[allow(dead_code)] // kept: SPA asset handler variant (iss/audit WARN-01: silence, do not remove)
 async fn serve_spa_vite_asset(Path(file): Path<String>) -> Response {
     if file.contains("..") || file.contains('/') || file.contains('\\') {
         return (StatusCode::BAD_REQUEST, "bad path").into_response();
@@ -1825,6 +1929,7 @@ async fn admin_login(
     }
 }
 
+#[allow(dead_code)] // kept: constant-time compare security primitive (iss/audit WARN-01: silence, do not remove)
 fn constant_time_equal(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -2131,7 +2236,7 @@ async fn cloud_sync_strategies(State(st): State<AppState>, headers: HeaderMap) -
             if let Some(arr) = v.get("loaded").and_then(|x| x.as_array()) {
                 let mut site_map = serde_json::Map::new();
                 let mut ent_map = serde_json::Map::new();
-                let mut def = "observe_only".to_string();
+                let def = "observe_only".to_string();
                 // Map official domains → local lab site_ids via root_domains.
                 let domain_to_local: std::collections::HashMap<String, String> = st
                     .rt
@@ -3018,9 +3123,23 @@ struct HbBody {
 }
 
 async fn cluster_heartbeat(State(st): State<AppState>, Json(body): Json<HbBody>) -> Response {
+    let peer_node = body.info.node_id.clone();
     if st.rt.cluster.ingest_peer(&body.key, body.info, body.ts_ms, &body.sig) {
         Json(json!({"ok": true})).into_response()
     } else {
+        // iss/audit LOG/SEC: cluster auth failures were fully silent 403s —
+        // surface the peer and which gate rejected (key / signature / window /
+        // monotonic) so misconfigured or hostile peers are diagnosable.
+        let reason = if !st.rt.cluster.auth_ok(&body.key) {
+            "cluster_key"
+        } else {
+            "sig_or_window_or_monotonic"
+        };
+        log::warn!(
+            "cluster heartbeat rejected: peer_node={peer_node} reason={reason} ts_ms={} node={}",
+            body.ts_ms,
+            st.rt.cluster.node_id()
+        );
         (StatusCode::FORBIDDEN, Json(json!({"ok": false, "error": "auth"}))).into_response()
     }
 }
@@ -3634,7 +3753,7 @@ async fn ota_auto_hold(
         .unwrap_or_else(|| json!({}));
     let obj = state.as_object_mut().ok_or(())
         .map_err(|_| "state_file_not_object".to_string());
-    let mut obj = match obj {
+    let obj = match obj {
         Ok(o) => o,
         Err(e) => {
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok": false, "error": e})))
@@ -3731,6 +3850,8 @@ async fn cluster_ota_apply_key(
     Json(body): Json<ClusterApplyKeyBody>,
 ) -> Response {
     if !st.rt.cluster.auth_ok(&body.key) {
+        // iss/audit LOG/SEC: key-authed OTA distribution failures were silent 403s.
+        log::warn!("cluster ota-apply rejected: bad cluster key (auth) node={}", st.rt.cluster.node_id());
         return (StatusCode::FORBIDDEN, Json(json!({"ok": false, "error": "auth"}))).into_response();
     }
     let url = body
@@ -4185,5 +4306,101 @@ mod cookie_secure_tests {
                 None => std::env::remove_var(&k),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod csrf_origin_tests {
+    use super::*;
+
+    fn hdr(k: &str, v: &str) -> HeaderMap {
+        let mut m = HeaderMap::new();
+        m.insert(
+            header::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+            header::HeaderValue::from_str(v).unwrap(),
+        );
+        m
+    }
+
+    #[test]
+    fn host_only_strips_port_but_keeps_ipv6_brackets() {
+        assert_eq!(csrf_host_only("example.com:8443"), "example.com");
+        assert_eq!(csrf_host_only("example.com"), "example.com");
+        assert_eq!(csrf_host_only("[::1]:8443"), "[::1]");
+        assert_eq!(csrf_host_only("[::1]"), "[::1]");
+    }
+
+    #[test]
+    fn forwarded_proto_prefers_xfp_then_rfc7239() {
+        assert_eq!(csrf_forwarded_proto(&hdr("x-forwarded-proto", "https")), "https");
+        assert_eq!(csrf_forwarded_proto(&hdr("x-forwarded-proto", " HTTPS ")), "https");
+        // RFC 7239 Forwarded fallback
+        assert_eq!(
+            csrf_forwarded_proto(&hdr("forwarded", "for=1.2.3.4;proto=HTTPS;host=panel.example")),
+            "https"
+        );
+        // first element wins across comma-joined proxies
+        assert_eq!(
+            csrf_forwarded_proto(&hdr("forwarded", "for=1.2.3.4;proto=https, for=9.9.9.9")),
+            "https"
+        );
+        // quoted value tolerated
+        assert_eq!(csrf_forwarded_proto(&hdr("forwarded", "for=1.2.3.4;proto=\"https\"")), "https");
+        // nothing → http default
+        assert_eq!(csrf_forwarded_proto(&HeaderMap::new()), "http");
+    }
+
+    #[test]
+    fn peer_ip_prefers_real_ip_then_first_xff_hop() {
+        assert_eq!(csrf_peer_ip(&hdr("x-real-ip", "10.1.2.3")), "10.1.2.3");
+        assert_eq!(csrf_peer_ip(&hdr("x-forwarded-for", "1.1.1.1, 2.2.2.2")), "1.1.1.1");
+        assert_eq!(csrf_peer_ip(&HeaderMap::new()), "-");
+    }
+
+    /// iss/audit SDK-03 regression locks:
+    /// - exact same-origin passes;
+    /// - same host + scheme mismatch (proxy missing X-Forwarded-Proto) passes
+    ///   (previously a hard 403 lockout behind TLS-terminating proxies);
+    /// - same host + port spelling differences pass;
+    /// - cross-site Origin rejects;
+    /// - missing Origin rejects.
+    #[test]
+    fn origin_decision_matrix() {
+        use CsrfDecision::*;
+        // exact same-origin
+        assert!(matches!(
+            csrf_origin_check(Some("https://panel.example"), Some("panel.example"), "https"),
+            Pass
+        ));
+        // behind proxy that did NOT forward the proto: browser says https,
+        // server-derived proto is http — same host must still pass.
+        assert!(matches!(
+            csrf_origin_check(Some("https://panel.example"), Some("panel.example"), "http"),
+            PassSchemeMismatch
+        ));
+        // port spelling differences (Host carries the port, Origin does not)
+        assert!(matches!(
+            csrf_origin_check(Some("https://panel.example"), Some("panel.example:8443"), "https"),
+            Pass
+        ));
+        assert!(matches!(
+            csrf_origin_check(Some("http://127.0.0.1:28680"), Some("127.0.0.1:28680"), "http"),
+            Pass
+        ));
+        // host case-insensitivity
+        assert!(matches!(
+            csrf_origin_check(Some("https://PANEL.Example"), Some("panel.example"), "https"),
+            Pass
+        ));
+        // cross-site → reject (the actual CSRF case)
+        assert!(matches!(
+            csrf_origin_check(Some("https://evil.example"), Some("panel.example"), "https"),
+            Reject
+        ));
+        // missing Origin / Host → reject
+        assert!(matches!(csrf_origin_check(None, Some("panel.example"), "https"), Reject));
+        assert!(matches!(csrf_origin_check(Some("https://panel.example"), None, "https"), Reject));
+        // Origin without a scheme → reject (host parse fails, stays safe)
+        assert!(matches!(csrf_origin_check(Some("panel.example"), Some("panel.example"), "https"), Reject));
     }
 }

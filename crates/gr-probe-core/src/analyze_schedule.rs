@@ -74,6 +74,17 @@ impl AnalyzeDueReason {
 }
 
 /// Pure decision: is analyze due *right now* given clocks for the active batch.
+///
+/// iss/audit COR-01 note (kept deliberately): this function has no runtime
+/// caller by design — the running scheduler arms DUE TIMES (via
+/// `analyze_arm_debounce_ms_after_ingest` + `schedule_analyze_merge`, due_ms
+/// persisted in `analyze_jobs`) and workers claim due rows; nothing needs a
+/// synchronous "is it due now" predicate on the hot path. It remains the
+/// executable specification of the four-arm decision order (explicit →
+/// cycle-inactive → pre-cold → coverage → no-result-ceiling → idle), pinned
+/// by the tests below — the arm functions it shares constants with are what
+/// handlers.rs actually calls, so this spec drifting from the arm math would
+/// fail these tests rather than silently diverge.
 pub fn analyze_due_now(
     now_ms: i64,
     last_upload_ms: i64,

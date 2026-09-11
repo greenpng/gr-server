@@ -2758,7 +2758,7 @@ pub fn build_frontier(
     // divergence unlock B18/B92/B95 deepening (no constant defer). Runs BEFORE
     // the primary task_gap_map fill so high-entropy deepening preempts
     // breadth; B94 stays behind the dual-KPI gate unless separately justified.
-    let mut b5_research_unlock = |packs: &mut Vec<Value>, notes: &mut Vec<String>| {
+    let b5_research_unlock = |packs: &mut Vec<Value>, notes: &mut Vec<String>| {
         if !research_unlock_triggered(evidence) {
             for (code, pid) in [
                 ("need_webgpu_atomic_contention", "B92_webgpu_atomic_contention"),
@@ -4861,13 +4861,13 @@ pub fn build_frontier(
         .get("hw_curve_webgl")
         .and_then(|v| v.as_array())
         .is_some_and(|a| a.len() >= 4);
-    let has_residual_final = fo_final.get("residual_mean").and_then(|v| v.as_f64()).is_some()
+    let _has_residual_final = fo_final.get("residual_mean").and_then(|v| v.as_f64()).is_some()
         || has_webgl_curve_final
         || fo_final
             .get("hw_curve_audio")
             .and_then(|v| v.as_array())
             .is_some_and(|a| a.len() >= 8);
-    let has_host_sep_final = fo_final
+    let _has_host_sep_final = fo_final
         .get("webrtc_host_ip_hash")
         .and_then(|v| v.as_str())
         .is_some_and(|s| !s.is_empty())

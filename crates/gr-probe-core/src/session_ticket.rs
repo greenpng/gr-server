@@ -85,6 +85,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn non_empty_str(v: Option<&Value>) -> bool {
     match v {
         Some(Value::String(s)) => !s.trim().is_empty() && s != "null" && s != "undefined",

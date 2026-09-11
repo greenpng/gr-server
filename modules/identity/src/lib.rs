@@ -13,10 +13,12 @@ use std::sync::OnceLock;
 /// Stamped release version (aligned with GitHub tag / GR_RELEASE_VERSION).
 pub const GR_MODULE_VERSION_PUBLIC: &str = env!("GR_MODULE_VERSION");
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static META_C: OnceLock<CString> = OnceLock::new();
 static STATE: OnceLock<RwLock<IdentityState>> = OnceLock::new();
 
 #[derive(Default)]
+#[allow(dead_code)] // global fallback material, populated via apply_config in .so builds
 struct IdentityState {
     /// site_id → material
     sites: HashMap<String, SiteCrypto>,
@@ -35,6 +37,7 @@ fn state() -> &'static RwLock<IdentityState> {
     STATE.get_or_init(|| RwLock::new(IdentityState::default()))
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 fn meta_json() -> &'static CString {
     META_C.get_or_init(|| {
         let m = ModuleMeta {
@@ -50,14 +53,17 @@ fn meta_json() -> &'static CString {
     })
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn init(_ctx: *const gr_abi::HostContext) -> i32 {
     0
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn shutdown() -> i32 {
     0
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 extern "C" fn apply_config(json: *const c_char) -> i32 {
     let Some(s) = gr_abi::cstr_to_str(json) else {
         return -1;
@@ -143,6 +149,7 @@ pub fn site_challenge_key(site_id: &str, global_fallback: &str) -> String {
     hex::encode(h.finalize())
 }
 
+#[allow(dead_code)] // C-ABI entry point — called via dlopen vtable when built as .so (static-link builds see no Rust caller).
 static VT: OnceLock<ModuleVTable> = OnceLock::new();
 
 #[cfg(feature = "plugin")]

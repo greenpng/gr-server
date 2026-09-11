@@ -729,7 +729,7 @@ mod tests {
         let mut visits = Vec::new();
         for (load, spike_at) in [(1.0, None), (1.25, Some(10usize)), (0.88, Some(22usize))] {
             let mut r1: Vec<f64> = base.iter().map(|x| x * load).collect();
-            let mut r2: Vec<f64> = base.iter().map(|x| x * load * 1.05).collect();
+            let r2: Vec<f64> = base.iter().map(|x| x * load * 1.05).collect();
             if let Some(i) = spike_at {
                 r1[i] *= 40.0; // GC / preemption spike
             }

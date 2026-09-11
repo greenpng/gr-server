@@ -557,6 +557,6 @@ mod tests {
             mark_webhook_failed(&id, "http_500", 3);
         }
         let st = outbox_status();
-        assert!(st["dlq_n"].as_u64().unwrap() >= 1 || st["pending_n"].as_u64().unwrap() >= 0);
+        assert!(st["dlq_n"].as_u64().unwrap() >= 1);
     }
 }

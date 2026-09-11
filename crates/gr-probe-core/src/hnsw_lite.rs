@@ -10,9 +10,9 @@
 //!
 //! Process-local graph + optional file share via `shared_governance`.
 
-use crate::shared_governance::{
-    as_object_mut, clear_shared_governance_files, shared_governance_dir, with_shared_json,
-};
+use crate::shared_governance::{as_object_mut, shared_governance_dir, with_shared_json};
+#[cfg(test)]
+use crate::shared_governance::clear_shared_governance_files;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -238,6 +238,7 @@ impl Ord for Cand {
 }
 
 #[derive(Copy, Clone)]
+#[allow(non_camel_case_types)] // ordered-comparison wrapper kept lowercase (hnsw key ordering idiom)
 struct ordered_f32(f32);
 impl PartialEq for ordered_f32 {
     fn eq(&self, o: &Self) -> bool {

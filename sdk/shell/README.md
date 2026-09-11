@@ -1,4 +1,4 @@
-# Green V7 results SDK — Shell
+# greenpng results SDK — Shell
 
 Backend-only thin client (bash + curl). **Does not collect or relay
 probes.**

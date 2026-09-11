@@ -1,6 +1,6 @@
 <?php
 /**
- * Green V7 results SDK (PHP) — backend only.
+ * greenpng results SDK (PHP) — backend only.
  *
  * Thin, read-only client: getResult / waitForResult / query. It does NOT
  * collect or relay browser probes — it only reads stored analysis results
@@ -10,7 +10,7 @@
  * Projection: "public" | "sdk" | "diagnostic" (diagnostic needs an ops key).
  */
 
-final class Gv7ApiError extends Exception
+final class GrApiError extends Exception
 {
     /** @var int|null */
     public $status;
@@ -26,7 +26,7 @@ final class Gv7ApiError extends Exception
     }
 }
 
-final class Gv7AnalysisPending extends Exception
+final class GrAnalysisPending extends Exception
 {
     /** @var mixed */
     public $lastBody;
@@ -39,7 +39,7 @@ final class Gv7AnalysisPending extends Exception
     }
 }
 
-final class Gv7ResultClient
+final class GrResultClient
 {
     /** @var string */
     private $baseUrl;
@@ -80,7 +80,7 @@ final class Gv7ResultClient
      *
      * @return array<string,mixed>
      */
-    public function waitForResult(string $sessionId, string $projection = 'sdk', int $timeoutMs = 8000, int $intervalMs = 250, array $options = []): array
+    public function waitForResult(string $sessionId, string $projection = 'sdk', int $timeoutMs = 8000, int $intervalMs = 500, array $options = []): array
     {
         $deadline = microtime(true) + $timeoutMs / 1000.0;
         $last = null;
@@ -97,7 +97,7 @@ final class Gv7ResultClient
                 }
             }
             if (microtime(true) >= $deadline) {
-                throw new Gv7AnalysisPending($last);
+                throw new GrAnalysisPending($last);
             }
             usleep($intervalMs * 1000);
         }
@@ -108,7 +108,7 @@ final class Gv7ResultClient
      *
      * @return array<string,mixed>
      */
-    public function query(string $sessionId, string $projection = 'sdk', bool $wait = false, int $timeoutMs = 8000, int $intervalMs = 250, array $options = []): array
+    public function query(string $sessionId, string $projection = 'sdk', bool $wait = false, int $timeoutMs = 8000, int $intervalMs = 500, array $options = []): array
     {
         if ($wait) {
             return $this->waitForResult($sessionId, $projection, $timeoutMs, $intervalMs, $options);
@@ -138,7 +138,7 @@ final class Gv7ResultClient
         $err = curl_error($ch);
         curl_close($ch);
         if ($raw === false) {
-            throw new Gv7ApiError((string) $err, $status);
+            throw new GrApiError((string) $err, $status);
         }
         $body = json_decode($raw, true);
         if (!is_array($body)) {
@@ -152,7 +152,7 @@ final class Gv7ResultClient
             if (!is_string($msg) || strpos($msg, 'http_') === 0) {
                 $msg = 'http_' . $status;
             }
-            throw new Gv7ApiError($msg, $status, $body);
+            throw new GrApiError($msg, $status, $body);
         }
         return $body;
     }

@@ -242,14 +242,17 @@ fn webgl_soft_match(a: &str, b: &str) -> bool {
 /// Offline FE core (when no server edge IP): os + cores + timezone.
 /// WebKit may report different concurrency than Chromium on the same host — prefer
 /// server_client_ip path below whenever gateway observed the visitor.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 const MACHINE_ID_CORE_KEYS_FE: &[&str] = &["os_family", "hardware_concurrency", "timezone"];
 
 /// Edge-joined core (GA4/AdSense-style): same egress IP + OS + timezone.
 /// Stable across Chromium/Firefox/WebKit even when GPU path or cores report differs.
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 const MACHINE_ID_CORE_KEYS_EDGE: &[&str] = &["os_family", "timezone", "server_client_ip"];
 
 /// Soft machine materials — collected for LINK confidence / diagnostics when present on both sides.
 /// Never change commercial device_id digest (avoids Chrome-only fields splitting multi-browser ids).
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 const MACHINE_ID_SOFT_KEYS: &[&str] = &[
     "device_memory",
     "audio_sample_rate",

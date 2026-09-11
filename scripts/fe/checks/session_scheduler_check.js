@@ -55,4 +55,23 @@ const active = S.submit("active_cycle");
 assert(active.ok === false && active.reason === "busy", "active collection must defer");
 assert(S.isBusy() === true, "active collection reports scheduler busy");
 
-console.log("SESSION_SCHEDULER_CHECK_PASS", JSON.stringify({ kicks, snapshot: S.snapshot() }));
+// iss/audit PRB-02: a throwing kick must surface failure honestly — the old
+// empty catch returned { ok: true } and the probe cycle silently died.
+sandbox.__GR_MULTI_TICK_ACTIVE__ = false;
+const opsReports = [];
+sandbox.GROps = {
+  report(code, stage, detail, level) {
+    opsReports.push({ code, stage, level, detail });
+  },
+};
+S.bind({ kick() { throw new Error("mock kick failure"); }, debounce_ms: 0 });
+const failed = S.submit("kick_throws", { force: true });
+assert(failed.ok === false, "throwing kick must return ok:false (was ok:true via empty catch)");
+assert(/mock kick failure/.test(String(failed.error || "")), "failure detail is propagated");
+assert((S.snapshot().stats.kick_errors || 0) >= 1, "kick errors are counted in stats");
+assert(
+  opsReports.some((r) => r.code === "scheduler_kick_fail" && r.level === "error"),
+  "kick failure is reported through GROps at error level"
+);
+
+console.log("SESSION_SCHEDULER_CHECK_PASS", JSON.stringify({ kicks, snapshot: S.snapshot(), opsReports }));

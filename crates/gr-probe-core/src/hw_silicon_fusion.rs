@@ -57,6 +57,7 @@ fn curve_mean(xs: &[f64]) -> f64 {
     }
 }
 
+#[allow(dead_code)] // kept: algorithm reference / .so-module variant (iss/audit WARN-01: silence, do not remove)
 fn digest_tag(tag: &str, parts: &[&str]) -> String {
     let mut h = Sha256::new();
     h.update(tag.as_bytes());

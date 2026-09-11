@@ -135,6 +135,29 @@ pub struct AdminDb {
     pub backend_label: String,
 }
 
+/// Schema bootstrap for the control store — run on initial connect AND on
+/// every STO-02 self-heal reconnect (all statements are idempotent).
+fn bootstrap(c: &mut Client) -> Result<(), String> {
+    c.batch_execute(PG_SCHEMA)
+        .map_err(|e| format!("control admin schema: {e}"))?;
+    // iss/opus5 02-§5 consent gate: additive migration for existing installs.
+    c.batch_execute(
+        "ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS consent_confirmed_at BIGINT NOT NULL DEFAULT 0;
+         ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS consent_notice_version TEXT NOT NULL DEFAULT '';
+         ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS cookie_fields TEXT NOT NULL DEFAULT '[]';
+         ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS embed_token TEXT NOT NULL DEFAULT '';",
+    )
+    .map_err(|e| format!("control admin consent migration: {e}"))?;
+    let ts = now_ms();
+    c.execute(
+        "INSERT INTO control.worker_settings(id, analyze_workers, ingest_workers, gateway_workers, updated_ms)
+         VALUES (1,1,1,1,$1) ON CONFLICT (id) DO NOTHING",
+        &[&ts],
+    )
+    .map(|_| ())
+    .map_err(|e| format!("control worker_settings: {e}"))
+}
+
 impl AdminDb {
     pub fn open(_legacy_sqlite_path: &std::path::Path) -> Result<Self, String> {
         Self::open_postgres()
@@ -157,31 +180,39 @@ impl AdminDb {
                         return;
                     }
                 };
-                if let Err(e) = client.batch_execute(PG_SCHEMA) {
-                    let _ = ready_tx.send(Err(format!("control admin schema: {e}")));
-                    return;
-                }
-                // iss/opus5 02-§5 consent gate: additive migration for existing installs.
-                if let Err(e) = client.batch_execute(
-                    "ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS consent_confirmed_at BIGINT NOT NULL DEFAULT 0;
-                     ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS consent_notice_version TEXT NOT NULL DEFAULT '';
-                     ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS cookie_fields TEXT NOT NULL DEFAULT '[]';
-                     ALTER TABLE control.sites ADD COLUMN IF NOT EXISTS embed_token TEXT NOT NULL DEFAULT '';",
-                ) {
-                    let _ = ready_tx.send(Err(format!("control admin consent migration: {e}")));
-                    return;
-                }
-                let ts = now_ms();
-                if let Err(e) = client.execute(
-                    "INSERT INTO control.worker_settings(id, analyze_workers, ingest_workers, gateway_workers, updated_ms)
-                     VALUES (1,1,1,1,$1) ON CONFLICT (id) DO NOTHING",
-                    &[&ts],
-                ) {
-                    let _ = ready_tx.send(Err(format!("control worker_settings: {e}")));
+                if let Err(e) = bootstrap(&mut client) {
+                    let _ = ready_tx.send(Err(e));
                     return;
                 }
                 let _ = ready_tx.send(Ok(()));
+                // iss/audit STO-02 (fifth store — found by the v1.0.13 lab
+                // bounce test): this control-plane job worker (login/sessions/
+                // audit/worker_settings) shared the same single-connection
+                // pattern as the probe/biz/assoc/plane-admin stores. Self-heal
+                // a broken connection (PG restart / failover) instead of
+                // erroring every job on a dead socket until process restart.
                 while let Ok(job) = jobs_rx.recv() {
+                    if client.is_closed() {
+                        let mut delay_ms: u64 = 500;
+                        for attempt in 1..=6u32 {
+                            match connect(&dsn_owned).and_then(|mut c| bootstrap(&mut c).map(|_| c)) {
+                                Ok(c) => {
+                                    client = c;
+                                    tracing::info!(
+                                        "control admin pg reconnected after connection loss (attempt {attempt})"
+                                    );
+                                    break;
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "control admin pg reconnect failed attempt {attempt}/6: {e}"
+                                    );
+                                }
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                            delay_ms = (delay_ms * 2).min(8_000);
+                        }
+                    }
                     job(&mut client);
                 }
             })

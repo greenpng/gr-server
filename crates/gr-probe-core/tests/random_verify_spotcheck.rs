@@ -185,7 +185,7 @@ fn manifest_diversity_target() {
         .get("mean_unique_vs_peers")
         .and_then(|x| x.as_f64())
         .unwrap_or(0.0);
-    let min_u = v
+    let _min_u = v
         .get("min_unique_vs_peers")
         .and_then(|x| x.as_f64())
         .unwrap_or(0.0);

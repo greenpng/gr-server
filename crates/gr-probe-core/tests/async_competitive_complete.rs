@@ -167,7 +167,7 @@ fn claim_obs_media_all_unsupported_demotes() {
 
 #[test]
 fn claim_obs_soft_vs_webgpu_vendor_demotes_os() {
-    let bot = bot_human();
+    let _bot = bot_human();
     let fo = json!({
         "platform": "Linux",
         "user_agent": "Chrome",

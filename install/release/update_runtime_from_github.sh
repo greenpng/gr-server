@@ -283,9 +283,15 @@ if [[ -f "$TMP/gr-cli" ]]; then
   install -m 0755 "$TMP/gr-cli" "$INSTALL_ROOT/bin/gr-cli"
 fi
 cp -f "$TMP/manifest.json" "$INSTALL_ROOT/dist/release-${VERSION}/manifest.json"
-echo "$VERSION" > "$INSTALL_ROOT/VERSION"
+# iss/audit OPR-01: VERSION stamp is DEFERRED to the health gate at the end of
+# this script. The previous eager write left a new-VERSION / old-binary split
+# brain whenever HEALTH_FAIL rolled the binary back: auto_upgrade_check's
+# monotonic gate then read the new version as current and never retried — a
+# permanently locked-out, half-upgraded host. FE/spec trees are restored from
+# their .bak snapshots on rollback (see rollback_runtime_state below).
 
 # FE: 整包内的 fe/ 树 (fe_tree 逐文件 sha) — 与共享 fe tgz 等价但免二次下载
+# fe/VERSION is stamped together with VERSION after HEALTH_OK.
 if [[ -n "$BUNDLE" && -d "$BUNDLE/fe" ]]; then
   python3 - "$BUNDLE" "$TMP/manifest.json" <<'PY'
 import hashlib, json, pathlib, sys
@@ -305,7 +311,6 @@ PY
     mv "$INSTALL_ROOT/fe" "$FE_BAK" || true
   fi
   cp -a "$BUNDLE/fe" "$INSTALL_ROOT/fe"
-  echo "$VERSION" > "$INSTALL_ROOT/fe/VERSION"
   echo "[runtime-ota] FE tree installed from bundle"
 elif [[ -z "$BUNDLE" ]]; then
   # fixture / flat release: 共享 fe tgz 资产 + manifest fe.sha256 校验 (R-01)
@@ -332,13 +337,12 @@ elif [[ -z "$BUNDLE" ]]; then
       mkdir -p "$INSTALL_ROOT/fe"
       cp -a "$STAGE"/. "$INSTALL_ROOT/fe/"
     fi
-    echo "$VERSION" > "$INSTALL_ROOT/fe/VERSION"
     echo "[runtime-ota] FE installed from flat asset"
   else
     echo "[runtime-ota] no $FE_TGZ on release (FE not updated this run)"
   fi
 fi
-[[ -d "$INSTALL_ROOT/fe" ]] && echo "$VERSION" > "$INSTALL_ROOT/fe/VERSION"
+# fe/VERSION stamp deferred with VERSION (OPR-01) — see stamp_version after the health gate.
 
 # spec: 1.0.2+ 整包带 spec_tree (analyze 运行时数据); 验树→备份→换树 (与 fe 同型)。
 # 1.0.0/1.0.1 包无 spec_tree → 沿用现有 spec/ 不动 (老包物理带 spec 但未签名, 不盲信)。
@@ -400,7 +404,11 @@ fi
 # https:// pointer; other bases (lab mirror, file) are runtime-only and are
 # NOT persisted — the health gate below still validates the running process.
 ENVF="$INSTALL_ROOT/.env"
+OLD_RELEASE_URL=""
 if [[ -f "$ENVF" ]]; then
+  # iss/audit OPR-01: snapshot the previous release pointer so the rollback
+  # path can restore it together with the binary/fe/spec trees.
+  OLD_RELEASE_URL="$(grep -m1 '^GR_RELEASE_URL=' "$ENVF" 2>/dev/null | cut -d= -f2- || true)"
   if [[ "$BASE" == https://* ]]; then
     python3 - "$ENVF" "$BASE" <<'PYENV'
 import sys
@@ -413,6 +421,40 @@ PYENV
     echo "[runtime-ota] non-https base — GR_RELEASE_URL in .env left untouched (http pointer would fail the R-02 prod boot guard)" >&2
   fi
 fi
+
+# iss/audit OPR-01 helpers: full-state rollback + gated version stamp.
+# rollback_runtime_state restores fe/spec trees from their .bak snapshots and
+# the .env release pointer (binary restore stays at each call site, which owns
+# $BAK). stamp_runtime_version writes VERSION + fe/VERSION — ONLY after the
+# health gate confirms the new binary serves.
+rollback_runtime_state() {
+  if [[ -n "${FE_BAK:-}" && -d "${FE_BAK:-}" ]]; then
+    rm -rf "$INSTALL_ROOT/fe"
+    mv "$FE_BAK" "$INSTALL_ROOT/fe" || true
+    echo "[runtime-ota] rollback: fe tree restored from ${FE_BAK}" >&2
+  fi
+  if [[ -n "${SPEC_BAK:-}" && -d "${SPEC_BAK:-}" ]]; then
+    rm -rf "$INSTALL_ROOT/spec"
+    mv "$SPEC_BAK" "$INSTALL_ROOT/spec" || true
+    echo "[runtime-ota] rollback: spec tree restored from ${SPEC_BAK}" >&2
+  fi
+  if [[ -n "$OLD_RELEASE_URL" && -f "$ENVF" ]]; then
+    python3 - "$ENVF" "$OLD_RELEASE_URL" <<'PYENV'
+import sys
+p, url = sys.argv[1], sys.argv[2]
+lines = [l for l in open(p).read().splitlines(keepends=True) if not l.startswith(("GR_RELEASE_URL=",))]
+lines.append(f"GR_RELEASE_URL={url}\n")
+open(p, "w").writelines(lines)
+PYENV
+    echo "[runtime-ota] rollback: GR_RELEASE_URL restored" >&2
+  fi
+}
+
+stamp_runtime_version() {
+  echo "$VERSION" > "$INSTALL_ROOT/VERSION"
+  [[ -d "$INSTALL_ROOT/fe" ]] && echo "$VERSION" > "$INSTALL_ROOT/fe/VERSION"
+  echo "[runtime-ota] version stamped: $VERSION (health-gated)" >&2
+}
 
 # 属主修正: 本脚本常以 root 跑, cp -a / install 换入的树会保持 root 属主,
 # 而服务进程跑在专用用户下 (User=greenpng) → 写不了 fe/OPAQUE_MAP.json →
@@ -469,6 +511,7 @@ if systemctl is-enabled "$UNIT" >/dev/null 2>&1 || systemctl cat "$UNIT" >/dev/n
     echo "[runtime-ota] HEALTH_FAIL — rolling back binary" >&2
     if [[ -n "$BAK" && -x "$BAK" ]]; then
       install -m 0755 "$BAK" "$INSTALL_ROOT/bin/gr-service"
+      rollback_runtime_state
       systemctl restart "$UNIT" || true
       sleep 3
       if curl -fsS "$HEALTH_URL" >/tmp/gr-runtime-ota-health-rollback.json 2>/dev/null; then
@@ -476,11 +519,16 @@ if systemctl is-enabled "$UNIT" >/dev/null 2>&1 || systemctl cat "$UNIT" >/dev/n
       else
         echo "[runtime-ota] ROLLBACK_HEALTH_FAIL" >&2
       fi
+    else
+      rollback_runtime_state
     fi
+    # VERSION intentionally untouched: it was never advanced before the gate,
+    # so auto_upgrade_check still sees the old version and retries the target.
     exit 1
   fi
   systemctl is-active "$UNIT"
   echo "[runtime-ota] HEALTH_OK"
+  stamp_runtime_version
 else
   # 无 systemd (runner / 容器 / lab): 仅管理 install.sh 后台拉起的实例
   # (pid 文件存在时)。夹具树 / 未由本机管理的安装保持旧行为 (仅提示)。
@@ -536,6 +584,7 @@ else
       echo "[runtime-ota] HEALTH_FAIL — rolling back binary" >&2
       if [[ -n "$BAK" && -x "$BAK" ]]; then
         install -m 0755 "$BAK" "$INSTALL_ROOT/bin/gr-service"
+        rollback_runtime_state
         stop_bg_instance "$NEW_PID"
         wait_health_port_free || true
         pkill -9 -f "^$INSTALL_ROOT/bin/gr-service" 2>/dev/null || true
@@ -548,12 +597,20 @@ else
         else
           echo "[runtime-ota] ROLLBACK_HEALTH_FAIL" >&2
         fi
+      else
+        rollback_runtime_state
       fi
+      # VERSION never advanced before the gate — auto-upgrade retries the target.
       exit 1
     fi
     echo "[runtime-ota] HEALTH_OK (background instance pid=$(cat "$PIDFILE" 2>/dev/null || echo '?'))"
+    stamp_runtime_version
   else
     echo "WARN: greenpng unit not found; binary installed, restart manually" >&2
+    # Unmanaged instance (no systemd, no pidfile): no health gate will ever
+    # run, so stamp the installed version to keep the old eager-write semantics
+    # for this path (auto_upgrade_check itself only runs under systemd).
+    stamp_runtime_version
   fi
 fi
 

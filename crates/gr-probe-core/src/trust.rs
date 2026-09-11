@@ -1578,7 +1578,6 @@ pub fn commercial_projection(fields: &Value) -> Value {
     // Audio OfflineAudio diverges across engines — soft path does not hash fine audio.
     // Machine extras (cores/os/LAN webrtc/mem) separate host soft ≠ guest soft when residual
     // alone would collide (SwiftShader cross-machine identity).
-    let mut soft_residual_bucket: Option<String> = None;
     if soft_path {
         if let Some(m) = fo
             .get("residual_mean")
@@ -1587,7 +1586,7 @@ pub fn commercial_projection(fields: &Value) -> Value {
             // 1e-5 bucket: same-host FE micro-noise collapses; finer than 1e-4 so
             // 0.500423 vs 0.500427 do not merge.
             let b = (m * 100000.0).round() / 100000.0;
-            soft_residual_bucket = Some(format!("rm_{b:.5}"));
+            let soft_residual_bucket = Some(format!("rm_{b:.5}"));
             materials.insert(
                 "soft_residual_bucket".into(),
                 json!(soft_residual_bucket.as_ref().unwrap()),

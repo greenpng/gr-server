@@ -23,6 +23,7 @@
     deferred_debounce: 0,
     dropped_stale_epoch: 0,
     dropped_cool: 0,
+    kick_errors: 0,
   };
 
   function now() {
@@ -136,7 +137,19 @@
         if (GRProbeLifecycle.markNeedProbe) GRProbeLifecycle.markNeedProbe(reason);
         if (GRProbeLifecycle.markProbing) GRProbeLifecycle.markProbing();
       }
-    } catch (eM) {}
+    } catch (eM) {
+      stats.kick_errors++;
+      try {
+        if (global.GROps && GROps.report) {
+          GROps.report(
+            "scheduler_lifecycle_fail",
+            "scheduler",
+            { reason: reason, err: String((eM && eM.message) || eM || "").slice(0, 120) },
+            "warn"
+          );
+        }
+      } catch (eR) {}
+    }
     try {
       if (typeof handlers.kick === "function") {
         handlers.kick(reason, { force: !!force, plan_epoch: planEpoch, session_id: sessionId });
@@ -147,7 +160,25 @@
       } else if (global.GRBoot && typeof global.GRBoot.resumeProbe === "function") {
         global.GRBoot.resumeProbe(reason);
       }
-    } catch (eK) {}
+    } catch (eK) {
+      stats.kick_errors++;
+      try {
+        if (global.GROps && GROps.report) {
+          GROps.report(
+            "scheduler_kick_fail",
+            "scheduler",
+            { reason: reason, err: String((eK && eK.message) || eK || "").slice(0, 120) },
+            "error"
+          );
+        }
+      } catch (eR) {}
+      try {
+        if (typeof handlers.onEvent === "function") {
+          handlers.onEvent("kick_error", { reason: reason, err: String((eK && eK.message) || eK || "").slice(0, 120) });
+        }
+      } catch (eE) {}
+      return { ok: false, error: String((eK && eK.message) || eK || "").slice(0, 120), reason: reason, plan_epoch: planEpoch };
+    }
     return { ok: true, reason: reason, plan_epoch: planEpoch };
   }
 
@@ -217,6 +248,7 @@
         deferred_debounce: stats.deferred_debounce,
         dropped_stale_epoch: stats.dropped_stale_epoch,
         dropped_cool: stats.dropped_cool,
+        kick_errors: stats.kick_errors,
       },
     };
   }

@@ -68,7 +68,7 @@ export class GrResultClient {
 
   async waitForResult(sessionId, options = {}) {
     const timeoutMs = options.timeoutMs || 8000;
-    const intervalMs = options.intervalMs || 250;
+    const intervalMs = options.intervalMs || 500;
     const projection = options.projection || "sdk";
     const start = Date.now();
     let last = null;

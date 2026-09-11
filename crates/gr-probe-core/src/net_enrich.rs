@@ -10,7 +10,7 @@ use maxminddb::{geoip2, Reader};
 use once_cell::sync::OnceCell;
 use serde_json::{json, Map, Value};
 use std::net::IpAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 #[derive(Debug, Clone, Default)]

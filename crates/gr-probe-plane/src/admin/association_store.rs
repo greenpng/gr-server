@@ -179,21 +179,73 @@ impl AssociationStore {
         thread::Builder::new()
             .name("gr-assoc-pg".into())
             .spawn(move || {
-                let mut client = match connect_assoc_pg(&dsn_owned) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        // 引导期竞态（全新 PG 的 entrypoint 重启窗内 DDL 会撞断连）；
-                        // hub open 自带 1/5 重试并自愈，这里静默退出走错误路径即可，
-                        // 不再 panic 留噪音（公开仓 fulltest 断言日志零 panic，2026-09-08）。
-                        log::warn!("gr_assoc pg connect failed ({label_t}); hub open will retry: {e}");
+                // iss/audit STO-02 (scenario B): bootstrap retry (connect + DDL)
+                // so a fresh-PG entrypoint restart window no longer kills this
+                // thread on the first attempt (hub open retries on final
+                // failure — unchanged semantics, quiet exit, zero panics).
+                let mut client = None;
+                for attempt in 1..=3u32 {
+                    match connect_assoc_pg(&dsn_owned) {
+                        Ok(mut c) => match c.batch_execute(PG_DDL) {
+                            Ok(()) => {
+                                client = Some(c);
+                                break;
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "gr_assoc pg schema failed ({label_t}) attempt {attempt}/3: {e}"
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!(
+                                "gr_assoc pg connect failed ({label_t}) attempt {attempt}/3: {e}"
+                            );
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+                let mut client = match client {
+                    Some(c) => c,
+                    None => {
+                        log::warn!(
+                            "gr_assoc pg bootstrap failed after 3 attempts ({label_t}); hub open will retry"
+                        );
                         return;
                     }
                 };
-                if let Err(e) = client.batch_execute(PG_DDL) {
-                    log::warn!("gr_assoc pg schema failed ({label_t}); hub open will retry: {e}");
-                    return;
-                }
                 while let Ok(job) = rx.recv() {
+                    // iss/audit STO-02 (scenario A): runtime self-heal — a PG
+                    // restart/failover used to leave every assoc job erroring
+                    // on a dead socket forever.
+                    if client.is_closed() {
+                        let mut delay_ms: u64 = 500;
+                        for attempt in 1..=6u32 {
+                            match connect_assoc_pg(&dsn_owned) {
+                                Ok(mut c) => match c.batch_execute(PG_DDL) {
+                                    Ok(()) => {
+                                        client = c;
+                                        log::info!(
+                                            "gr_assoc pg reconnected after connection loss (attempt {attempt})"
+                                        );
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "gr_assoc pg reconnect schema failed ({label_t}) attempt {attempt}/6: {e}"
+                                        );
+                                    }
+                                },
+                                Err(e) => {
+                                    log::warn!(
+                                        "gr_assoc pg reconnect failed ({label_t}) attempt {attempt}/6: {e}"
+                                    );
+                                }
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                            delay_ms = (delay_ms * 2).min(8_000);
+                        }
+                    }
                     job(&mut client);
                 }
             })

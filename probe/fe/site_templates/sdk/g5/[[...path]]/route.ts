@@ -1,5 +1,5 @@
 /**
- * First-party ingest/API relay: /g5/* → GV5_INGEST_UPSTREAM (default :28765)
+ * First-party ingest/API relay: /g5/* → GR_INGEST_UPSTREAM (default :28765)
  *
  * Copy into Next site as: app/g5/[[...path]]/route.ts
  * Or re-export:

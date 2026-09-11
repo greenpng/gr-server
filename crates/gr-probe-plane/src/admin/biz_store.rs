@@ -124,7 +124,12 @@ pub struct VisitUpsert {
 
 enum Backend {
     Sqlite(Mutex<Connection>),
-    Postgres { jobs: SyncSender<JobFn>, label: String },
+    Postgres {
+        jobs: SyncSender<JobFn>,
+        // backend label kept for ops log attribution
+        #[allow(dead_code)]
+        label: String,
+    },
 }
 
 type JobFn = Box<dyn FnOnce(&mut Client) + Send>;
@@ -169,21 +174,77 @@ impl BizStore {
         thread::Builder::new()
             .name("gr-biz-pg".into())
             .spawn(move || {
-                let mut client = match connect_biz_pg(&dsn_owned) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        // 引导期竞态 (全新 PG entrypoint 重启窗) — 与 association_store
-                        // 同款: 静默退出走错误路径, 不留 panic 噪音 (fulltest 零 panic
-                        // 断言; 公开仓 run 34249515793 hotcold 实证 biz 线程同撞)。
-                        log::warn!("gr_biz pg connect failed ({label_t}); jobs will error: {e}");
+                // iss/audit STO-02 (scenario B): a fresh PG entrypoint restart
+                // window used to kill this thread on the FIRST connect failure
+                // — every later biz op then errored with "channel closed"
+                // forever. Retry the bootstrap (connect + schema) a few times
+                // before giving up; on final failure keep the documented
+                // quiet-exit error path (fulltest asserts zero log panics).
+                let mut client = None;
+                for attempt in 1..=3u32 {
+                    match connect_biz_pg(&dsn_owned) {
+                        Ok(mut c) => {
+                            match c.batch_execute(PG_SCHEMA) {
+                                Ok(()) => {
+                                    client = Some(c);
+                                    break;
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "gr_biz pg schema failed ({label_t}) attempt {attempt}/3: {e}"
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "gr_biz pg connect failed ({label_t}) attempt {attempt}/3: {e}"
+                            );
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+                let mut client = match client {
+                    Some(c) => c,
+                    None => {
+                        log::warn!(
+                            "gr_biz pg bootstrap failed after 3 attempts ({label_t}); jobs will error"
+                        );
                         return;
                     }
                 };
-                if let Err(e) = client.batch_execute(PG_SCHEMA) {
-                    log::warn!("gr_biz pg schema failed ({label_t}); jobs will error: {e}");
-                    return;
-                }
                 while let Ok(job) = rx.recv() {
+                    // iss/audit STO-02 (scenario A): heal a broken runtime
+                    // connection (PG restart / failover) instead of erroring
+                    // every job forever on a dead socket.
+                    if client.is_closed() {
+                        let mut delay_ms: u64 = 500;
+                        for attempt in 1..=6u32 {
+                            match connect_biz_pg(&dsn_owned) {
+                                Ok(mut c) => match c.batch_execute(PG_SCHEMA) {
+                                    Ok(()) => {
+                                        client = c;
+                                        log::info!(
+                                            "gr_biz pg reconnected after connection loss (attempt {attempt})"
+                                        );
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "gr_biz pg reconnect schema failed ({label_t}) attempt {attempt}/6: {e}"
+                                        );
+                                    }
+                                },
+                                Err(e) => {
+                                    log::warn!(
+                                        "gr_biz pg reconnect failed ({label_t}) attempt {attempt}/6: {e}"
+                                    );
+                                }
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                            delay_ms = (delay_ms * 2).min(8_000);
+                        }
+                    }
                     job(&mut client);
                 }
             })
