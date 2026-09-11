@@ -116,6 +116,19 @@ All updates pull the same tag's signed Release assets from this repository.
   in the window apply the same health-gated flow. The monotonic version gate
   retries the target instead of locking out.
 
+**Memory note (long-running hosts).** Installs since this section was added
+carry `MALLOC_ARENA_MAX=4` in `/opt/greenpng/.env` (written by the
+installer). Background: glibc opens extra 64 MB malloc arenas whenever many
+threads allocate concurrently; an arena outlives its thread and keeps its
+high-water mark, so multi-threaded hosts show a slow RSS ratchet (measured:
+~1.5 GB after 1 h at ~20 req/min on a 6-core node, ~14 arenas and climbing).
+Existing installs can apply the same fix manually — append
+`MALLOC_ARENA_MAX=4` to `/opt/greenpng/.env` and restart the service; RSS
+then settles at the working-set level (same node measured ~100–200 MB
+steady). The value is a glibc knob (the app ignores non-`GR_` keys);
+raise it on high-core boxes that show allocation contention, not memory
+ratcheting.
+
 ## 4. The admin panel
 
 Reach it at `http://<host>:28680/<random-console-path>/` (the path itself is

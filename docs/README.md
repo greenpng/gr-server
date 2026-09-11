@@ -112,6 +112,13 @@ Docker is a runtime container, not an update channel.
   and `VERSION` automatically (no half-upgraded, auto-upgrade-locked host).
 - **Auto-upgrade** (opt-in via panel `cluster-apply`): target version + apply
   window (default `04:00-05:30`); nodes apply the same health-gated flow.
+- **Memory note (long-running hosts)**: the installer writes
+  `MALLOC_ARENA_MAX=4` into `/opt/greenpng/.env` — glibc's extra 64 MB
+  malloc arenas outlive their threads and hold their high-water mark, which
+  otherwise shows up as a slow RSS ratchet on multi-threaded hosts
+  (~1.5 GB after 1 h measured on a 6-core node). Existing installs: append
+  the line manually and restart; RSS settles at the working-set level
+  (~100-200 MB measured). See root README §3 for details.
 
 ### 3.3 Uninstall
 
