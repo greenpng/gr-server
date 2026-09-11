@@ -524,6 +524,13 @@ GR_MODULES_DIR=${PREFIX}/modules
 GR_ADMIN_SPA=${PREFIX}/admin-spa
 GR_STATIC_DIR=${PREFIX}/fe
 GR_SPEC_DIR=${PREFIX}/spec
+# Allocator: glibc opens extra 64MB malloc arenas when many threads allocate
+# concurrently; arenas outlive their threads and hold their high-water mark,
+# so long-running multi-thread hosts show a slow RSS ratchet (measured on a
+# 6-core production node: ~1.5GB after 1h at ~20 req/min). Capping arenas
+# bounds it; the app itself ignores non-GR_ keys. Override by pre-setting
+# MALLOC_ARENA_MAX in the environment before running the installer.
+MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-4}
 EOF
 # Cookie transport flags are optional: only persist when explicitly supplied so
 # production installs keep the 8.0 Secure-by-default behavior.
