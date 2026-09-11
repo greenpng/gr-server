@@ -107,8 +107,8 @@ Docker는 런타임 컨테이너이며 업데이트 채널이 아닙니다.
    첨부할 비즈니스 필드의 쿠키 허용 목록을 설정합니다(`password`/`token` 같은
    민감한 이름은 서버 측에서 차단됩니다).
 2. **탐침 배포** — 세 가지 모드:
-   - *Nginx 자사 배포(권장)*: `/gr.js`와 `/gr/dist/v/`를 pv 도메인으로,
-     `/gr/v1/`을 gv 도메인으로 프록시하고(Cookie 통과), HTML에
+   - *Nginx 자사 배포(권장)*: pv 도메인에서 `/gr.js`와 `/gr/dist/v/` +
+     `/gr/v1/`을 프로브 플레인으로 프록시하고(Cookie 통과), HTML에
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>`를 삽입합니다.
    - *Cloudflare worker*: 동일한 태그를 삽입하고 `/gr`을 인오리진(in-origin)으로
@@ -133,3 +133,59 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # 이후 결과 확인(실제 FE 배치 이후 또는 시뮬레이션 배치 이후):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. 관리 패널 파라미터
+
+패널의 **Config** 페이지에서 편집합니다(저장 → 게시). 게시한 노드는 즉시
+적용되고 클러스터 노드는 ≤30초 안에, 재시작 없이 반영됩니다.
+
+**속도 제한**(v1.0.14 정책: 사이트 총량은 기본 비활성. 대신 텔레메트리
+경로는 단일 IP 기준으로 제한. 429 응답은 발동된 계층을 명시합니다):
+
+| 파라미터 | 기본값 | 의미 |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = 무제한 | 세션 open / 사이트 / 분 |
+| `rate_limit_ingest_per_min` | 0 = 무제한 | 배치 업로드 / 사이트 / 분 |
+| `rate_limit_analyze_per_min` | 0 = 무제한 | 직접 analyze / 사이트 / 분 |
+| `rate_limit_complete_per_min` | 0 = 무제한 | complete 수신 확인 / 사이트 / 분 |
+| `rate_limit_result_per_min` | 0 = 무제한 | 결과 조회 / 사이트 / 분 |
+| `rate_limit_client_event_per_min` | 0 = 무제한 | FE 텔레메트리 / 사이트 / 분(총량) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | FE 텔레메트리 **단일 IP당** / 분 — 초과 시 해당 IP만 제한; 0 = 끔 |
+
+**CDN 뒤**에서는 per-IP 계층이 서버가 보는 IP를 기준으로 동작합니다.
+프록시의 CIDR을 `/opt/greenpng/.env`의 `GR_TRUSTED_PROXIES`에 추가하고
+전면 프록시에서 실제 방문자 IP를 복원하세요(nginx 예시):
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**핫/콜드 계층**(실제 노브 이름): `cold_ttl_ms`(604800000 = 7일),
+`cold_promote_window_ms`(864000000 = 24시간), `cold_purge_interval_ms`
+(300000 = 5분). 사이트별 보존 기간은 패널의 **Data Retention** 페이지에서
+설정하며 제한된 배치 단위로 삭제됩니다.
+
+## 5. 로그와 메모리
+
+- 서비스 로그: `journalctl -u greenpng.service`. 운영 텔레메트리
+  (`ops_client_events`)는 `ops_retention_days`(14)일 보관됩니다.
+- **메모리 참고(v1.0.14부터)**: 장기 구동 멀티코어 호스트에서 glibc는
+  코어당 최대 8개 아레나(각 ~64 MB)를 유지할 수 있어, 동시 부하에서
+  RSS가 계단식으로 상승할 수 있습니다. 설치 스크립트는 기본으로
+  `/opt/greenpng/.env`에 `MALLOC_ARENA_MAX=4`를 설정합니다. 부하 상황에서
+  RSS는 평탄하게 유지됩니다.
+
+## 6. 오픈소스 프로젝트 및 참고 문헌
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — 엣지 게이트웨이, TLS 종단, 봉인 ingest(openssl feature).
+- [Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum) (MIT) — 컨트롤 플레인의 비동기 런타임과 REST 프레임워크.
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — 엣지와 관리 콘솔의 TLS 백엔드.
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — 릴리스 매니페스트, 프로브 자산, OTA 서명.
+- [PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/) — L3 저장소와 멀티노드 상태.
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — 페이로드 압축(zstd는 vendored pingora 내부에만 존재).
+- [Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/) (MIT) — 관리 콘솔 UI.
+- 연구 참고: [CreepJS](https://github.com/abrahamjuliot/creepjs)(B1/B12 영감), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [BotD](https://github.com/fingerprintjs/botd).

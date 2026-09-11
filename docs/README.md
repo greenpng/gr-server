@@ -140,8 +140,8 @@ data gone.
    cookie allow-list for business fields you want attached to each verdict
    (sensitive names such as `password`/`token` are blocked server-side).
 2. **Deploy the probe** — three modes:
-   - *Nginx first-party (recommended)*: proxy `/gr.js` + `/gr/dist/v/` to the
-     pv domain and `/gr/v1/` to the gv domain (Cookie passthrough), inject
+   - *Nginx first-party (recommended)*: on the pv domain, proxy `/gr.js` +
+     `/gr/dist/v/` + `/gr/v1/` to the probe plane (Cookie passthrough), inject
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` into HTML.
    - *Cloudflare worker*: inject the same tag and proxy `/gr` in-origin.
@@ -254,24 +254,20 @@ stored as /24), bounded by `ops_retention_days` (14).
 on/off in lab shapes via `GR_RATE_LIMIT_FORCE=1` / `GR_RATE_LIMIT_OFF=1`.
 Admin actions are audit-logged (actor + detail) in the panel Audit page.
 
-## 6. Open-source projects
+## 6. Open-source projects & References
 
-**Vendored**: [Pingora](https://github.com/cloudflare/pingora)
-(Apache-2.0, Cloudflare) — the probe plane's serving layer under
-`vendor/pingora/`.
+### 6.1 Core Infrastructure & Frameworks
+- **[Pingora](https://github.com/cloudflare/pingora)** (Cloudflare, Apache-2.0): Vendored under `vendor/pingora/`. Serves as greenpng's front proxy layer, providing high-concurrency TLS termination, HTTP/2 & HTTP/3 multiplexing, and sealed ingest validation.
+- **[Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum)** (MIT): Asynchronous runtime and ergonomic REST API framework for the control plane.
+- **[OpenSSL](https://www.openssl.org/)** (Apache-2.0): TLS backend for the Pingora edge and the admin control plane (pingora `openssl` feature).
+- **[ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek)** (BSD-3): Digital signature verification for release manifests, client probe assets, and OTA packages.
+- **[PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/)**: L3 relational storage for sessions, audit trails, and multi-node cluster synchronization.
+- **[flate2 / zlib](https://github.com/rust-compress/flate2)** (MIT): Real-time lossless payload compression for probe submissions (zstd ships only inside the vendored pingora tree).
+- **[Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/)** (MIT): Modern component library powering the greenpng administration panel.
 
-**Major crates.io dependencies**: axum / tower-http / tokio (control-plane
-HTTP + async), postgres / rusqlite (storage), ed25519-dalek / x25519-dalek /
-aes-gcm / hkdf / hmac / scrypt (signing, seals, credentials), sha2 / blake3
-(digests), reqwest-rustls (OTA/webhook fetch), dashmap / arc-swap /
-parking_lot (shared state), tracing (logging), serde / chrono / uuid /
-semver / regex / clap / sysinfo / flate2 (utilities). Full inventory per
-release: **`sbom.cdx.json`** (CycloneDX).
+### 6.2 Research References & Technical Attribution
+- **[CreepJS](https://github.com/abrahamjuliot/creepjs)**: Pioneer in browser anti-fingerprinting and prototype tampering detection. greenpng's `B1 Conflict` and `B12 Anti-Camouflage` modules draw foundational inspiration from CreepJS's feature isolation techniques.
+- **[FingerprintJS](https://github.com/fingerprintjs/fingerprintjs)**: Open-source reference for client-side hardware enumeration and browser attribute collection.
+- **[BotD](https://github.com/fingerprintjs/botd)**: Open-source reference for automated browser heuristics (Puppeteer, Playwright, Selenium detection).
 
-**Built-on infrastructure**: PostgreSQL (data layer), Redis (multi-node),
-nginx (first-party load mode), systemd + polkit (lifecycle + self-OTA
-grant), Cloudflare CDN/Workers (optional front). Design references: signed
-package-repository trust chains (manifest index → per-asset signature →
-pinned root key) and Cloudflare's Pingora service model. No third-party
-probe/anti-bot code is included — probe, scoring and analysis code is
-original to this project.
+No third-party proprietary probe/anti-bot code is included — all probe, scoring, and analysis algorithms in `crates/` and `modules/` are original to this project.

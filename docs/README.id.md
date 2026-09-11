@@ -112,8 +112,8 @@ repositori ini. Docker adalah kontainer runtime, bukan kanal pembaruan.
    cookie untuk kolom bisnis yang ingin Anda sertakan pada setiap vonis
    (nama sensitif seperti `password`/`token` diblokir di sisi server).
 2. **Deploy probe** — tiga mode:
-   - *Nginx first-party (disarankan)*: proxy `/gr.js` + `/gr/dist/v/` ke
-     domain pv dan `/gr/v1/` ke domain gv (Cookie passthrough), sisipkan
+   - *Nginx first-party (disarankan)*: pada domain pv, proxy `/gr.js` +
+     `/gr/dist/v/` + `/gr/v1/` ke probe plane (Cookie passthrough), sisipkan
      `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` ke dalam HTML.
    - *Cloudflare worker*: sisipkan tag yang sama dan proxy `/gr` in-origin.
@@ -137,3 +137,59 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # lalu periksa hasilnya (setelah batch FE nyata atau batch tersimulasi):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. Parameter panel admin
+
+Diedit pada halaman **Config** panel (simpan → publish): node yang
+mem-publish menerapkan seketika; node kluster dalam ≤30 detik, tanpa restart.
+
+**Batas laju** (kebijakan v1.0.14: total per situs nonaktif secara bawaan;
+rute telemetri dibatasi per IP tunggal; respons 429 menyebutkan lapisan yang terpicu):
+
+| Parameter | Bawaan | Arti |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = tak terbatas | buka sesi / situs / mnt |
+| `rate_limit_ingest_per_min` | 0 = tak terbatas | unggah batch / situs / mnt |
+| `rate_limit_analyze_per_min` | 0 = tak terbatas | analisis langsung / situs / mnt |
+| `rate_limit_complete_per_min` | 0 = tak terbatas | kuitansi complete / situs / mnt |
+| `rate_limit_result_per_min` | 0 = tak terbatas | baca hasil / situs / mnt |
+| `rate_limit_client_event_per_min` | 0 = tak terbatas | telemetri FE / situs / mnt (total) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | telemetri FE **per IP tunggal** / mnt — melebihi hanya membatasi IP itu; 0 = mati |
+
+**Di belakang CDN**, lapisan per-IP memakai IP yang dilihat server. Tambahkan
+CIDR proksi ke `GR_TRUSTED_PROXIES` di `/opt/greenpng/.env` dan pulihkan IP
+pengunjung asli di proksi depan (contoh nginx):
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**Tiering panas/dingin** (nama kenop sebenarnya): `cold_ttl_ms` (604800000
+= 7 hari), `cold_promote_window_ms` (864000000 = 24 jam),
+`cold_purge_interval_ms` (300000 = 5 menit); retensi per situs diatur pada
+halaman **Data Retention** panel dan dipurge dalam batch terbatas.
+
+## 5. Logging & memori
+
+- Log layanan: `journalctl -u greenpng.service`; telemetri operasional
+  (`ops_client_events`) disimpan selama `ops_retention_days` (14) hari.
+- **Catatan memori (mulai v1.0.14)**: pada host multi-core berumur panjang,
+  glibc dapat mempertahankan hingga 8 arena per core (~64 MB tiap arena),
+  sehingga RSS dapat merambat naik di bawah konkurensi. Installer karena itu
+  menetapkan `MALLOC_ARENA_MAX=4` di `/opt/greenpng/.env`; RSS tetap datar
+  di bawah beban.
+
+## 6. Proyek open source & referensi
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — gateway edge, terminasi TLS, ingest tersegel (fitur openssl).
+- [Tokio](https://github.com/tokio-rs/tokio) & [Axum](https://github.com/tokio-rs/axum) (MIT) — runtime asinkron dan framework REST untuk control plane.
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — backend TLS untuk edge dan konsol admin.
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — tanda tangan untuk manifest rilis, aset probe, dan OTA.
+- [PostgreSQL](https://www.postgresql.org/) & [Redis](https://redis.io/) — penyimpanan L3 dan state multi-node.
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — kompresi payload (zstd hanya di dalam pingora vendored).
+- [Element Plus](https://element-plus.org/) & [Vue 3](https://vuejs.org/) (MIT) — UI konsol admin.
+- Referensi riset: [CreepJS](https://github.com/abrahamjuliot/creepjs) (inspirasi B1/B12), [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs), [BotD](https://github.com/fingerprintjs/botd).

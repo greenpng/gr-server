@@ -107,8 +107,8 @@ bash install/install.sh --version <VERSION> --with-docker --yes
    السماح لملفات تعريف الارتباط لحقول العمل التي تريد إرفاقها بكل حكم
    (الأسماء الحساسة مثل `password`/`token` محجوبة على جانب الخادم).
 2. **انشر الاستقصاء** — ثلاثة أوضاع:
-   - *Nginx من الطرف الأول (موصى به)*: مرّر `/gr.js` + `/gr/dist/v/` إلى
-     نطاق pv و`/gr/v1/` إلى نطاق gv (مع تمرير ملفات تعريف الارتباط)،
+   - *Nginx من الطرف الأول (موصى به)*: على نطاق pv مرّر `/gr.js` + `/gr/dist/v/` +
+     `/gr/v1/` إلى مستوى التحقيق (مع تمرير ملفات تعريف الارتباط)،
      وأدرج `<script src="/gr.js" data-site-id="…" data-endpoint="/gr"
      data-inject-path="nginx" defer></script>` في HTML.
    - *عامل Cloudflare*: أدرج الوسم نفسه ومرّر `/gr` داخل الأصل.
@@ -132,3 +132,58 @@ curl -sS -X POST "$BASE/v1/session/open" -H "X-Gr-Sdk-Key: $KEY" \
 # then check the result (after real FE batches or simulated ones):
 curl -sS -H "X-Gr-Sdk-Key: $KEY" "$BASE/v1/session/$SID/result"
 ```
+
+---
+
+## 4. معلمات لوحة الإدارة
+
+تُعدَّل في صفحة **Config** بلوحة الإدارة (حفظ ← نشر): العقدة الناشرة
+تُطبِّق فورًا؛ عقد المجموعة خلال ≤30 ثانية دون إعادة تشغيل.
+
+**حدود المعدل** (سياسة v1.0.14: الإجماليات لكل موقع معطلة افتراضيًا؛
+مسار القياس عن بُعد مقيَّد لكل IP فردي؛ استجابات 429 تسمّي الطبقة المُفعِّلة):
+
+| المعلمة | الافتراضي | المعنى |
+|---|:---:|---|
+| `rate_limit_open_per_min` | 0 = بلا حد | فتح الجلسات / موقع / دقيقة |
+| `rate_limit_ingest_per_min` | 0 = بلا حد | رفع الدفعات / موقع / دقيقة |
+| `rate_limit_analyze_per_min` | 0 = بلا حد | التحليلات المباشرة / موقع / دقيقة |
+| `rate_limit_complete_per_min` | 0 = بلا حد | إيصالات complete / موقع / دقيقة |
+| `rate_limit_result_per_min` | 0 = بلا حد | قراءات النتائج / موقع / دقيقة |
+| `rate_limit_client_event_per_min` | 0 = بلا حد | قياس FE / موقع / دقيقة (إجمالي) |
+| `rate_limit_client_event_per_ip_per_min` | 100 | قياس FE **لكل IP فردي** / دقيقة — التجاوز يقيّد هذا الـIP فقط؛ 0 = معطّل |
+
+**خلف CDN** تعمل طبقة "لكل IP" على العنوان الذي يراه الخادم. أضف نطاقات
+CIDR الخاصة بالوكيل إلى `GR_TRUSTED_PROXIES` في `/opt/greenpng/.env`
+واستعد IP الزائر الحقيقي عند الوكيل الأمامي (مثال nginx):
+
+```nginx
+set_real_ip_from 173.245.48.0/20;  # Cloudflare IPv4
+set_real_ip_from 2400:cb00::/32;   # Cloudflare IPv6
+real_ip_header CF-Connecting-IP;
+```
+
+**الطبقات الساخنة/الباردة** (أسماء حقيقية): `cold_ttl_ms` (604800000 =
+7 أيام)، `cold_promote_window_ms` (864000000 = 24 ساعة)،
+`cold_purge_interval_ms` (300000 = 5 دقائق)؛ تُضبط مدة الاحتفاظ لكل موقع
+في صفحة **Data Retention** باللوحة وتُحذف على دفعات محدودة.
+
+## 5. السجلات والذاكرة
+
+- سجلات الخدمة: `journalctl -u greenpng.service`؛ يُحتفظ بالقياس التشغيلي
+  (`ops_client_events`) لمدة `ops_retention_days` (14) يومًا.
+- **ملاحظة الذاكرة (منذ v1.0.14)**: على الأجهزة متعددة الأنوية طويلة
+  التشغيل قد يحتفظ glibc بما يصل إلى 8 arenas لكل نواة (~64 ميغابايت
+  لكل واحدة)، فيرتفع RSS تدريجيًا مع التزامن. لذلك يضبط المُثبِّت
+  `MALLOC_ARENA_MAX=4` في `/opt/greenpng/.env`؛ فيبقى RSS مستقرًا تحت الحمل.
+
+## 6. مشاريع المصادر المفتوحة والمراجع
+
+- [Cloudflare Pingora](https://github.com/cloudflare/pingora) (Apache-2.0) — بوابة الحافة، إنهاء TLS، الاستلام المختوم (ميزة openssl).
+- [Tokio](https://github.com/tokio-rs/tokio) و[Axum](https://github.com/tokio-rs/axum) (MIT) — بيئة التنفيذ غير المتزامن وإطار REST لمستوى التحكم.
+- [OpenSSL](https://www.openssl.org/) (Apache-2.0) — باكِند TLS للحافة ولوحة الإدارة.
+- [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) (BSD-3) — التوقيعات لبيانات الإصدار وأصول التحقيقات وOTA.
+- [PostgreSQL](https://www.postgresql.org/) و[Redis](https://redis.io/) — تخزين L3 وحالة تعدد العقد.
+- [flate2 / zlib](https://github.com/rust-compress/flate2) (MIT) — ضغط الحمولات (zstd موجود فقط داخل pingora المُضمَّن).
+- [Element Plus](https://element-plus.org/) و[Vue 3](https://vuejs.org/) (MIT) — واجهة لوحة الإدارة.
+- مراجع بحثية: [CreepJS](https://github.com/abrahamjuliot/creepjs) (إلهام B1/B12)، [FingerprintJS](https://github.com/fingerprintjs/fingerprintjs)، [BotD](https://github.com/fingerprintjs/botd).
