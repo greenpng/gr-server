@@ -79,6 +79,11 @@ pub struct AppState {
     pub role: ServiceRole,
     pub worker_id: String,
     pub analyze_runs: Arc<AtomicU64>,
+    /// Robots fast lane: cumulative early-class results written since boot.
+    /// Exposed as the `fastlane_early` heartbeat field (log-coverage fix
+    /// 2026-09-11: the fast lane was previously invisible in journal/panel —
+    /// per-event rows are deliberately not journaled to avoid flood spam).
+    pub fastlane_early_total: Arc<AtomicU64>,
     /// Desired analyze worker count (admin hot target).
     pub analyze_workers_target: Arc<AtomicUsize>,
     /// Built-in admin console (dedicated SQLite). None = disabled.
@@ -365,7 +370,16 @@ fn demote_hot_to_cold_opts(st: &AppState, idle_ms: i64, force: bool) -> usize {
         .store
         .arm_analyze_if_no_result(&sids)
         .unwrap_or(sids.len() as i64);
-    let _ = armed;
+    // Log-coverage fix (2026-09-11): the throttled sweep was previously fully
+    // silent — its effect was only inferable from DB state. Log only when it
+    // arms something; idle sweeps stay quiet (flood-rate safe).
+    if armed > 0 {
+        log::info!(
+            "arm sweep armed={armed} cap={cap} selected={} idle={} (arm_sweep_interval_ms-throttled)",
+            selected.len(),
+            idle.len()
+        );
+    }
     let demoted = if selected.len() == idle.len() {
         st.hot_probe.demote_idle(idle_ms)
     } else {
@@ -411,13 +425,15 @@ fn try_robot_early_result(st: &AppState, sid: &str, robot_name: Option<&str>, so
     if !robot_fastlane_active(st) || sid.is_empty() {
         return;
     }
-    if let Err(e) = st.store.save_early_class_result(
-        sid,
-        robot_name,
-        source,
-        gr_probe_core::GR_PRODUCT_VERSION,
-    ) {
-        log::debug!("robot early-class result sid={sid} source={source} err={e}");
+    match st
+        .store
+        .save_early_class_result(sid, robot_name, source, gr_probe_core::GR_PRODUCT_VERSION)
+    {
+        Ok(_) => {
+            st.fastlane_early_total
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        Err(e) => log::debug!("robot early-class result sid={sid} source={source} err={e}"),
     }
 }
 
@@ -6138,6 +6154,28 @@ pub fn gateway_early(st: &AppState, headers: &HashMap<String, String>, body: Gat
         None,
     )
     .ok();
+    // Log-coverage fix (2026-09-11): B8 gateway batches previously landed
+    // without a journal ingest_ack (only DB observation events), leaving
+    // per-source journal ack coverage asymmetric (main/worker:d1 only).
+    // Same channel/code as the FE ingest path.
+    crate::dual_log::emit(
+        crate::dual_log::Channel::ProbeBusiness,
+        "ingest_ack",
+        json!({
+            "session_id": sid,
+            "batch_id": "B8_gateway",
+            "source": "gateway",
+            "ok": upsert.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
+            "ack_type": if upsert.get("same_capture").and_then(|v| v.as_bool()).unwrap_or(false) {
+                "duplicate"
+            } else if upsert.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+                "stored"
+            } else {
+                "rejected"
+            },
+            "durability_state": upsert.get("durability_state"),
+        }),
+    );
     let mut cf_map = gr_probe_core::extract_cf_edge_fields(headers);
     let cf_edge_present = !cf_map.is_empty();
     if cf_edge_present {
@@ -6168,12 +6206,36 @@ pub fn gateway_early(st: &AppState, headers: &HashMap<String, String>, body: Gat
                 ..Default::default()
             },
         );
-        let _ = st.store.upsert_batch_with_ip(
-            &sid,
-            "B8_gateway",
-            "cloudflare",
-            &cf_payload,
-            client_ip.as_deref(),
+        let cf_upsert = st
+            .store
+            .upsert_batch_with_ip(
+                &sid,
+                "B8_gateway",
+                "cloudflare",
+                &cf_payload,
+                client_ip.as_deref(),
+            )
+            .unwrap_or_else(|e| {
+                log::warn!("cf edge sub-batch upsert failed: {e}");
+                json!({"ok": false, "durability_state": "failed"})
+            });
+        crate::dual_log::emit(
+            crate::dual_log::Channel::ProbeBusiness,
+            "ingest_ack",
+            json!({
+                "session_id": sid,
+                "batch_id": "B8_gateway",
+                "source": "cloudflare",
+                "ok": cf_upsert.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
+                "ack_type": if cf_upsert.get("same_capture").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    "duplicate"
+                } else if cf_upsert.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    "stored"
+                } else {
+                    "rejected"
+                },
+                "durability_state": cf_upsert.get("durability_state"),
+            }),
         );
         if let Ok(o) = append_observation_event(
             st,
@@ -6928,7 +6990,7 @@ pub fn pixel_hit(
         mark_robot_session(st, &sid);
         try_robot_early_result(st, &sid, robot_name_px.as_str(), "pixel");
     }
-    let _ = st.store.upsert_batch_with_ip_opts(
+    let px_upsert = st.store.upsert_batch_with_ip_opts(
         &sid,
         "B_ops_hit",
         "main",
@@ -6945,6 +7007,29 @@ pub fn pixel_hit(
         None,
         is_robot,
     );
+    // Log-coverage fix (2026-09-11): pixel B_ops_hit batches previously landed
+    // without a journal ingest_ack — same channel/code as every other batch
+    // landing site, so journal per-source coverage matches DB rows 1:1.
+    if let Ok(u) = &px_upsert {
+        crate::dual_log::emit(
+            crate::dual_log::Channel::ProbeBusiness,
+            "ingest_ack",
+            json!({
+                "session_id": sid,
+                "batch_id": "B_ops_hit",
+                "source": "main",
+                "ok": u.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
+                "ack_type": if u.get("same_capture").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    "duplicate"
+                } else if u.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    "stored"
+                } else {
+                    "rejected"
+                },
+                "durability_state": u.get("durability_state"),
+            }),
+        );
+    }
     if !site_id.is_empty() {
         let biz = st.admin.as_ref().map(|a| a.biz.clone());
         crate::admin::biz_store::try_record_visit(

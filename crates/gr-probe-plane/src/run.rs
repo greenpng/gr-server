@@ -529,6 +529,9 @@ fn spawn_config_and_heartbeat(hub: Arc<admin::AdminHub>, state: Arc<handlers::Ap
                     "backend": state.store.backend_name(),
                     "hot_vts": state.hot_probe.len_hot(),
                     "analyze_runs": state.analyze_runs.load(std::sync::atomic::Ordering::Relaxed),
+                    "fastlane_early": state
+                        .fastlane_early_total
+                        .load(std::sync::atomic::Ordering::Relaxed),
                 });
                 if let Err(e) = admin::panel_config::heartbeat_upsert(&hub.db, beat) {
                     warn!("heartbeat upsert: {e}");
@@ -814,6 +817,7 @@ pub fn run_with(args: Args) {
         role: role.clone(),
         worker_id: worker_id.clone(),
         analyze_runs: analyze_runs.clone(),
+        fastlane_early_total: Arc::new(AtomicU64::new(0)),
         analyze_workers_target: analyze_workers_target.clone(),
         admin: admin_hub,
         hot_probe: Arc::new(gr_probe_store::HotProbeCache::new()),
