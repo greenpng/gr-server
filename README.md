@@ -162,6 +162,30 @@ bounded **per IP** instead. Rejections name the layer that tripped
 aggregated in the log window line (below). Env seeds (`RATE_LIMIT_*`) still
 override pre-publish defaults.
 
+**Behind a CDN — restore real client IPs.** The per-IP layer keys on the
+IP the server actually sees. The server honors `X-Real-IP` / `X-Forwarded-For`
+only from a **trusted proxy peer** (loopback by default, `GR_TRUSTED_PROXIES`
+to extend) and never trusts client-supplied headers directly — that is
+spoof-safe, but it also means that with a CDN like Cloudflare in front, the
+key would be a **CDN edge IP** unless the fronting proxy rewrites it. If you
+front with nginx, add the CDN's published ranges via the `realip` module so
+`$remote_addr` (and the `X-Real-IP` you pass along) becomes the real visitor
+IP, and per-IP limiting plus `ops_client_events.client_ip` attribution key
+on visitors, not edges:
+
+```nginx
+# /etc/nginx/conf.d/cdn_real_ip.conf (http level)
+# ranges: https://www.cloudflare.com/ips-v4 + ips-v6 — refresh on CDN notices
+set_real_ip_from 173.245.48.0/20;   # ... all published CDN ranges
+real_ip_header CF-Connecting-IP;    # Cloudflare; True-Client-IP for others
+```
+
+Only connections arriving **from those ranges** get the header honored —
+direct-to-origin clients forging `CF-Connecting-IP` are still keyed by their
+own address, so the limiter stays spoof-resistant. (Verified in production
+2026-09-11: window keys and telemetry attribution switched from edge IPs to
+real visitor IPs; a forged-header probe from the host itself was ignored.)
+
 **Flood hardening**: `robot_fastlane_enabled` (default on — UA-declared
 crawlers skip L1/L3 storage and analyze arms, early verdict stands),
 `hot_max_vts` (8192; 0 = unbounded), `arm_sweep_interval_ms` (15000),
